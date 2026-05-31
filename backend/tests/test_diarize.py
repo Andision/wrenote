@@ -5,13 +5,13 @@ from pathlib import Path
 
 import numpy as np
 
-from interpreter.core.diarize import (
+from wrenote.core.diarize import (
     diarize_session,
     _normalize_source_segments,
     _pick_k,
     _trim_speech_bounds,
 )
-from interpreter.speaker.base import SpeakerBackend
+from wrenote.speaker.base import SpeakerBackend
 
 
 class FakeAmplitudeSpeaker(SpeakerBackend):

@@ -4,7 +4,7 @@ import time
 
 from llama_cpp import Llama
 
-MODEL_PATH = os.path.expanduser("~/.interpreter/models/Hy-MT2-1.8B-Q4_K_M.gguf")
+MODEL_PATH = os.path.expanduser("~/.wrenote/models/Hy-MT2-1.8B-Q4_K_M.gguf")
 
 print(f"Loading {MODEL_PATH} ...", flush=True)
 t0 = time.monotonic()

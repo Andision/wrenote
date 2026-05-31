@@ -12,12 +12,12 @@ import sys
 import time
 from pathlib import Path
 
-import interpreter  # noqa: F401 -- registers backends
-from interpreter.core.events import AudioSegment
-from interpreter.core.registry import make_stt
+import wrenote  # noqa: F401 -- registers backends
+from wrenote.core.events import AudioSegment
+from wrenote.core.registry import make_stt
 
 DEFAULT_MP3 = Path("/Users/andision/Workspaces/interpreter/miscs/conversation_example_1.mp3")
-DEFAULT_MODEL = Path("~/.interpreter/models/ggml-large-v3-turbo-q5_0.bin").expanduser()
+DEFAULT_MODEL = Path("~/.wrenote/models/ggml-large-v3-turbo-q5_0.bin").expanduser()
 
 
 def decode_mp3_to_pcm(mp3_path: Path, *, sample_rate: int = 16000) -> bytes:

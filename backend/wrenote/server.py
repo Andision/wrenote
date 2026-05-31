@@ -315,7 +315,7 @@ async def _translate_segments_for_session(
     return done
 
 
-app = FastAPI(title="Interpreter", lifespan=lifespan)
+app = FastAPI(title="Wrenote", lifespan=lifespan)
 
 # Allow the Vite dev server (different port) to call HTTP endpoints. The
 # WebSocket has its own origin check; this is for fetch/XHR (recording
@@ -340,7 +340,7 @@ if STATIC_DIR.exists():
 @app.get("/")
 async def root() -> dict[str, Any]:
     return {
-        "service": "interpreter",
+        "service": "wrenote",
         "version": "0.1.0",
         "ws": "/ws",
         "test_page": "/static/test.html",
@@ -479,7 +479,7 @@ async def upload_session(
     if not whisper_model_path:
         raise HTTPException(status_code=500, detail="stt.model_path not configured")
 
-    tmpdir = Path(tempfile.mkdtemp(prefix="interpreter-upload-"))
+    tmpdir = Path(tempfile.mkdtemp(prefix="wrenote-upload-"))
     saved_paths: list[Path] = []
     for upload in files:
         safe_name = Path(upload.filename or "audio.bin").name

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from interpreter.core.upload import merge_whisper_segments
+from wrenote.core.upload import merge_whisper_segments
 
 
 @dataclass

@@ -1,12 +1,12 @@
 """SQLite-backed persistence for sessions, segments, and (later) chat.
 
-Single-file DB at ``~/.interpreter/data.db``. Async access via aiosqlite —
+Single-file DB at ``~/.wrenote/data.db``. Async access via aiosqlite —
 the WS handler upserts as transcripts/translations arrive so a crash mid-
 session still leaves the partial work persisted. Cascade-delete is wired
 on the foreign key, but we also explicitly remove the per-session WAV file
 (filesystem) from the same code path so the two stay in sync.
 
-The frontend reads via the HTTP endpoints in :mod:`interpreter.server`;
+The frontend reads via the HTTP endpoints in :mod:`wrenote.server`;
 LocalStorage is no longer authoritative.
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ import aiosqlite
 
 log = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = Path("~/.interpreter/data.db").expanduser()
+DEFAULT_DB_PATH = Path("~/.wrenote/data.db").expanduser()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (

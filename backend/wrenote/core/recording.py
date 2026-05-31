@@ -2,7 +2,7 @@
 
 Streams int16 16k mono PCM chunks straight to disk via the stdlib ``wave``
 module — header is finalized on close. Files live at
-``~/.interpreter/recordings/<session_id>.wav`` and are owned by the server
+``~/.wrenote/recordings/<session_id>.wav`` and are owned by the server
 process. The frontend references them by the same session id it generated
 locally; on session deletion the frontend calls the matching DELETE endpoint
 on the server so files don't outlive their metadata.
@@ -19,7 +19,7 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-DEFAULT_DIR = Path("~/.interpreter/recordings").expanduser()
+DEFAULT_DIR = Path("~/.wrenote/recordings").expanduser()
 
 
 class WavWriter:

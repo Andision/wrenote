@@ -1,7 +1,7 @@
-# Interpreter default config
+# Wrenote default config
 # Per design.v1.1 §6
-# User overrides go in ~/.interpreter/config.yaml
-# Env vars: INTERPRETER_<SECTION>__<PARAMS>__<KEY>=...
+# User overrides go in ~/.wrenote/config.yaml
+# Env vars: WRENOTE_<SECTION>__<PARAMS>__<KEY>=...
 
 server:
   host: 127.0.0.1           # default localhost-only; do not change unless you accept LAN exposure
@@ -11,7 +11,7 @@ server:
 stt:
   backend: whisper_cpp
   params:
-    model_path: ~/.interpreter/models/ggml-large-v3-turbo-q5_0.bin
+    model_path: ~/.wrenote/models/ggml-large-v3-turbo-q5_0.bin
     device: auto              # Metal on Mac, CUDA on Win, CPU fallback — whisper.cpp auto-detects
     language: null            # null = per-segment auto-detect (recommended). Pin to "en"/"zh"/… to force.
 
@@ -23,7 +23,7 @@ vad:
 translator:
   backend: llama_cpp
   params:
-    model_path: ~/.interpreter/models/Hy-MT2-1.8B-Q4_K_M.gguf
+    model_path: ~/.wrenote/models/Hy-MT2-1.8B-Q4_K_M.gguf
     n_ctx: 4096
     n_gpu_layers: -1          # offload all layers to Metal/CUDA; set 0 to force CPU
     temperature: 0.0
@@ -43,7 +43,7 @@ chat:
   # Swap backend: mock for frontend dev without paying the model cost.
   backend: llama_cpp
   params:
-    model_path: ~/.interpreter/models/Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+    model_path: ~/.wrenote/models/Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf
     # 32K covers ~30-min meetings comfortably. Model was trained at 262K
     # native, so raising this further is safe — KV cache grows linearly
     # (~50 MB / 8K at this model size).

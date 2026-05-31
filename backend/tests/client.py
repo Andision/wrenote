@@ -1,6 +1,6 @@
 """WebSocket integration test client.
 
-Connects to a running interpreter server, sends audio (silence, a WAV file,
+Connects to a running wrenote server, sends audio (silence, a WAV file,
 or any audio file ffmpeg can decode — MP3/M4A/OGG/etc.), prints every
 server event. Used for protocol validation without involving a browser.
 

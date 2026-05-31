@@ -1,5 +1,5 @@
 [project]
-name = "interpreter"
+name = "wrenote"
 version = "0.1.0"
 description = "Local real-time speech transcription and translation"
 requires-python = ">=3.11"
@@ -36,7 +36,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["interpreter*"]
+include = ["wrenote*"]
 
 [tool.ruff]
 line-length = 100

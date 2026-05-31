@@ -4,8 +4,8 @@ Per design.v1.1 §6. Loads layered config from (low → high priority):
 
 1. Hard-coded defaults (Pydantic model defaults)
 2. Repo default YAML (backend/config.yaml)
-3. User override YAML (~/.interpreter/config.yaml)
-4. Environment variables (INTERPRETER_<SECTION>__<KEY>__... with `__` nesting)
+3. User override YAML (~/.wrenote/config.yaml)
+4. Environment variables (WRENOTE_<SECTION>__<KEY>__... with `__` nesting)
 
 All string values starting with `~` are expanded via `Path.expanduser()`.
 """
@@ -44,7 +44,7 @@ class Config(BaseSettings):
     """Top-level settings. Env vars override init kwargs (= loaded YAML)."""
 
     model_config = SettingsConfigDict(
-        env_prefix="INTERPRETER_",
+        env_prefix="WRENOTE_",
         env_nested_delimiter="__",
         case_sensitive=False,
         extra="ignore",
@@ -75,7 +75,7 @@ class Config(BaseSettings):
 
 
 REPO_DEFAULT_CONFIG = Path(__file__).resolve().parent.parent.parent / "config.yaml"
-USER_CONFIG = Path.home() / ".interpreter" / "config.yaml"
+USER_CONFIG = Path.home() / ".wrenote" / "config.yaml"
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -135,5 +135,5 @@ def load_config(
 
 
 def get_env_overrides_summary() -> dict[str, str]:
-    """Return INTERPRETER_*-prefixed env vars (for debug/logging)."""
-    return {k: v for k, v in os.environ.items() if k.startswith("INTERPRETER_")}
+    """Return WRENOTE_*-prefixed env vars (for debug/logging)."""
+    return {k: v for k, v in os.environ.items() if k.startswith("WRENOTE_")}

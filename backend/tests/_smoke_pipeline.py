@@ -5,9 +5,9 @@ Verifies: speech_start → final → translation arrive in client_events.
 """
 import asyncio
 
-import interpreter  # noqa: F401  -- registers backends
-from interpreter.core.pipeline import Pipeline, SessionParams
-from interpreter.core.registry import make_stt, make_translator, make_vad
+import wrenote  # noqa: F401  -- registers backends
+from wrenote.core.pipeline import Pipeline, SessionParams
+from wrenote.core.registry import make_stt, make_translator, make_vad
 
 
 async def main() -> None:

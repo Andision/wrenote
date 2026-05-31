@@ -148,7 +148,7 @@ function ensureSegment(state: State, segmentId: string): Segment {
 
 declare global {
   interface Window {
-    __INTERPRETER_STORE__?: typeof useSessionStore;
+    __WRENOTE_STORE__?: typeof useSessionStore;
   }
 }
 
@@ -349,7 +349,7 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
 
 // Dev hook: lets Playwright (and devtools) reach the store from outside React.
 if (typeof window !== "undefined" && import.meta.env.DEV) {
-  window.__INTERPRETER_STORE__ = useSessionStore;
+  window.__WRENOTE_STORE__ = useSessionStore;
 }
 
 function defaultSessionTitle(): string {

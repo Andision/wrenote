@@ -15,13 +15,13 @@ from pathlib import Path
 import jiwer
 import numpy as np
 
-import interpreter  # noqa: F401 -- registers backends
-from interpreter.core.events import AudioSegment
-from interpreter.core.registry import make_stt
+import wrenote  # noqa: F401 -- registers backends
+from wrenote.core.events import AudioSegment
+from wrenote.core.registry import make_stt
 
 MP3 = Path("/Users/andision/Workspaces/interpreter/miscs/conversation_example_1.mp3")
 SRT = Path("/Users/andision/Workspaces/interpreter/miscs/conversation_example_1.srt")
-MODEL = Path("~/.interpreter/models/ggml-large-v3-turbo-q5_0.bin").expanduser()
+MODEL = Path("~/.wrenote/models/ggml-large-v3-turbo-q5_0.bin").expanduser()
 DURATION_S = 60.0
 
 

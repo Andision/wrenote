@@ -1,5 +1,5 @@
 // HTTP-backed session persistence. The backend SQLite store at
-// ~/.interpreter/data.db owns the catalog; this module is just the thin
+// ~/.wrenote/data.db owns the catalog; this module is just the thin
 // fetch layer. All functions are async — the store calls them from
 // useEffect-style callbacks (refreshPastSessions, loadSession).
 import type { Segment, SessionMeta, StoredSession } from "../types";

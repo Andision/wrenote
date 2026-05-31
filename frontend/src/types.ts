@@ -1,4 +1,4 @@
-// Mirrors backend/interpreter/core/events.py — keep in sync.
+// Mirrors backend/wrenote/core/events.py — keep in sync.
 
 export interface BackendInfo {
   name: string;

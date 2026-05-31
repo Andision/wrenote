@@ -192,7 +192,7 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
           <Languages className="size-4" />
         </div>
         <span className="text-[15px] font-semibold tracking-tight text-foreground">
-          interpreter
+          wrenote
         </span>
       </div>
 
