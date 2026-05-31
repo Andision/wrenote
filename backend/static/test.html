@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Interpreter — Test Page</title>
+  <style>
+    :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 16px; color: #222; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    #status { padding: 6px 10px; background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 13px; min-height: 18px; }
+    #status.err { background: #ffe6e6; border-color: #f5a; }
+    .controls { margin: 10px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    button { padding: 6px 14px; font-size: 14px; cursor: pointer; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #vu { display: inline-block; width: 120px; height: 10px; background: #eee; border-radius: 5px; overflow: hidden; vertical-align: middle; }
+    #vu > div { height: 100%; background: linear-gradient(90deg, #4caf50, #ffc107, #f44336); width: 0%; transition: width 100ms linear; }
+    .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+    .col { border: 1px solid #ddd; border-radius: 4px; padding: 10px; height: calc(100vh - 290px); overflow-y: auto; background: #fafafa; }
+    .col h3 { margin: 0 0 8px; font-size: 14px; color: #666; }
+    .seg { margin-bottom: 6px; padding: 6px 8px; border-left: 3px solid #ccc; font-size: 14px; line-height: 1.45; background: #fff; border-radius: 2px; }
+    .seg.partial { color: #888; font-style: italic; border-color: #ffb74d; }
+    .seg.final { color: #111; border-color: #4caf50; }
+    .seg.empty { color: #ccc; }
+    .seg .spk { display: inline-block; padding: 1px 6px; margin-right: 6px; font-size: 11px; font-weight: 600; color: #fff; border-radius: 3px; vertical-align: 1px; }
+    .seg .spk.unknown { background: #999; }
+    .stats { font-size: 11px; color: #999; }
+    #debug { margin-top: 8px; padding: 6px 10px; background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 11px; height: 130px; overflow-y: auto; border-radius: 4px; }
+    #debug .e { color: #ef9a9a; }
+    #debug .w { color: #ffcc80; }
+    #debug .i { color: #d4d4d4; }
+    #debug .d { color: #888; }
+  </style>
+</head>
+<body>
+  <h1>Interpreter — Test Page</h1>
+  <div id="status">disconnected</div>
+  <div class="controls">
+    <button id="start">Start</button>
+    <button id="stop" disabled>Stop</button>
+    <span>mic level: <span id="vu"><div></div></span></span>
+    <span style="font-size: 13px; color: #666;">
+      src=<select id="src"><option>en</option><option>zh</option></select>
+      → tgt=<select id="tgt"><option>zh</option><option>en</option></select>
+    </span>
+    <span class="stats" id="stats"></span>
+  </div>
+  <div class="columns">
+    <div class="col" id="original"><h3>Original</h3></div>
+    <div class="col" id="translated"><h3>Translation</h3></div>
+  </div>
+  <div id="debug"></div>
+
+  <script>
+    // AudioWorklet: downsamples native rate → 16k, converts Float32→int16,
+    // batches ~100ms (1600 samples), posts batches AND a recent RMS level.
+    const workletSource = `
+      class PCMRecorder extends AudioWorkletProcessor {
+        constructor() {
+          super();
+          this.targetRate = 16000;
+          this.batchSamples = 1600;        // 100ms @ 16k
+          this.buffer = new Int16Array(this.batchSamples);
+          this.bufferIdx = 0;
+          this.ratio = sampleRate / this.targetRate;
+          this.resamplePos = 0;
+          this.rmsSum = 0;
+          this.rmsCount = 0;
+          this.lastRmsPostFrame = 0;
+        }
+        process(inputs) {
+          const input = inputs[0];
+          if (!input || !input[0]) return true;
+          const ch = input[0];
+          for (let i = 0; i < ch.length; i++) {
+            this.rmsSum += ch[i] * ch[i];
+            this.rmsCount++;
+            this.resamplePos += 1 / this.ratio;
+            while (this.resamplePos >= 1) {
+              this.resamplePos -= 1;
+              const s = Math.max(-1, Math.min(1, ch[i]));
+              this.buffer[this.bufferIdx++] = s < 0 ? s * 32768 : s * 32767;
+              if (this.bufferIdx >= this.batchSamples) {
+                this.port.postMessage({ kind: 'pcm', buf: this.buffer.buffer.slice(0) });
+                this.bufferIdx = 0;
+                // Send RMS along with the PCM batch
+                if (this.rmsCount > 0) {
+                  const rms = Math.sqrt(this.rmsSum / this.rmsCount);
+                  this.port.postMessage({ kind: 'rms', value: rms });
+                  this.rmsSum = 0;
+                  this.rmsCount = 0;
+                }
+              }
+            }
+          }
+          return true;
+        }
+      }
+      registerProcessor('pcm-recorder', PCMRecorder);
+    `;
+
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('start');
+    const stopBtn  = document.getElementById('stop');
+    const srcSel   = document.getElementById('src');
+    const tgtSel   = document.getElementById('tgt');
+    const origCol  = document.getElementById('original');
+    const transCol = document.getElementById('translated');
+    const statsEl  = document.getElementById('stats');
+    const vuBar    = document.querySelector('#vu > div');
+    const debugEl  = document.getElementById('debug');
+
+    let ws = null;
+    let audioCtx = null;
+    let workletNode = null;
+    let muteGain = null;
+    let mediaStream = null;
+    let chunksSent = 0;
+    const segments = new Map();
+
+    // Stable hue per speaker label ("Speaker 1", "Speaker 2", …).
+    function speakerColor(label) {
+      if (!label || label === 'unknown') return null;
+      const m = /^Speaker (\d+)$/.exec(label);
+      if (!m) return null;
+      const n = parseInt(m[1], 10);
+      const hue = (n * 137.508) % 360;  // golden-angle palette
+      return `hsl(${hue}, 65%, 45%)`;
+    }
+
+    function applySpeakerToElement(el, text, speaker) {
+      const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      if (!speaker) {
+        el.innerHTML = safeText;
+        el.style.borderLeftColor = '';
+        return;
+      }
+      const cls = speaker === 'unknown' ? 'spk unknown' : 'spk';
+      const color = speakerColor(speaker);
+      const style = color ? ` style="background:${color}"` : '';
+      el.innerHTML = `<span class="${cls}"${style}>${speaker}</span>${safeText}`;
+      if (color) el.style.borderLeftColor = color;
+    }
+
+    function log(kind, ...args) {
+      const line = document.createElement('div');
+      line.className = kind;
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${args.join(' ')}`;
+      debugEl.appendChild(line);
+      debugEl.scrollTop = debugEl.scrollHeight;
+      if (kind === 'e') console.error(...args);
+      else if (kind === 'w') console.warn(...args);
+      else console.log(...args);
+    }
+
+    function setStatus(msg, isErr=false) {
+      statusEl.textContent = msg;
+      statusEl.className = isErr ? 'err' : '';
+      log(isErr ? 'e' : 'i', 'status:', msg);
+    }
+
+    function refreshStats() {
+      statsEl.textContent = `· sent=${chunksSent} chunks`;
+    }
+
+    function makeSegBox(col) {
+      const el = document.createElement('div');
+      el.className = 'seg empty';
+      el.textContent = '…';
+      col.appendChild(el);
+      col.scrollTop = col.scrollHeight;
+      return el;
+    }
+
+    function ensureSegment(id) {
+      if (segments.has(id)) return segments.get(id);
+      const entry = { origEl: makeSegBox(origCol), transEl: makeSegBox(transCol) };
+      segments.set(id, entry);
+      return entry;
+    }
+
+    // Browser preflight: warn if we know it'll fail
+    function preflight() {
+      log('d', 'UA:', navigator.userAgent);
+      log('d', 'secure context:', window.isSecureContext);
+      log('d', 'location:', location.href);
+      if (!window.isSecureContext) {
+        log('e', 'NOT a secure context — getUserMedia will fail. Use http://localhost or http://127.0.0.1, not file://.');
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        log('e', 'navigator.mediaDevices.getUserMedia not available.');
+      }
+      if (typeof AudioWorkletNode === 'undefined') {
+        log('e', 'AudioWorkletNode not available (browser too old?).');
+      }
+    }
+
+    async function start() {
+      startBtn.disabled = true;
+      chunksSent = 0;
+      refreshStats();
+      setStatus('connecting websocket…');
+
+      try {
+        ws = new WebSocket(`ws://${location.host}/ws`);
+        ws.binaryType = 'arraybuffer';
+      } catch (e) {
+        setStatus('failed to construct WebSocket: ' + e.message, true);
+        startBtn.disabled = false;
+        return;
+      }
+
+      ws.onopen = async () => {
+        log('i', 'ws open');
+        ws.send(JSON.stringify({
+          type: 'start',
+          config: {
+            src: srcSel.value,
+            tgt: tgtSel.value,
+            min_silence_ms: 800,            // wait 800ms of silence before closing a segment
+            max_segment_ms: 25000,          // hard cap; Whisper context limit is 30s
+            extended_silence_factor: 1.8,   // wait 1.8× longer if partial doesn't end with .!?
+          },
+        }));
+        setStatus('ws open; requesting microphone…');
+
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          });
+        } catch (e) {
+          setStatus('microphone permission denied or unavailable: ' + e.message, true);
+          startBtn.disabled = false;
+          return;
+        }
+        log('i', 'mic granted; tracks:', mediaStream.getAudioTracks().map(t => t.label).join(', '));
+
+        try {
+          audioCtx = new AudioContext();
+          log('i', 'AudioContext sample rate:', audioCtx.sampleRate, 'state:', audioCtx.state);
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+            log('i', 'AudioContext resumed');
+          }
+
+          const blobUrl = URL.createObjectURL(
+            new Blob([workletSource], { type: 'application/javascript' })
+          );
+          await audioCtx.audioWorklet.addModule(blobUrl);
+          log('i', 'AudioWorklet module loaded');
+
+          workletNode = new AudioWorkletNode(audioCtx, 'pcm-recorder');
+          workletNode.port.onmessage = (ev) => {
+            const m = ev.data;
+            if (m.kind === 'pcm') {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(m.buf);
+                chunksSent++;
+                if (chunksSent % 10 === 0) refreshStats();
+              }
+            } else if (m.kind === 'rms') {
+              const pct = Math.min(100, m.value * 400);
+              vuBar.style.width = pct.toFixed(1) + '%';
+            }
+          };
+          workletNode.onprocessorerror = (e) => {
+            log('e', 'worklet processor error:', e.message || e);
+          };
+
+          // IMPORTANT: connect through a muted gain to the destination so the
+          // browser keeps the worklet alive (otherwise some browsers skip the
+          // graph when it has no terminal connection).
+          const source = audioCtx.createMediaStreamSource(mediaStream);
+          muteGain = audioCtx.createGain();
+          muteGain.gain.value = 0;
+          source.connect(workletNode);
+          workletNode.connect(muteGain);
+          muteGain.connect(audioCtx.destination);
+          log('i', 'audio graph wired: mic → worklet → muteGain → destination');
+
+          setStatus(`recording (native ${audioCtx.sampleRate}Hz → 16kHz)`);
+          stopBtn.disabled = false;
+        } catch (e) {
+          setStatus('audio setup failed: ' + e.message, true);
+          log('e', e.stack || e);
+          startBtn.disabled = false;
+          cleanup();
+        }
+      };
+
+      ws.onmessage = (ev) => {
+        let msg;
+        try {
+          msg = JSON.parse(ev.data);
+        } catch (e) {
+          log('e', 'bad JSON from server:', ev.data);
+          return;
+        }
+        log('d', '←', msg.type, msg.segment_id ? msg.segment_id.slice(0,8) : '', msg.text || '');
+
+        switch (msg.type) {
+          case 'ready':
+            setStatus('ready · stt=' + msg.stt.name + ' vad=' + msg.vad.name + ' translator=' + msg.translator.name);
+            break;
+          case 'speech_start':
+            ensureSegment(msg.segment_id);
+            break;
+          case 'partial': {
+            const s = ensureSegment(msg.segment_id);
+            s.origEl.className = 'seg partial';
+            // Partials don't carry speaker (computed only on finals) —
+            // reuse whatever speaker the segment already has (likely none yet).
+            applySpeakerToElement(s.origEl, msg.text, s.speaker);
+            origCol.scrollTop = origCol.scrollHeight;
+            break;
+          }
+          case 'final': {
+            const s = ensureSegment(msg.segment_id);
+            s.origEl.className = 'seg final';
+            if (msg.speaker) s.speaker = msg.speaker;
+            applySpeakerToElement(s.origEl, msg.text, s.speaker);
+            // Also paint the translation column with the same speaker if it
+            // already arrived with no label (partial translation).
+            if (s.speaker && s.transEl.dataset.lastText) {
+              applySpeakerToElement(s.transEl, s.transEl.dataset.lastText, s.speaker);
+            }
+            origCol.scrollTop = origCol.scrollHeight;
+            break;
+          }
+          case 'translation': {
+            const s = ensureSegment(msg.segment_id);
+            // Don't let a stale partial translation overwrite the final.
+            if (s.transFinal && msg.partial) break;
+            s.transEl.className = msg.partial ? 'seg partial' : 'seg final';
+            const spk = msg.speaker || s.speaker;
+            if (msg.speaker) s.speaker = msg.speaker;
+            applySpeakerToElement(s.transEl, msg.text, spk);
+            s.transEl.dataset.lastText = msg.text;
+            if (!msg.partial) s.transFinal = true;
+            transCol.scrollTop = transCol.scrollHeight;
+            break;
+          }
+          case 'speech_end':
+            break;
+          case 'error':
+            setStatus('error · ' + msg.code + ' · ' + msg.msg, true);
+            break;
+        }
+      };
+
+      ws.onclose = (ev) => {
+        log('w', 'ws closed, code=' + ev.code + ' reason=' + (ev.reason || '(empty)'));
+        setStatus('websocket closed (code=' + ev.code + ')');
+        cleanup();
+      };
+
+      ws.onerror = (e) => {
+        log('e', 'ws error', e);
+        setStatus('websocket error — see debug pane below', true);
+      };
+    }
+
+    function cleanup() {
+      if (workletNode) { try { workletNode.disconnect(); } catch (_) {} workletNode = null; }
+      if (muteGain)    { try { muteGain.disconnect();    } catch (_) {} muteGain = null;    }
+      if (audioCtx)    { try { audioCtx.close();         } catch (_) {} audioCtx = null;    }
+      if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+      ws = null;
+      vuBar.style.width = '0%';
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+
+    function stop() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        cleanup();
+        setStatus('stopped');
+        return;
+      }
+      // Tell server to flush in-flight segment. The server transcribes + translates
+      // anything still buffered, sends the events, THEN closes the WS. So we don't
+      // close from our side — we wait for ws.onclose, with a safety timeout.
+      try { ws.send(JSON.stringify({ type: 'stop' })); } catch (_) {}
+      stopBtn.disabled = true;
+      setStatus('stopping… flushing in-flight segment');
+
+      const safetyTimer = setTimeout(() => {
+        log('w', 'stop: server did not close within 10s, forcing close');
+        try { ws && ws.close(); } catch (_) {}
+        cleanup();
+        setStatus('stopped (forced)');
+      }, 10000);
+
+      // Existing ws.onclose will run cleanup; chain to clear the timer.
+      const prevOnClose = ws.onclose;
+      ws.onclose = (ev) => {
+        clearTimeout(safetyTimer);
+        if (typeof prevOnClose === 'function') prevOnClose(ev);
+      };
+    }
+
+    startBtn.onclick = start;
+    stopBtn.onclick = stop;
+    refreshStats();
+    preflight();
+  </script>
+</body>
+</html>

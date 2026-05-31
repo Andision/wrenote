@@ -1,0 +1,60 @@
+[project]
+name = "interpreter"
+version = "0.1.0"
+description = "Local real-time speech transcription and translation"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "andision" },
+]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+    "soundfile>=0.12",
+    "python-multipart>=0.0.20",
+    "aiosqlite>=0.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-timeout>=2.3",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "websockets>=13.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["interpreter*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+timeout = 30
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true

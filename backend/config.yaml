@@ -1,0 +1,55 @@
+# Interpreter default config
+# Per design.v1.1 §6
+# User overrides go in ~/.interpreter/config.yaml
+# Env vars: INTERPRETER_<SECTION>__<PARAMS>__<KEY>=...
+
+server:
+  host: 127.0.0.1           # default localhost-only; do not change unless you accept LAN exposure
+  port: 8000
+  log_level: info
+
+stt:
+  backend: whisper_cpp
+  params:
+    model_path: ~/.interpreter/models/ggml-large-v3-turbo-q5_0.bin
+    device: auto              # Metal on Mac, CUDA on Win, CPU fallback — whisper.cpp auto-detects
+    language: null            # null = per-segment auto-detect (recommended). Pin to "en"/"zh"/… to force.
+
+vad:
+  backend: silero
+  params:
+    threshold: 0.5
+
+translator:
+  backend: llama_cpp
+  params:
+    model_path: ~/.interpreter/models/Hy-MT2-1.8B-Q4_K_M.gguf
+    n_ctx: 4096
+    n_gpu_layers: -1          # offload all layers to Metal/CUDA; set 0 to force CPU
+    temperature: 0.0
+
+speaker:
+  # ECAPA-TDNN (SpeechBrain) — default, non-gated. To opt into pyannote
+  # instead: accept https://hf.co/pyannote/embedding, export HF_TOKEN, and
+  # set backend: pyannote here.
+  backend: ecapa
+  params: {}
+
+chat:
+  # Qwen3-4B-Instruct-2507 (July 2025) — pure transformer, fully supported by
+  # current llama-cpp-python. Qwen3.5 uses a hybrid Mamba+Transformer arch
+  # (ssm_conv1d weights) that pre-0.4 llama.cpp can't load; revisit once the
+  # binding catches up. Model is lazy-loaded on first chat request.
+  # Swap backend: mock for frontend dev without paying the model cost.
+  backend: llama_cpp
+  params:
+    model_path: ~/.interpreter/models/Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+    # 32K covers ~30-min meetings comfortably. Model was trained at 262K
+    # native, so raising this further is safe — KV cache grows linearly
+    # (~50 MB / 8K at this model size).
+    n_ctx: 32768
+    n_gpu_layers: -1
+
+session:
+  default_src_lang: auto    # "auto" = detect per segment; or pin to "en", "zh", …
+  default_tgt_lang: zh
