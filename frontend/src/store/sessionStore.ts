@@ -3,16 +3,23 @@
 import { create } from "zustand";
 
 import {
+  createGroup as createGroupRemote,
+  deleteGroup as deleteGroupRemote,
   deleteSession as deleteSessionFromStorage,
+  listGroups,
   loadAllSessions,
   loadSession as loadSessionFromBackend,
   newSessionId,
+  renameGroup as renameGroupRemote,
   renameSession as renameSessionOnBackend,
+  setSessionGroup as setSessionGroupRemote,
+  suggestSessionTitle,
 } from "../lib/storage";
 import type {
   ConnectionState,
   ReadyInfo,
   Segment,
+  SessionGroup,
   SessionMeta,
   TranscriptEvent,
   TranslationEvent,
@@ -58,9 +65,14 @@ interface State {
   // Active session
   sessionId: string | null;
   sessionTitle: string;
+  /** True while the title is still the generic placeholder — i.e. the user
+   *  hasn't renamed it, so we may replace it with an LLM-derived title. */
+  titleIsAuto: boolean;
   sessionStartedAt: string | null;
   segmentOrder: string[];
   segments: Record<string, Segment>;
+  /** Per-speaker color overrides for this session (label → CSS color). */
+  speakerColors: Record<string, string>;
 
   // Connection / mic
   connection: ConnectionState;
@@ -70,6 +82,8 @@ interface State {
 
   // History
   pastSessions: SessionMeta[];
+  /** Sidebar folders. Membership lives on each session's groupId. */
+  groups: SessionGroup[];
 
   // Settings
   settings: SessionSettings;
@@ -88,6 +102,13 @@ interface State {
   playbackDuration: number;
   /** RMS of the playback audio (0..~0.5). Mirrors `micLevel`. */
   playbackLevel: number;
+  /** Playback speed multiplier (0.5–2). Applied to the <audio> element. */
+  playbackRate: number;
+  /** Loop behaviour: off, repeat the current segment, or loop between A–B. */
+  loopMode: "off" | "segment" | "ab";
+  /** A–B loop endpoints in seconds (session-relative); null when unset. */
+  loopA: number | null;
+  loopB: number | null;
 }
 
 interface Actions {
@@ -102,10 +123,18 @@ interface Actions {
   // await them unless it shows a spinner.
   startNewSession: () => string;
   renameSession: (title: string) => void;
+  /** After a recording stops, ask the LLM for a title (best-effort). */
+  autoTitleAfterRecording: () => void;
   saveCurrent: () => Promise<void>;
   loadSession: (id: string) => Promise<void>;
   deletePastSession: (id: string) => Promise<void>;
   refreshPastSessions: () => Promise<void>;
+  // Session groups (sidebar folders)
+  refreshGroups: () => Promise<void>;
+  createGroup: (name?: string) => Promise<void>;
+  renameGroup: (id: string, name: string) => void;
+  deleteGroup: (id: string) => Promise<void>;
+  moveSessionToGroup: (sessionId: string, groupId: string | null) => void;
 
   // Server events
   handleSpeechStart: (e: VADEvent) => void;
@@ -124,11 +153,17 @@ interface Actions {
   // full session reload when the only thing that changed is labels.
   applySpeakerLabels: (labels: Record<string, string>) => void;
   applySpeakerRename: (from: string, to: string) => void;
+  /** Override the color for a speaker label in the current session. */
+  setSpeakerColor: (label: string, color: string) => void;
 
   // Playback bookkeeping — set by the usePlayback hook.
   setPlayback: (playingSegmentId: string | null, isPlaying: boolean) => void;
   setPlaybackTime: (currentTime: number, duration: number) => void;
   setPlaybackLevel: (level: number) => void;
+  setPlaybackRate: (rate: number) => void;
+  setLoopMode: (mode: "off" | "segment" | "ab") => void;
+  setLoopA: (t: number | null) => void;
+  setLoopB: (t: number | null) => void;
 }
 
 function ensureSegment(state: State, segmentId: string): Segment {
@@ -152,12 +187,66 @@ declare global {
   }
 }
 
+// Sidebar open/closed is a UI preference — persist it so a refresh keeps
+// the panel where the user left it.
+const SIDEBAR_KEY = "wrenote.sidebarOpen";
+
+function loadSidebarOpen(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveSidebarOpen(open: boolean): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_KEY, open ? "1" : "0");
+  } catch {
+    // localStorage unavailable / quota — non-critical.
+  }
+}
+
+// Per-speaker color overrides are a presentation preference, kept client-side
+// and scoped per session: { [sessionId]: { [label]: cssColor } }.
+const SPEAKER_COLORS_KEY = "wrenote.speakerColors";
+
+function readAllSpeakerColors(): Record<string, Record<string, string>> {
+  try {
+    const raw = window.localStorage.getItem(SPEAKER_COLORS_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, Record<string, string>>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function loadSpeakerColors(sessionId: string | null): Record<string, string> {
+  if (!sessionId) return {};
+  return readAllSpeakerColors()[sessionId] ?? {};
+}
+
+function saveSpeakerColors(
+  sessionId: string,
+  map: Record<string, string>,
+): void {
+  try {
+    const all = readAllSpeakerColors();
+    if (Object.keys(map).length === 0) delete all[sessionId];
+    else all[sessionId] = map;
+    window.localStorage.setItem(SPEAKER_COLORS_KEY, JSON.stringify(all));
+  } catch {
+    // non-critical
+  }
+}
+
 export const useSessionStore = create<State & Actions>((set, get) => ({
   sessionId: null,
-  sessionTitle: "Untitled session",
+  sessionTitle: "New session",
+  titleIsAuto: false,
   sessionStartedAt: null,
   segmentOrder: [],
   segments: {},
+  speakerColors: {},
 
   connection: "disconnected",
   ready: null,
@@ -166,16 +255,21 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
 
   // Filled in on app mount via refreshPastSessions() — async fetch from backend.
   pastSessions: [],
+  groups: [],
 
   settings: { ...DEFAULT_SETTINGS },
   settingsOpen: false,
-  sidebarOpen: false,
+  sidebarOpen: loadSidebarOpen(),
   chatOpen: false,
   playingSegmentId: null,
   isPlaying: false,
   playbackCurrentTime: 0,
   playbackDuration: 0,
   playbackLevel: 0,
+  playbackRate: 1,
+  loopMode: "off",
+  loopA: null,
+  loopB: null,
 
   setConnection: (connection) => set({ connection }),
   setReady: (ready) => set({ ready }),
@@ -187,21 +281,40 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
     set({
       sessionId: id,
       sessionTitle: defaultSessionTitle(),
+      titleIsAuto: true,
       sessionStartedAt: new Date().toISOString(),
       segmentOrder: [],
       segments: {},
+      speakerColors: {},
       errorMsg: null,
     });
     return id;
   },
 
   renameSession: (title) => {
-    const next = title || "Untitled session";
+    const next = title || "New session";
     const s = get();
-    set({ sessionTitle: next });
+    // A manual rename pins the title — no LLM auto-title should overwrite it.
+    set({ sessionTitle: next, titleIsAuto: false });
     // Fire-and-forget; if the session row doesn't exist yet (user typed a
     // title pre-record) the next WS "start" config carries it instead.
     if (s.sessionId) void renameSessionOnBackend(s.sessionId, next);
+  },
+
+  autoTitleAfterRecording: () => {
+    const s = get();
+    if (!s.titleIsAuto || !s.sessionId || s.segmentOrder.length === 0) return;
+    const id = s.sessionId;
+    void suggestSessionTitle(id).then((title) => {
+      if (!title) return;
+      const cur = get();
+      // Only apply if we're still on this session and the user hasn't
+      // manually renamed it in the meantime.
+      if (cur.sessionId === id && cur.titleIsAuto) {
+        set({ sessionTitle: title, titleIsAuto: false });
+      }
+      void loadAllSessions().then((list) => set({ pastSessions: list }));
+    });
   },
 
   saveCurrent: async () => {
@@ -223,9 +336,11 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
     set({
       sessionId: target.id,
       sessionTitle: target.title,
+      titleIsAuto: false, // loaded sessions keep their stored title
       sessionStartedAt: target.createdAt,
       segmentOrder: order,
       segments: segmentsById,
+      speakerColors: loadSpeakerColors(target.id),
     });
   },
 
@@ -239,6 +354,44 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
   refreshPastSessions: async () => {
     const list = await loadAllSessions();
     set({ pastSessions: list });
+  },
+
+  refreshGroups: async () => {
+    set({ groups: await listGroups() });
+  },
+
+  createGroup: async (name) => {
+    const g = await createGroupRemote(name);
+    if (g) set((s) => ({ groups: [...s.groups, g] }));
+  },
+
+  renameGroup: (id, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    set((s) => ({
+      groups: s.groups.map((g) => (g.id === id ? { ...g, name: trimmed } : g)),
+    }));
+    void renameGroupRemote(id, trimmed);
+  },
+
+  deleteGroup: async (id) => {
+    // Members fall back to ungrouped (backend nulls their group_id too).
+    set((s) => ({
+      groups: s.groups.filter((g) => g.id !== id),
+      pastSessions: s.pastSessions.map((p) =>
+        p.groupId === id ? { ...p, groupId: null } : p,
+      ),
+    }));
+    await deleteGroupRemote(id);
+  },
+
+  moveSessionToGroup: (sessionId, groupId) => {
+    set((s) => ({
+      pastSessions: s.pastSessions.map((p) =>
+        p.id === sessionId ? { ...p, groupId } : p,
+      ),
+    }));
+    void setSessionGroupRemote(sessionId, groupId);
   },
 
   handleSpeechStart: ({ segment_id, ts }) =>
@@ -313,7 +466,11 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
   toggleSettings: (open) =>
     set((s) => ({ settingsOpen: open ?? !s.settingsOpen })),
   toggleSidebar: (open) =>
-    set((s) => ({ sidebarOpen: open ?? !s.sidebarOpen })),
+    set((s) => {
+      const next = open ?? !s.sidebarOpen;
+      saveSidebarOpen(next);
+      return { sidebarOpen: next };
+    }),
   toggleChat: (open) =>
     set((s) => ({ chatOpen: open ?? !s.chatOpen })),
 
@@ -337,7 +494,24 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
           changed += 1;
         }
       }
-      return changed > 0 ? { segments: next } : ({} as Partial<State>);
+      if (changed === 0) return {} as Partial<State>;
+      // Carry any color override across the rename.
+      let colors = s.speakerColors;
+      if (colors[from] && !colors[to]) {
+        colors = { ...colors };
+        colors[to] = colors[from];
+        delete colors[from];
+        if (s.sessionId) saveSpeakerColors(s.sessionId, colors);
+      }
+      return { segments: next, speakerColors: colors };
+    }),
+
+  setSpeakerColor: (label, color) =>
+    set((s) => {
+      if (!label || label === "unknown") return {} as Partial<State>;
+      const colors = { ...s.speakerColors, [label]: color };
+      if (s.sessionId) saveSpeakerColors(s.sessionId, colors);
+      return { speakerColors: colors };
     }),
 
   setPlayback: (playingSegmentId, isPlaying) =>
@@ -345,6 +519,10 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
   setPlaybackTime: (currentTime, duration) =>
     set({ playbackCurrentTime: currentTime, playbackDuration: duration }),
   setPlaybackLevel: (level) => set({ playbackLevel: level }),
+  setPlaybackRate: (rate) => set({ playbackRate: rate }),
+  setLoopMode: (loopMode) => set({ loopMode }),
+  setLoopA: (loopA) => set({ loopA }),
+  setLoopB: (loopB) => set({ loopB }),
 }));
 
 // Dev hook: lets Playwright (and devtools) reach the store from outside React.
@@ -352,8 +530,9 @@ if (typeof window !== "undefined" && import.meta.env.DEV) {
   window.__WRENOTE_STORE__ = useSessionStore;
 }
 
+// Placeholder until the session is recorded — at which point an LLM-derived
+// title replaces it (see suggestSessionTitle). The sidebar shows the date and
+// duration separately, so a generic label here is fine.
 function defaultSessionTitle(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return "New session";
 }

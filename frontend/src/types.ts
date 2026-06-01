@@ -101,10 +101,19 @@ export interface SessionMeta {
   /** Source / target language pair used. */
   srcLang: string;
   tgtLang: string;
+  /** Group/folder this session belongs to, or null when ungrouped. */
+  groupId: string | null;
 }
 
 export interface StoredSession extends SessionMeta {
   segments: Segment[];
+}
+
+export interface SessionGroup {
+  id: string;
+  name: string;
+  createdAt: string;
+  position: number;
 }
 
 export type ConnectionState =

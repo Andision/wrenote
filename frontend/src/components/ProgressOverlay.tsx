@@ -65,7 +65,7 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
         </div>
         <button
           onClick={() => setExpanded((x) => !x)}
-          title={expanded ? "Hide log" : "Show log"}
+          data-tip={expanded ? "Hide log" : "Show log"}
           className="rounded p-1 text-muted-foreground hover:bg-accent"
         >
           {expanded ? (
@@ -76,7 +76,7 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
         </button>
         <button
           onClick={() => dismiss(tracked.id)}
-          title="Dismiss"
+          data-tip="Dismiss"
           className="rounded p-1 text-muted-foreground hover:bg-accent"
         >
           <X className="size-3.5" />
@@ -92,7 +92,7 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
                 ? "absolute inset-y-0 left-0 rounded-full bg-destructive"
                 : status === "done"
                   ? "absolute inset-y-0 left-0 rounded-full bg-emerald-500"
-                  : "absolute inset-y-0 left-0 rounded-full bg-blue-500"
+                  : "absolute inset-y-0 left-0 rounded-full bg-brand-500"
             }
             animate={{ width: `${pct}%` }}
             transition={{ duration: 0.25, ease: "easeOut" }}
@@ -129,7 +129,7 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
 function RunningDot() {
   return (
     <motion.span
-      className="size-2 rounded-full bg-blue-500"
+      className="size-2 rounded-full bg-brand-500"
       animate={{ scale: [1, 1.25, 1], opacity: [1, 0.5, 1] }}
       transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
     />

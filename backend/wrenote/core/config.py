@@ -12,6 +12,7 @@ All string values starting with `~` are expanded via `Path.expanduser()`.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -74,7 +75,15 @@ class Config(BaseSettings):
 # ---------- Loader ----------
 
 
-REPO_DEFAULT_CONFIG = Path(__file__).resolve().parent.parent.parent / "config.yaml"
+def _default_config_path() -> Path:
+    """Bundled default config. When frozen (PyInstaller), it lives next to the
+    other bundled data under ``sys._MEIPASS``; in dev it's the repo's config.yaml."""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", ".")) / "config.yaml"
+    return Path(__file__).resolve().parent.parent.parent / "config.yaml"
+
+
+REPO_DEFAULT_CONFIG = _default_config_path()
 USER_CONFIG = Path.home() / ".wrenote" / "config.yaml"
 
 

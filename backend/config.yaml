@@ -29,11 +29,11 @@ translator:
     temperature: 0.0
 
 speaker:
-  # ECAPA-TDNN (SpeechBrain) — default, non-gated. To opt into pyannote
-  # instead: accept https://hf.co/pyannote/embedding, export HF_TOKEN, and
-  # set backend: pyannote here.
+  # ECAPA-TDNN, exported from SpeechBrain to a torch-free ONNX (downloaded from
+  # HuggingFace on first run, like the other models). Offline diarization only.
   backend: ecapa
-  params: {}
+  params:
+    model_path: ~/.wrenote/models/spkrec-ecapa-voxceleb.onnx
 
 chat:
   # Qwen3-4B-Instruct-2507 (July 2025) — pure transformer, fully supported by

@@ -18,9 +18,16 @@ dependencies = [
     "soundfile>=0.12",
     "python-multipart>=0.0.20",
     "aiosqlite>=0.20",
+    "onnxruntime>=1.20",
 ]
 
 [project.optional-dependencies]
+# Native, platform-specific ML/runtime deps (pywhispercpp, llama-cpp-python,
+# torch for offline diarization) are pinned per-platform for packaging; see the
+# per-OS requirements files. They are intentionally not listed here.
+desktop = [
+    "pywebview>=5",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
@@ -37,6 +44,10 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["wrenote*"]
+
+[tool.setuptools.package-data]
+# Ship the bundled Silero VAD ONNX model with the package.
+wrenote = ["vad/assets/*.onnx"]
 
 [tool.ruff]
 line-length = 100

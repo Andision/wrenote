@@ -14,7 +14,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
+import sys
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -36,7 +38,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from datetime import datetime, timezone
@@ -45,6 +47,7 @@ from .chat.base import ChatMessage
 from .core.config import Config, load_config
 from .core.diarize import diarize_session
 from .core.jobs import JobRegistry, Phase, encode_sse
+from .core.models import download_model, required_models
 from .core.events import (
     ErrorEvent,
     ReadyEvent,
@@ -69,7 +72,11 @@ _SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 log = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+if getattr(sys, "frozen", False):
+    # PyInstaller: bundled data lives under sys._MEIPASS.
+    STATIC_DIR = Path(getattr(sys, "_MEIPASS", ".")) / "static"
+else:
+    STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 @asynccontextmanager
@@ -330,6 +337,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------- Loopback auth ----------
+# The desktop launcher sets WRENOTE_AUTH_TOKEN to a random per-launch secret.
+# All local pages share the loopback interface and pass the WS origin check, so
+# the token — handed to our own webview as a same-origin cookie when it loads
+# the SPA — is what actually keeps other local pages out of the API/WebSocket.
+# Unset (e.g. plain `uvicorn ...` in dev) => auth disabled, nothing changes.
+AUTH_TOKEN = os.environ.get("WRENOTE_AUTH_TOKEN", "")
+AUTH_COOKIE = "wrenote_token"
+
+# Reachable without a token so the shell can bootstrap and pick up the cookie:
+# the SPA entry, its assets, and the health probe.
+_PUBLIC_PREFIXES = ("/assets", "/static")
+_PUBLIC_PATHS = {"/", "/health", "/favicon.svg", "/icons.svg"}
+
+
+def _token_from_request(request: Request) -> str | None:
+    cookie = request.cookies.get(AUTH_COOKIE)
+    if cookie:
+        return cookie
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:]
+    return request.query_params.get("token")
+
+
+if AUTH_TOKEN:
+
+    @app.middleware("http")
+    async def loopback_auth(request: Request, call_next: Any) -> Any:
+        path = request.url.path
+        if (
+            path not in _PUBLIC_PATHS
+            and not path.startswith(_PUBLIC_PREFIXES)
+            and _token_from_request(request) != AUTH_TOKEN
+        ):
+            return JSONResponse({"detail": "unauthorized"}, status_code=401)
+        response = await call_next(request)
+        # Hand the SPA its token on entry; subsequent fetch/SSE/WS carry the
+        # cookie automatically (same-origin), so no frontend changes are needed.
+        if path == "/":
+            response.set_cookie(
+                AUTH_COOKIE, AUTH_TOKEN, samesite="strict", path="/", max_age=86400
+            )
+        return response
+
+
+APP_DIR = STATIC_DIR / "app"  # built SPA (vite output); served at "/" at EOF.
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -337,14 +393,19 @@ if STATIC_DIR.exists():
 # ---------- Basic HTTP endpoints ----------
 
 
-@app.get("/")
-async def root() -> dict[str, Any]:
-    return {
-        "service": "wrenote",
-        "version": "0.1.0",
-        "ws": "/ws",
-        "test_page": "/static/test.html",
-    }
+# When the SPA hasn't been built yet (dev without `npm run build`), expose a
+# small JSON banner at "/". Once built, the SPA mount at the bottom of this
+# module owns "/" instead.
+if not APP_DIR.exists():
+
+    @app.get("/")
+    async def root() -> dict[str, Any]:
+        return {
+            "service": "wrenote",
+            "version": "0.1.0",
+            "ws": "/ws",
+            "test_page": "/static/test.html",
+        }
 
 
 @app.get("/health")
@@ -413,6 +474,67 @@ async def delete_session(session_id: str, request: Request) -> dict[str, str]:
     return {"status": "ok" if existed else "not_found"}
 
 
+# ---------- Session groups (sidebar folders) ----------
+
+
+@app.get("/groups")
+async def list_groups(request: Request) -> dict[str, Any]:
+    store: Store = request.app.state.store
+    return {"groups": await store.list_groups()}
+
+
+@app.post("/groups")
+async def create_group(request: Request) -> dict[str, Any]:
+    store: Store = request.app.state.store
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    name = (body.get("name") or "New group").strip() if isinstance(body, dict) else "New group"
+    existing = await store.list_groups()
+    gid = uuid.uuid4().hex
+    now = datetime.now(timezone.utc).isoformat()
+    await store.create_group(
+        group_id=gid, name=name or "New group", created_at=now, position=len(existing)
+    )
+    return {"group": {"id": gid, "name": name or "New group", "created_at": now, "position": len(existing)}}
+
+
+@app.patch("/groups/{group_id}")
+async def rename_group(group_id: str, request: Request) -> dict[str, str]:
+    gid = _safe_session_id(group_id)
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    store: Store = request.app.state.store
+    await store.rename_group(gid, name)
+    return {"status": "ok"}
+
+
+@app.delete("/groups/{group_id}")
+async def delete_group(group_id: str, request: Request) -> dict[str, str]:
+    gid = _safe_session_id(group_id)
+    store: Store = request.app.state.store
+    existed = await store.delete_group(gid)
+    return {"status": "ok" if existed else "not_found"}
+
+
+@app.patch("/sessions/{session_id}/group")
+async def set_session_group(session_id: str, request: Request) -> dict[str, str]:
+    """Body: ``{"groupId": "<id>"|null}``. Move a session into a group (or out
+    of all groups when null)."""
+    sid = _safe_session_id(session_id)
+    body = await request.json()
+    group_id = body.get("groupId")
+    if group_id is not None and not isinstance(group_id, str):
+        raise HTTPException(status_code=400, detail="groupId must be a string or null")
+    gid = _safe_session_id(group_id) if group_id else None
+    store: Store = request.app.state.store
+    await store.set_session_group(sid, gid)
+    return {"status": "ok"}
+
+
 # ---------- Job system (async background work) ----------
 
 
@@ -447,6 +569,55 @@ async def stream_job(job_id: str, request: Request) -> StreamingResponse:
             "X-Accel-Buffering": "no",  # disable nginx buffering if anyone proxies
         },
     )
+
+
+# ---------- First-run model download ----------
+
+
+@app.get("/api/models/status")
+async def models_status(request: Request) -> dict[str, Any]:
+    """Which required models are present in ~/.wrenote/models/, and their sizes."""
+    cfg: Config = request.app.state.config
+    entries = required_models(cfg)
+    return {
+        "models": [e.status_dict() for e in entries],
+        "all_present": all(e.present for e in entries),
+    }
+
+
+@app.post("/api/models/download")
+async def models_download(request: Request) -> dict[str, Any]:
+    """Start downloading any missing models as a background job. Progress streams
+    over ``/jobs/{job_id}/stream`` (one weighted phase per model)."""
+    cfg: Config = request.app.state.config
+    missing = [e for e in required_models(cfg) if not e.present]
+    if not missing:
+        return {"job_id": None, "all_present": True}
+
+    registry: JobRegistry = request.app.state.jobs
+    total = sum(e.approx_size for e in missing) or 1
+    phases = [Phase(name=e.filename, weight=e.approx_size / total) for e in missing]
+    job = registry.create(kind="model_download", phases=phases)
+
+    async def runner() -> None:
+        try:
+            for idx, entry in enumerate(missing):
+                registry.advance(
+                    job.id, phase_idx=idx, phase_inner=0.0,
+                    log_line=f"Downloading {entry.filename}",
+                )
+
+                def _progress(frac: float, status: str) -> None:
+                    registry.advance(job.id, phase_inner=frac, log_line=status)
+
+                await download_model(entry, _progress)
+            registry.complete(job.id, result={"downloaded": [e.filename for e in missing]})
+        except Exception as ex:  # noqa: BLE001 — surfaced to the client via the job
+            log.exception("model download failed")
+            registry.fail(job.id, str(ex))
+
+    asyncio.create_task(runner())
+    return {"job_id": job.id, "all_present": False}
 
 
 # ---------- Upload (batch transcribe from files) — async job ----------
@@ -584,6 +755,9 @@ async def translate_session(session_id: str, request: Request) -> dict[str, str]
         raise HTTPException(status_code=404, detail="session not found")
 
     tgt_lang = str(body.get("tgt_lang") or session["tgt_lang"] or "zh")
+    # retranslate=True re-does every segment (replacing existing translations);
+    # the default only fills in segments that are missing a translation.
+    retranslate = bool(body.get("retranslate"))
     cfg: Config = request.app.state.config
     registry: JobRegistry = request.app.state.jobs
     job = registry.create(kind="translate", phases=list(_TRANSLATE_PHASES))
@@ -597,10 +771,10 @@ async def translate_session(session_id: str, request: Request) -> dict[str, str]
             registry.advance(job.id, phase_idx=1, log_line="Translating")
 
             segs = session["segments"]
-            # Only segments missing a real translation are candidates;
-            # already-translated rows are left alone (user didn't ask to
-            # re-translate, and overwriting their fixed text would be rude).
-            candidates = _translation_candidates(segs, only_missing=True)
+            # Default: only segments missing a real translation. When the
+            # caller passes retranslate=True, every segment is a candidate and
+            # existing translations get replaced.
+            candidates = _translation_candidates(segs, only_missing=not retranslate)
             done = await _translate_segments_for_session(
                 store=store,
                 session_id=sid,
@@ -784,35 +958,135 @@ async def rename_speaker(session_id: str, request: Request) -> dict[str, int]:
     return {"updated": n}
 
 
-# ---------- Chat endpoints (per-session) ----------
+@app.post("/sessions/{session_id}/segments/speaker")
+async def assign_segment_speaker(session_id: str, request: Request) -> dict[str, int]:
+    """Body: ``{"segmentIds": [...], "speaker": "Alice"}``. Assigns a speaker
+    to specific segments — used to label segments diarization left
+    unidentified, without cascading across the whole session."""
+    sid = _safe_session_id(session_id)
+    body = await request.json()
+    seg_ids = body.get("segmentIds") or []
+    speaker = (body.get("speaker") or "").strip()
+    if not isinstance(seg_ids, list) or not seg_ids or not speaker:
+        raise HTTPException(
+            status_code=400, detail="segmentIds and speaker are required"
+        )
+    store: Store = request.app.state.store
+    labels = {str(s): speaker for s in seg_ids}
+    n = await store.set_segment_speakers(sid, labels)
+    return {"updated": n}
 
 
-@app.get("/sessions/{session_id}/chat")
-async def list_chat(session_id: str, request: Request) -> dict[str, Any]:
+# ---------- Chat conversations + messages (per-session threads) ----------
+
+
+def _safe_conversation_id(conversation_id: str) -> str:
+    if not _SAFE_SESSION_ID.match(conversation_id):
+        raise HTTPException(status_code=400, detail="invalid conversation id")
+    return conversation_id
+
+
+async def _require_conversation(store: Store, sid: str, cid: str) -> dict[str, Any]:
+    """Fetch a conversation, 404-ing unless it belongs to this session."""
+    conv = await store.get_conversation(cid)
+    if conv is None or conv["session_id"] != sid:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return conv
+
+
+@app.get("/sessions/{session_id}/conversations")
+async def list_conversations(session_id: str, request: Request) -> dict[str, Any]:
     sid = _safe_session_id(session_id)
     store: Store = request.app.state.store
-    return {"messages": await store.list_chat_messages(sid)}
+    return {"conversations": await store.list_conversations(sid)}
 
 
-@app.delete("/sessions/{session_id}/chat")
-async def clear_chat(session_id: str, request: Request) -> dict[str, str]:
+@app.post("/sessions/{session_id}/conversations")
+async def create_conversation(
+    session_id: str, request: Request
+) -> dict[str, Any]:
     sid = _safe_session_id(session_id)
     store: Store = request.app.state.store
-    await store.clear_chat(sid)
+    if await store.get_session(sid) is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    title = (body.get("title") or "").strip() if isinstance(body, dict) else ""
+    conv_id = uuid.uuid4().hex
+    now = datetime.now(timezone.utc).isoformat()
+    await store.create_conversation(
+        conversation_id=conv_id, session_id=sid, title=title, created_at=now,
+    )
+    conv = await store.get_conversation(conv_id)
+    return {"conversation": {**(conv or {}), "message_count": 0}}
+
+
+@app.patch("/sessions/{session_id}/conversations/{conversation_id}")
+async def rename_conversation(
+    session_id: str, conversation_id: str, request: Request
+) -> dict[str, str]:
+    sid = _safe_session_id(session_id)
+    cid = _safe_conversation_id(conversation_id)
+    store: Store = request.app.state.store
+    await _require_conversation(store, sid, cid)
+    body = await request.json()
+    title = (body.get("title") or "").strip()
+    await store.rename_conversation(cid, title)
     return {"status": "ok"}
 
 
-@app.post("/sessions/{session_id}/chat")
-async def post_chat(session_id: str, request: Request) -> StreamingResponse:
-    """Stream the assistant reply for the user's next message.
+@app.delete("/sessions/{session_id}/conversations/{conversation_id}")
+async def delete_conversation(
+    session_id: str, conversation_id: str, request: Request
+) -> dict[str, str]:
+    sid = _safe_session_id(session_id)
+    cid = _safe_conversation_id(conversation_id)
+    store: Store = request.app.state.store
+    await _require_conversation(store, sid, cid)
+    await store.delete_conversation(cid)
+    return {"status": "ok"}
+
+
+@app.get("/sessions/{session_id}/conversations/{conversation_id}/chat")
+async def list_conversation_chat(
+    session_id: str, conversation_id: str, request: Request
+) -> dict[str, Any]:
+    sid = _safe_session_id(session_id)
+    cid = _safe_conversation_id(conversation_id)
+    store: Store = request.app.state.store
+    await _require_conversation(store, sid, cid)
+    return {"messages": await store.list_chat_messages(cid)}
+
+
+@app.delete("/sessions/{session_id}/conversations/{conversation_id}/chat")
+async def clear_conversation_chat(
+    session_id: str, conversation_id: str, request: Request
+) -> dict[str, str]:
+    sid = _safe_session_id(session_id)
+    cid = _safe_conversation_id(conversation_id)
+    store: Store = request.app.state.store
+    await _require_conversation(store, sid, cid)
+    await store.clear_chat(cid)
+    return {"status": "ok"}
+
+
+@app.post("/sessions/{session_id}/conversations/{conversation_id}/chat")
+async def post_conversation_chat(
+    session_id: str, conversation_id: str, request: Request
+) -> StreamingResponse:
+    """Stream the assistant reply for the user's next message in a thread.
 
     Body: ``{"text": "..."}``. Response: ``text/plain`` chunks. The server
     snapshots the session transcript at request time, prepends it as a
-    system message, appends prior chat history, then the new user message.
-    Both user and assistant messages are persisted to the chat_messages
-    table (user up-front, assistant after the stream completes).
+    system message, appends this conversation's prior history, then the new
+    user message. Both user and assistant messages are persisted (user
+    up-front, assistant after the stream completes), and the conversation's
+    ``updated_at`` is bumped so it floats to the top of the thread list.
     """
     sid = _safe_session_id(session_id)
+    cid = _safe_conversation_id(conversation_id)
     body = await request.json()
     text = (body.get("text") or "").strip()
     if not text:
@@ -822,9 +1096,10 @@ async def post_chat(session_id: str, request: Request) -> StreamingResponse:
     session = await store.get_session(sid)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
+    conv = await _require_conversation(store, sid, cid)
 
     transcript, truncated = _build_transcript_snapshot(session.get("segments", []))
-    history_rows = await store.list_chat_messages(sid)
+    history_rows = await store.list_chat_messages(cid)
 
     # Lazy-load the model on first chat in this server's lifetime.
     await _ensure_chat_loaded(request.app)
@@ -850,8 +1125,13 @@ async def post_chat(session_id: str, request: Request) -> StreamingResponse:
     # the question visible next time the panel loads.
     now = datetime.now(timezone.utc).isoformat()
     await store.append_chat_message(
-        session_id=sid, role="user", content=text, created_at=now,
+        conversation_id=cid, role="user", content=text, created_at=now,
     )
+    await store.touch_conversation(cid, now)
+    # Give an untitled thread a label from its first user message.
+    if not (conv.get("title") or "").strip():
+        derived = text.strip().splitlines()[0][:48]
+        await store.rename_conversation(cid, derived)
 
     async def stream() -> Any:
         accumulated: list[str] = []
@@ -869,16 +1149,69 @@ async def post_chat(session_id: str, request: Request) -> StreamingResponse:
             full = "".join(accumulated)
             if full.strip():
                 try:
+                    ts = datetime.now(timezone.utc).isoformat()
                     await store.append_chat_message(
-                        session_id=sid,
+                        conversation_id=cid,
                         role="assistant",
                         content=full,
-                        created_at=datetime.now(timezone.utc).isoformat(),
+                        created_at=ts,
                     )
+                    await store.touch_conversation(cid, ts)
                 except Exception:
                     log.exception("failed to persist assistant message")
 
     return StreamingResponse(stream(), media_type="text/plain; charset=utf-8")
+
+
+# ---------- Session title suggestion (LLM) ----------
+
+_TITLE_SYSTEM = (
+    "You write a short, specific title for a transcript — 3 to 6 words, in the "
+    "transcript's own language. No quotes, no trailing punctuation, no prefix "
+    "like 'Title:'. Reply with the title only."
+)
+
+
+@app.post("/sessions/{session_id}/title/suggest")
+async def suggest_title(session_id: str, request: Request) -> dict[str, str]:
+    """Summarize a concise title for the session from its transcript using the
+    chat model, persist it, and return it. Best-effort: if there's nothing to
+    summarize the existing title is returned unchanged."""
+    sid = _safe_session_id(session_id)
+    store: Store = request.app.state.store
+    session = await store.get_session(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    transcript, _ = _build_transcript_snapshot(session.get("segments", []))
+    current = session.get("title", "")
+    if not transcript.strip():
+        return {"title": current}
+
+    await _ensure_chat_loaded(request.app)
+    backend = request.app.state.chat_backend
+    messages = [
+        ChatMessage(role="system", content=_TITLE_SYSTEM),
+        ChatMessage(
+            role="user",
+            content=f"Transcript:\n\n{transcript}\n\nTitle:",
+        ),
+    ]
+    try:
+        parts: list[str] = []
+        chunks = await backend.chat(messages)
+        async for piece in chunks:
+            parts.append(piece)
+        raw = "".join(parts).strip().strip('"').strip("'")
+        title = raw.splitlines()[0].strip()[:80] if raw else ""
+    except Exception:
+        log.exception("title suggestion failed")
+        title = ""
+
+    if title:
+        await store.update_session_title(sid, title)
+        return {"title": title}
+    return {"title": current}
 
 
 # ---------- Recording file endpoints (per-session WAV) ----------
@@ -969,6 +1302,13 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         log.warning("Rejecting WS connection from origin=%r", origin)
         await ws.close(code=status.WS_1008_POLICY_VIOLATION, reason="origin not allowed")
         return
+
+    if AUTH_TOKEN:
+        provided = ws.cookies.get(AUTH_COOKIE) or ws.query_params.get("token")
+        if provided != AUTH_TOKEN:
+            log.warning("Rejecting WS connection: missing/invalid token")
+            await ws.close(code=status.WS_1008_POLICY_VIOLATION, reason="unauthorized")
+            return
 
     await ws.accept()
     log.info("WS connected (client=%s, origin=%s)", ws.client, origin)
@@ -1272,3 +1612,11 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         except Exception:
             pass
         log.info("WS connection closed")
+
+
+# ---------- SPA (built frontend) ----------
+# Mounted LAST so every API route and the /static mount above take precedence;
+# only unmatched paths fall through to the single-page app. `html=True` serves
+# index.html at "/" and for client-side routes.
+if APP_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(APP_DIR), html=True), name="spa")

@@ -2,11 +2,17 @@
 // ~/.wrenote/data.db owns the catalog; this module is just the thin
 // fetch layer. All functions are async — the store calls them from
 // useEffect-style callbacks (refreshPastSessions, loadSession).
-import type { Segment, SessionMeta, StoredSession } from "../types";
+import type {
+  Segment,
+  SessionGroup,
+  SessionMeta,
+  StoredSession,
+} from "../types";
 
-const BACKEND_HOST =
-  typeof window !== "undefined" ? window.location.hostname : "localhost";
-const BASE = `http://${BACKEND_HOST}:8000`;
+// Same-origin: the SPA is served by the backend, so talk to our own origin
+// (port included). Vite dev proxies these paths to the backend — see vite.config.ts.
+const BASE =
+  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
 
 // snake_case row → camelCase frontend object
 interface SessionRow {
@@ -16,6 +22,14 @@ interface SessionRow {
   src_lang: string;
   tgt_lang: string;
   duration_s: number;
+  group_id?: string | null;
+}
+
+interface GroupRow {
+  id: string;
+  name: string;
+  created_at: string;
+  position: number;
 }
 
 interface SegmentRow {
@@ -40,6 +54,7 @@ function toMeta(row: SessionRow): SessionMeta {
     durationS: row.duration_s,
     srcLang: row.src_lang,
     tgtLang: row.tgt_lang,
+    groupId: row.group_id ?? null,
   };
 }
 
@@ -118,6 +133,99 @@ export async function renameSession(id: string, title: string): Promise<void> {
     });
   } catch (e) {
     console.warn("renameSession: network failure", e);
+  }
+}
+
+/**
+ * Ask the backend to summarize a title from the session transcript (LLM).
+ * Returns the new title, or null on failure. The backend persists it.
+ */
+export async function suggestSessionTitle(id: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${BASE}/sessions/${encodeURIComponent(id)}/title/suggest`,
+      { method: "POST" },
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as { title?: string };
+    return json.title ?? null;
+  } catch (e) {
+    console.warn("suggestSessionTitle: network failure", e);
+    return null;
+  }
+}
+
+// ---------- Session groups ----------
+
+function toGroup(row: GroupRow): SessionGroup {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
+    position: row.position,
+  };
+}
+
+export async function listGroups(): Promise<SessionGroup[]> {
+  try {
+    const res = await fetch(`${BASE}/groups`);
+    if (!res.ok) return [];
+    const json = (await res.json()) as { groups: GroupRow[] };
+    return json.groups.map(toGroup);
+  } catch (e) {
+    console.warn("listGroups: network failure", e);
+    return [];
+  }
+}
+
+export async function createGroup(name = "New group"): Promise<SessionGroup | null> {
+  try {
+    const res = await fetch(`${BASE}/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { group: GroupRow };
+    return toGroup(json.group);
+  } catch (e) {
+    console.warn("createGroup: network failure", e);
+    return null;
+  }
+}
+
+export async function renameGroup(id: string, name: string): Promise<void> {
+  try {
+    await fetch(`${BASE}/groups/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  } catch (e) {
+    console.warn("renameGroup: network failure", e);
+  }
+}
+
+export async function deleteGroup(id: string): Promise<void> {
+  try {
+    await fetch(`${BASE}/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+  } catch (e) {
+    console.warn("deleteGroup: network failure", e);
+  }
+}
+
+export async function setSessionGroup(
+  sessionId: string,
+  groupId: string | null,
+): Promise<void> {
+  try {
+    await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/group`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId }),
+    });
+  } catch (e) {
+    console.warn("setSessionGroup: network failure", e);
   }
 }
 

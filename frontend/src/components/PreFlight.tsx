@@ -44,12 +44,12 @@ export function PreFlight({ onStart }: PreFlightProps) {
       {/* Mic mark with a slow breathing glow — establishes "this is the moment" */}
       <motion.div
         layoutId="preflight-mark"
-        className="relative flex size-24 items-center justify-center rounded-3xl bg-gradient-to-br from-blue-500/15 to-blue-500/0 ring-1 ring-inset ring-blue-500/25"
+        className="relative flex size-24 items-center justify-center rounded-3xl bg-gradient-to-br from-brand-500/15 to-brand-500/0 ring-1 ring-inset ring-brand-500/25"
       >
-        <Mic className="size-10 text-blue-600 dark:text-blue-400" />
+        <Mic className="size-10 text-brand-600 dark:text-brand-400" />
         <motion.span
           aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-3xl bg-blue-500/15"
+          className="pointer-events-none absolute inset-0 rounded-3xl bg-brand-500/15"
           animate={{ scale: [1, 1.18, 1], opacity: [0.4, 0, 0.4] }}
           transition={{ duration: 2.4, repeat: Infinity, ease: "easeOut" }}
         />
@@ -126,7 +126,7 @@ export function PreFlight({ onStart }: PreFlightProps) {
             size="lg"
             onClick={onStart}
             disabled={isBusy || isRecording}
-            className="h-12 gap-2 rounded-full bg-blue-600 px-7 text-[15px] font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+            className="h-12 gap-2 rounded-full bg-brand-600 px-7 text-[15px] font-semibold text-white shadow-md shadow-brand-500/20 hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
           >
             {isBusy ? (
               <motion.span

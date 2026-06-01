@@ -1,10 +1,10 @@
 // Helpers for talking to the backend's recording endpoints.
 // Single-user local app — no auth, no retries beyond browser defaults.
 
-const BACKEND_HOST =
-  typeof window !== "undefined" ? window.location.hostname : "localhost";
-const BACKEND_PORT = 8000;
-const BACKEND_BASE = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
+// Same-origin: the SPA is served by the backend; talk to our own origin.
+// Vite dev proxies /recordings to the backend — see vite.config.ts.
+const BACKEND_BASE =
+  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
 
 /** URL the browser can navigate to (or anchor `href`) to download the WAV. */
 export function recordingUrl(sessionId: string): string {

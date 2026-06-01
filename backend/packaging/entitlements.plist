@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Microphone access (paired with NSMicrophoneUsageDescription in Info.plist). -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- The bundled native wheels (whisper.cpp / onnxruntime) aren't signed by us;
+         allow them under an ad-hoc signature. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>

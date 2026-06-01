@@ -1,9 +1,11 @@
-// Chat HTTP helpers — POST streams the assistant reply as text/plain chunks,
-// GET lists history, DELETE clears. All scoped by session id.
+// Chat HTTP helpers. Chat is organised into per-session "conversations"
+// (threads); messages hang off a conversation. POST streams the assistant
+// reply as text/plain chunks, GET lists history, DELETE clears.
 
-const BACKEND_HOST =
-  typeof window !== "undefined" ? window.location.hostname : "localhost";
-const BASE = `http://${BACKEND_HOST}:8000`;
+// Same-origin: the SPA is served by the backend, so talk to our own origin
+// (port included). Vite dev proxies these paths to the backend — see vite.config.ts.
+const BASE =
+  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
 
 export interface ChatMessage {
   ord: number;
@@ -12,11 +14,27 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface Conversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
 interface ChatRow {
   ord: number;
   role: string;
   content: string;
   created_at: string;
+}
+
+interface ConversationRow {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
 }
 
 function toChatMessage(row: ChatRow): ChatMessage {
@@ -28,9 +46,96 @@ function toChatMessage(row: ChatRow): ChatMessage {
   };
 }
 
-export async function listChatMessages(sessionId: string): Promise<ChatMessage[]> {
+function toConversation(row: ConversationRow): Conversation {
+  return {
+    id: row.id,
+    title: row.title ?? "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    messageCount: row.message_count ?? 0,
+  };
+}
+
+const sid = (s: string) => encodeURIComponent(s);
+
+// ---------- Conversations ----------
+
+export async function listConversations(
+  sessionId: string,
+): Promise<Conversation[]> {
   try {
-    const res = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/chat`);
+    const res = await fetch(`${BASE}/sessions/${sid(sessionId)}/conversations`);
+    if (!res.ok) return [];
+    const json = (await res.json()) as { conversations: ConversationRow[] };
+    return json.conversations.map(toConversation);
+  } catch (e) {
+    console.warn("listConversations: network failure", e);
+    return [];
+  }
+}
+
+export async function createConversation(
+  sessionId: string,
+  title = "",
+): Promise<Conversation | null> {
+  try {
+    const res = await fetch(`${BASE}/sessions/${sid(sessionId)}/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { conversation: ConversationRow };
+    return toConversation(json.conversation);
+  } catch (e) {
+    console.warn("createConversation: network failure", e);
+    return null;
+  }
+}
+
+export async function renameConversation(
+  sessionId: string,
+  conversationId: string,
+  title: string,
+): Promise<void> {
+  try {
+    await fetch(
+      `${BASE}/sessions/${sid(sessionId)}/conversations/${sid(conversationId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      },
+    );
+  } catch (e) {
+    console.warn("renameConversation: network failure", e);
+  }
+}
+
+export async function deleteConversation(
+  sessionId: string,
+  conversationId: string,
+): Promise<void> {
+  try {
+    await fetch(
+      `${BASE}/sessions/${sid(sessionId)}/conversations/${sid(conversationId)}`,
+      { method: "DELETE" },
+    );
+  } catch (e) {
+    console.warn("deleteConversation: network failure", e);
+  }
+}
+
+// ---------- Messages (scoped to a conversation) ----------
+
+export async function listChatMessages(
+  sessionId: string,
+  conversationId: string,
+): Promise<ChatMessage[]> {
+  try {
+    const res = await fetch(
+      `${BASE}/sessions/${sid(sessionId)}/conversations/${sid(conversationId)}/chat`,
+    );
     if (!res.ok) return [];
     const json = (await res.json()) as { messages: ChatRow[] };
     return json.messages.map(toChatMessage);
@@ -40,11 +145,15 @@ export async function listChatMessages(sessionId: string): Promise<ChatMessage[]
   }
 }
 
-export async function clearChat(sessionId: string): Promise<void> {
+export async function clearChat(
+  sessionId: string,
+  conversationId: string,
+): Promise<void> {
   try {
-    await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/chat`, {
-      method: "DELETE",
-    });
+    await fetch(
+      `${BASE}/sessions/${sid(sessionId)}/conversations/${sid(conversationId)}/chat`,
+      { method: "DELETE" },
+    );
   } catch (e) {
     console.warn("clearChat: network failure", e);
   }
@@ -52,6 +161,7 @@ export async function clearChat(sessionId: string): Promise<void> {
 
 export interface StreamChatOptions {
   sessionId: string;
+  conversationId: string;
   text: string;
   signal?: AbortSignal;
   onChunk: (piece: string) => void;
@@ -65,10 +175,11 @@ export interface StreamChatOptions {
  * cleanly (browser stops reading; server logs the disconnect).
  */
 export async function streamChat(opts: StreamChatOptions): Promise<void> {
-  const { sessionId, text, signal, onChunk, onDone, onError } = opts;
+  const { sessionId, conversationId, text, signal, onChunk, onDone, onError } =
+    opts;
   try {
     const res = await fetch(
-      `${BASE}/sessions/${encodeURIComponent(sessionId)}/chat`,
+      `${BASE}/sessions/${sid(sessionId)}/conversations/${sid(conversationId)}/chat`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

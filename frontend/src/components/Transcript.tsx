@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowDown, Mic, Pause, Pencil, Play } from "lucide-react";
+import { Check, Loader2, Mic, Pause, Pencil, Play } from "lucide-react";
 
 import { TimelineMinimap } from "@/components/TimelineMinimap";
-import { Button } from "@/components/ui/button";
 import { useAutoScroll } from "@/hooks/useAutoScroll";
 import { usePlaybackControls } from "@/hooks/playbackContext";
-import { formatRelativeTime } from "@/lib/colors";
-import { renameSpeaker } from "@/lib/diarize";
+import {
+  buildSpeakerPalette,
+  formatRelativeTime,
+  SPEAKER_SWATCHES,
+} from "@/lib/colors";
+import { assignSpeaker, renameSpeaker } from "@/lib/diarize";
 import { useSessionStore } from "@/store/sessionStore";
 import type { Segment } from "@/types";
 
@@ -37,19 +40,56 @@ export function Transcript() {
   // without a real speaker label fall through one-per-card as before.
   const turns = useMemo(() => mergeBySpeaker(ordered), [ordered]);
 
-  // Whenever the currently-playing segment changes (user clicks ▶, scrubs,
-  // or continuous mode advances), scroll its card into view. Skips when
-  // user hasn't started any playback to avoid hijacking the scroll.
+  // Stable per-speaker colors, assigned by order of first appearance so the
+  // transcript and the timeline rail agree. `diarized` tells us whether the
+  // session has been through speaker ID yet — only then do we surface an
+  // "unknown" chip on the leftover unlabeled segments (so users can label
+  // them), rather than cluttering a pre-diarize transcript.
+  const speakerColors = useMemo(
+    () => buildSpeakerPalette(ordered.map((s) => s.speaker)),
+    [ordered],
+  );
+  const colorOverrides = useSessionStore((s) => s.speakerColors);
+  const diarized = speakerColors.size > 0;
+  const colorFor = (label: string | null) =>
+    label ? colorOverrides[label] ?? speakerColors.get(label) ?? null : null;
+
+  // `pinned`/`scrollToBottom` aren't read — the hook still keeps us stuck to
+  // the bottom on new content; we just don't surface a jump-to-latest button.
+  const { ref } = useAutoScroll<HTMLDivElement>([ordered]);
+
+  // Auto-follow the playing segment without hijacking the user's scroll.
+  // Always follow when playback first starts (prev === null). On continuous
+  // auto-advance, only scroll to the next segment if the one we're leaving
+  // is still in view — i.e. the user is watching the playhead. If they've
+  // scrolled away to read elsewhere, leave their position where it is.
   const playingId = useSessionStore((s) => s.playingSegmentId);
+  const prevPlayingIdRef = useRef<string | null>(null);
   useEffect(() => {
+    const prev = prevPlayingIdRef.current;
+    prevPlayingIdRef.current = playingId;
     if (!playingId) return;
-    const el = document.querySelector<HTMLElement>(
+    const container = ref.current;
+    const target = document.querySelector<HTMLElement>(
       `[data-segment-ids~="${playingId}"]`,
     );
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [playingId]);
+    if (!container || !target) return;
 
-  const { ref, pinned, scrollToBottom } = useAutoScroll<HTMLDivElement>([ordered]);
+    let follow = prev === null;
+    if (!follow && prev) {
+      const prevEl = document.querySelector<HTMLElement>(
+        `[data-segment-ids~="${prev}"]`,
+      );
+      if (!prevEl) {
+        follow = true; // segment we were on is gone (e.g. re-segmented)
+      } else {
+        const c = container.getBoundingClientRect();
+        const p = prevEl.getBoundingClientRect();
+        follow = p.bottom > c.top && p.top < c.bottom; // leaving segment still visible
+      }
+    }
+    if (follow) target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [playingId, ref]);
 
   return (
     <motion.div
@@ -61,7 +101,10 @@ export function Transcript() {
     >
       <TimelineMinimap scrollRef={ref} segments={ordered} />
       <div ref={ref} className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-6 py-8">
+        {/* Extra right padding keeps card borders clear of the timeline rail
+            (~36px of visuals on the right edge) when the column is narrow,
+            e.g. with both the sidebar and chat panel open. */}
+        <div className="mx-auto w-full max-w-3xl py-8 pl-6 pr-12">
           {ordered.length === 0 ? (
             <ListeningState />
           ) : (
@@ -74,6 +117,8 @@ export function Transcript() {
                     relatedIds={t.relatedIds}
                     srcLang={srcLang}
                     tgtLang={tgtLang}
+                    color={colorFor(t.segment.speaker ?? null)}
+                    diarized={diarized}
                   />
                 ))}
               </AnimatePresence>
@@ -82,17 +127,6 @@ export function Transcript() {
           )}
         </div>
       </div>
-
-      {!pinned && ordered.length > 0 && (
-        <Button
-          onClick={scrollToBottom}
-          size="icon"
-          title="Jump to latest"
-          className="absolute bottom-6 right-10 size-9 rounded-full shadow-lg"
-        >
-          <ArrowDown className="size-4" />
-        </Button>
-      )}
     </motion.div>
   );
 }
@@ -115,13 +149,19 @@ function ListeningState() {
     >
       <div className="relative">
         <motion.div
-          className="flex size-20 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/15 to-blue-500/5 ring-1 ring-inset ring-blue-500/20"
+          className="flex size-20 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500/15 to-brand-500/5 ring-1 ring-inset ring-brand-500/20"
           animate={{ scale: [1, 1.04, 1] }}
           transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Mic className="size-8 text-blue-600 dark:text-blue-400" />
+          {isConnecting ? (
+            <Loader2 className="size-8 animate-spin text-brand-600 dark:text-brand-400" />
+          ) : (
+            <Mic className="size-8 text-brand-600 dark:text-brand-400" />
+          )}
         </motion.div>
-        <span className="absolute -right-1 -bottom-1 size-3 animate-pulse rounded-full bg-blue-500 ring-2 ring-background" />
+        {!isConnecting && (
+          <span className="absolute -right-1 -bottom-1 size-3 animate-pulse rounded-full bg-brand-500 ring-2 ring-background" />
+        )}
       </div>
       <h2 className="mt-6 text-xl font-semibold tracking-tight text-foreground">
         {isConnecting ? "Warming up models…" : "Listening…"}
@@ -143,9 +183,20 @@ interface SegmentCardProps {
   relatedIds?: string[];
   srcLang: string;
   tgtLang: string;
+  /** Speaker tint (null when unlabeled). Drives the left accent + chip dot. */
+  color?: string | null;
+  /** Whether the session has been diarized — gates the "unknown" chip. */
+  diarized?: boolean;
 }
 
-function SegmentCard({ seg, relatedIds, srcLang, tgtLang }: SegmentCardProps) {
+function SegmentCard({
+  seg,
+  relatedIds,
+  srcLang,
+  tgtLang,
+  color = null,
+  diarized = false,
+}: SegmentCardProps) {
   const { play, pause } = usePlaybackControls();
   const timestamp = formatRelativeTime(seg.startedAt);
   const isPartial = seg.origStatus === "partial";
@@ -179,11 +230,14 @@ function SegmentCard({ seg, relatedIds, srcLang, tgtLang }: SegmentCardProps) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -4 }}
       transition={{ duration: 0.22, ease: [0.22, 0.61, 0.36, 1] }}
+      // Left accent in the speaker color (when known). Inline borderLeftColor
+      // overrides only the left edge; the rest follows the state classes.
+      style={color ? { borderLeftColor: color, borderLeftWidth: 3 } : undefined}
       className={`group rounded-xl border bg-card px-5 py-4 transition-colors duration-200 ${
         isPartial
-          ? "border-blue-500/40 shadow-[0_0_0_2px_rgba(59,130,246,0.08)]"
+          ? "border-brand-500/40 shadow-[0_0_0_2px_rgba(170,122,78,0.08)]"
           : isHighlight
-            ? "border-blue-500/60 shadow-[0_0_0_2px_rgba(59,130,246,0.12)]"
+            ? "border-brand-500/60 shadow-[0_0_0_2px_rgba(170,122,78,0.12)]"
             : "border-border hover:border-foreground/15"
       }`}
     >
@@ -194,8 +248,8 @@ function SegmentCard({ seg, relatedIds, srcLang, tgtLang }: SegmentCardProps) {
             onClick={() =>
               isPlayingThis ? pause() : play(seg.segmentId)
             }
-            title={isPlayingThis ? "Pause" : "Play this segment"}
-            className="inline-flex size-5 items-center justify-center rounded-full bg-muted/60 text-muted-foreground transition-colors hover:bg-blue-500/20 hover:text-blue-600 dark:hover:text-blue-400"
+            data-tip={isPlayingThis ? "Pause" : "Play this segment"}
+            className="inline-flex size-5 items-center justify-center rounded-full bg-muted/60 text-muted-foreground transition-colors hover:bg-brand-500/20 hover:text-brand-600 dark:hover:text-brand-400"
           >
             {isPlayingThis ? (
               <Pause className="size-2.5 fill-current" />
@@ -207,11 +261,26 @@ function SegmentCard({ seg, relatedIds, srcLang, tgtLang }: SegmentCardProps) {
         <span className="font-mono text-[11px] font-medium text-muted-foreground">
           {timestamp}
         </span>
-        {seg.speaker && seg.speaker !== "unknown" && (
-          <SpeakerChip name={seg.speaker} />
+        {seg.speaker && seg.speaker !== "unknown" ? (
+          <SpeakerChip
+            name={seg.speaker}
+            isUnknown={false}
+            segmentIds={related}
+            color={color}
+          />
+        ) : (
+          diarized &&
+          !isPartial && (
+            <SpeakerChip
+              name="unknown"
+              isUnknown
+              segmentIds={related}
+              color={null}
+            />
+          )
         )}
         {isPartial && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400">
             <span className="size-1.5 animate-pulse rounded-full bg-current" />
             Live
           </span>
@@ -281,63 +350,141 @@ function Row({
 }
 
 /**
- * Speaker label chip. Click to edit; commit applies the rename to ALL
- * segments with the same current label (server-side cascade, then we
- * mirror locally so the UI updates without a full session reload).
+ * Speaker label chip. Click to edit. A real label cascades the rename to ALL
+ * segments by that speaker (server-side, then mirrored locally). An "unknown"
+ * chip instead assigns the typed name to just *this* card's segments, so you
+ * can label the bits diarization missed without touching the rest.
  */
-function SpeakerChip({ name }: { name: string }) {
+function SpeakerChip({
+  name,
+  isUnknown,
+  segmentIds,
+  color,
+}: {
+  name: string;
+  isUnknown: boolean;
+  segmentIds: string[];
+  color: string | null;
+}) {
   const sessionId = useSessionStore((s) => s.sessionId);
   const applySpeakerRename = useSessionStore((s) => s.applySpeakerRename);
+  const applySpeakerLabels = useSessionStore((s) => s.applySpeakerLabels);
+  const setSpeakerColor = useSessionStore((s) => s.setSpeakerColor);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(name);
+  const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (editing) {
-      setDraft(name);
-      // next tick so the input is mounted before we focus
+      // Unknown chips start blank (type a fresh name); real chips pre-fill.
+      setDraft(isUnknown ? "" : name);
       queueMicrotask(() => inputRef.current?.select());
     }
-  }, [editing, name]);
+  }, [editing, name, isUnknown]);
 
   const commit = async () => {
     const next = draft.trim();
     setEditing(false);
-    if (!next || next === name || !sessionId) return;
-    // Optimistic local update — the server confirms via the rename call.
-    applySpeakerRename(name, next);
-    try {
-      await renameSpeaker(sessionId, name, next);
-    } catch (e) {
-      // Roll back on failure.
-      applySpeakerRename(next, name);
-      console.warn(e);
+    if (!next || !sessionId) return;
+    if (isUnknown) {
+      // Assign just this card's segments.
+      const labels = Object.fromEntries(segmentIds.map((id) => [id, next]));
+      applySpeakerLabels(labels);
+      try {
+        await assignSpeaker(sessionId, segmentIds, next);
+      } catch (e) {
+        console.warn(e);
+      }
+    } else {
+      if (next === name) return;
+      applySpeakerRename(name, next);
+      try {
+        await renameSpeaker(sessionId, name, next);
+      } catch (e) {
+        applySpeakerRename(next, name); // roll back
+        console.warn(e);
+      }
     }
   };
 
   if (editing) {
     return (
-      <input
-        ref={inputRef}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-          if (e.key === "Escape") setEditing(false);
-        }}
-        className="h-[18px] w-24 rounded-full border border-blue-500/30 bg-background px-2 text-[10.5px] font-semibold outline-none focus:ring-2 focus:ring-blue-500/30"
-      />
+      <span className="relative inline-flex items-center gap-1">
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          placeholder={isUnknown ? "Name this speaker" : undefined}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          className="h-[18px] w-28 rounded-full border border-brand-500/30 bg-background px-2 text-[10.5px] font-semibold outline-none focus:ring-2 focus:ring-brand-500/30"
+        />
+        {/* Explicit confirm. mousedown + preventDefault commits without the
+            input's onBlur firing first (which would race the unmount). */}
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            void commit();
+          }}
+          data-tip="Save (or press Enter)"
+          className="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition-colors hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
+        >
+          <Check className="size-3" />
+        </button>
+        {/* Color picker — only for a real (named) speaker. mousedown +
+            preventDefault keeps the input focused so onBlur doesn't commit
+            and unmount before the swatch click registers. */}
+        {!isUnknown && (
+          <span className="absolute left-0 top-full z-30 mt-1 flex items-center gap-1 rounded-md border border-border bg-popover p-1.5 shadow-md">
+            {SPEAKER_SWATCHES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setSpeakerColor(name, c);
+                }}
+                aria-label={`Set color ${c}`}
+                className={`size-4 rounded-full transition-transform hover:scale-110 ${
+                  color === c
+                    ? "ring-2 ring-foreground ring-offset-1 ring-offset-popover"
+                    : ""
+                }`}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </span>
+        )}
+      </span>
     );
   }
 
   return (
     <button
       onClick={() => setEditing(true)}
-      title="Click to rename — applies to all segments by this speaker"
-      className="inline-flex items-center gap-1 rounded-full border border-border bg-accent/40 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-foreground transition-colors hover:border-blue-500/40 hover:bg-accent"
+      data-tip={
+        isUnknown
+          ? "Unidentified — click to name this speaker (this segment only)"
+          : "Click to rename — applies to all segments by this speaker"
+      }
+      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide transition-colors ${
+        isUnknown
+          ? "border-dashed border-border bg-transparent text-muted-foreground hover:border-brand-500/40 hover:text-foreground"
+          : "border-border bg-accent/40 text-foreground hover:border-brand-500/40 hover:bg-accent"
+      }`}
     >
-      {name}
+      {color && (
+        <span
+          aria-hidden
+          className="size-1.5 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+      )}
+      {isUnknown ? "unknown" : name}
       <Pencil className="size-2.5 text-muted-foreground" />
     </button>
   );

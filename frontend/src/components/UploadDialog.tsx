@@ -131,7 +131,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
           >
             <header className="flex items-center justify-between border-b px-5 py-3">
               <div className="flex items-center gap-2">
-                <UploadCloud className="size-4 text-blue-600 dark:text-blue-400" />
+                <UploadCloud className="size-4 text-brand-600 dark:text-brand-400" />
                 <h2 className="text-sm font-semibold">Transcribe from file</h2>
               </div>
               <Button
@@ -140,7 +140,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                 className="size-7"
                 onClick={onClose}
                 disabled={submitting}
-                title="Close"
+                data-tip="Close"
               >
                 <X className="size-3.5" />
               </Button>
@@ -152,7 +152,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={onDrop}
                 onClick={() => inputRef.current?.click()}
-                className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 px-6 py-8 text-center transition-colors hover:border-blue-500/40 hover:bg-blue-500/5"
+                className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 px-6 py-8 text-center transition-colors hover:border-brand-500/40 hover:bg-brand-500/5"
               >
                 <UploadCloud className="size-7 text-muted-foreground" />
                 <div className="text-sm font-medium text-foreground">
@@ -201,7 +201,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                         onClick={() => move(i, -1)}
                         disabled={i === 0 || submitting}
                         className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-30"
-                        title="Move up"
+                        data-tip="Move up"
                       >
                         <ArrowUp className="size-3" />
                       </button>
@@ -209,7 +209,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                         onClick={() => move(i, 1)}
                         disabled={i === files.length - 1 || submitting}
                         className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-30"
-                        title="Move down"
+                        data-tip="Move down"
                       >
                         <ArrowDown className="size-3" />
                       </button>
@@ -217,7 +217,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                         onClick={() => remove(i)}
                         disabled={submitting}
                         className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
-                        title="Remove"
+                        data-tip="Remove"
                       >
                         <X className="size-3" />
                       </button>
@@ -295,7 +295,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                 <Button
                   onClick={() => void start()}
                   disabled={!canStart}
-                  className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                  className="gap-1.5 bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
                 >
                   Transcribe{files.length > 0 ? ` (${files.length})` : ""}
                 </Button>

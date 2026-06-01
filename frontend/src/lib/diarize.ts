@@ -1,9 +1,10 @@
 // Offline diarization + speaker-rename HTTP helpers. Diarize is now
 // async — returns a job id; progress is streamed via jobsStore.
 
-const BACKEND_HOST =
-  typeof window !== "undefined" ? window.location.hostname : "localhost";
-const BASE = `http://${BACKEND_HOST}:8000`;
+// Same-origin: the SPA is served by the backend, so talk to our own origin
+// (port included). Vite dev proxies these paths to the backend — see vite.config.ts.
+const BASE =
+  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
 
 export interface DiarizeStarted {
   jobId: string;
@@ -29,13 +30,17 @@ export interface TranslateStarted {
 export async function startTranslate(
   sessionId: string,
   tgtLang?: string,
+  retranslate?: boolean,
 ): Promise<TranslateStarted> {
+  const body: Record<string, unknown> = {};
+  if (tgtLang) body.tgt_lang = tgtLang;
+  if (retranslate) body.retranslate = true;
   const res = await fetch(
     `${BASE}/sessions/${encodeURIComponent(sessionId)}/translate`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(tgtLang ? { tgt_lang: tgtLang } : {}),
+      body: JSON.stringify(body),
     },
   );
   if (!res.ok) {
@@ -62,6 +67,31 @@ export async function renameSpeaker(
   if (!res.ok) {
     const detail = await res.text().catch(() => res.statusText);
     throw new Error(`Rename failed (${res.status}): ${detail}`);
+  }
+  const json = (await res.json()) as { updated: number };
+  return json.updated;
+}
+
+/**
+ * Assign a speaker to specific segments (not a session-wide cascade). Used to
+ * label segments diarization left unidentified.
+ */
+export async function assignSpeaker(
+  sessionId: string,
+  segmentIds: string[],
+  speaker: string,
+): Promise<number> {
+  const res = await fetch(
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}/segments/speaker`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ segmentIds, speaker }),
+    },
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => res.statusText);
+    throw new Error(`Assign failed (${res.status}): ${detail}`);
   }
   const json = (await res.json()) as { updated: number };
   return json.updated;

@@ -1,47 +1,37 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  ArrowRight,
+  Download,
   Languages,
   Loader2,
   MessageSquare,
-  Mic,
-  PanelLeft,
   Pause,
   Pencil,
   Play,
-  Settings,
   Square,
   UserSquare2,
 } from "lucide-react";
 
-import {
-  LanguageSelect,
-  SOURCE_LANGUAGES,
-  TARGET_LANGUAGES,
-} from "@/components/LanguageSelect";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { startDiarize, startTranslate } from "@/lib/diarize";
+import { recordingUrl } from "@/lib/recording";
+import { confirmDialog } from "@/lib/confirm";
+import { cn } from "@/lib/utils";
 import { useJobsStore } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
 
 interface TopBarProps {
-  onStart: () => void;
   onStop: () => void;
   onPause: () => void;
   onResume: () => void;
   inPreFlight: boolean;
 }
 
-export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopBarProps) {
+export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) {
   const connection = useSessionStore((s) => s.connection);
   const title = useSessionStore((s) => s.sessionTitle);
   const renameSession = useSessionStore((s) => s.renameSession);
-  const toggleSidebar = useSessionStore((s) => s.toggleSidebar);
-  const toggleSettings = useSessionStore((s) => s.toggleSettings);
   const toggleChat = useSessionStore((s) => s.toggleChat);
   const chatOpen = useSessionStore((s) => s.chatOpen);
   const sessionId = useSessionStore((s) => s.sessionId);
@@ -100,24 +90,36 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
     Boolean(sessionId) &&
     segmentCountForDiarize > 0 &&
     (connection === "disconnected" || connection === "error");
+  // Always available on a finished session — even when everything is
+  // already translated, the user may want to re-translate (e.g. after
+  // changing the target language or fixing the source text).
   const canTranslate =
     Boolean(sessionId) &&
     segmentCountForDiarize > 0 &&
-    hasUntranslated &&
+    (connection === "disconnected" || connection === "error");
+  // The WAV only exists once recording has stopped, so the download offer
+  // rides the same "finished session" gate as translate / diarize.
+  const canDownload =
+    Boolean(sessionId) &&
+    segmentCountForDiarize > 0 &&
     (connection === "disconnected" || connection === "error");
 
   const runDiarize = async () => {
-    if (!sessionId || activeDiarizeForThis) return;
+    if (!sessionId || activeDiarizeForThis || activeTranslateForThis) return;
     if (hasCustomSpeakerLabel) {
-      const ok = confirm(
-        "Re-running speaker identification will reset any speaker " +
-        "renames (e.g. Alice → Speaker 1). Continue?",
-      );
+      const ok = await confirmDialog({
+        title: "Re-run speaker identification?",
+        description:
+          "This will reset any speaker renames (e.g. Alice → Speaker 1).",
+        confirmLabel: "Re-run",
+      });
       if (!ok) return;
     } else if (hasAnySpeakerLabel) {
-      const ok = confirm(
-        "This session already has speaker labels. Re-run anyway?",
-      );
+      const ok = await confirmDialog({
+        title: "Re-run speaker identification?",
+        description: "This session already has speaker labels.",
+        confirmLabel: "Re-run anyway",
+      });
       if (!ok) return;
     }
     try {
@@ -128,7 +130,7 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
         jobId,
         // Session title in the label so the overlay tells you *which*
         // session is being processed when you have multiple in flight.
-        label: `Identify speakers: ${title || "Untitled session"}`,
+        label: `Identify speakers: ${title || "New session"}`,
         kind: "diarize",
         sessionId,
       });
@@ -139,12 +141,23 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
   };
 
   const runTranslate = async () => {
-    if (!sessionId || activeTranslateForThis) return;
+    if (!sessionId || activeTranslateForThis || activeDiarizeForThis) return;
+    let retranslate = false;
+    if (!hasUntranslated) {
+      const ok = await confirmDialog({
+        title: "Re-translate all segments?",
+        description:
+          "Every segment already has a translation — this will replace them all.",
+        confirmLabel: "Re-translate",
+      });
+      if (!ok) return;
+      retranslate = true;
+    }
     try {
-      const { jobId } = await startTranslate(sessionId);
+      const { jobId } = await startTranslate(sessionId, undefined, retranslate);
       trackJob({
         jobId,
-        label: `Translate: ${title || "Untitled session"}`,
+        label: `Translate: ${title || "New session"}`,
         kind: "translate",
         sessionId,
       });
@@ -153,8 +166,6 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
       useSessionStore.getState().setError(msg);
     }
   };
-  const settings = useSessionStore((s) => s.settings);
-  const updateSettings = useSessionStore((s) => s.updateSettings);
   const segmentCount = useSessionStore((s) => s.segmentOrder.length);
 
   const [editing, setEditing] = useState(false);
@@ -176,27 +187,6 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-card px-4">
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => toggleSidebar()}
-        title="Toggle sessions sidebar"
-        className="size-9"
-      >
-        <PanelLeft className="size-4" />
-      </Button>
-
-      {/* Wordmark */}
-      <div className="flex items-center gap-2">
-        <div className="flex size-7 items-center justify-center rounded-md bg-foreground text-background">
-          <Languages className="size-4" />
-        </div>
-        <span className="text-[15px] font-semibold tracking-tight text-foreground">
-          wrenote
-        </span>
-      </div>
-
-      <Separator orientation="vertical" className="!h-7" />
 
       {/* Session title + meta */}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -216,7 +206,7 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
           <button
             onDoubleClick={startEditing}
             className="group flex min-w-0 items-center gap-1.5 self-start rounded text-[14px] font-medium text-foreground hover:text-foreground/80"
-            title="Double-click to rename"
+            data-tip="Double-click to rename"
           >
             <span className="truncate">{title}</span>
             <Pencil className="size-3 opacity-0 transition-opacity group-hover:opacity-40" />
@@ -228,67 +218,6 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
           </div>
         )}
       </div>
-
-      {/* Interactive language chips — only here when pre-flight is gone, so
-          motion can do the shared-element move from pre-flight to TopBar. */}
-      <AnimatePresence>
-        {!inPreFlight && (
-          <motion.div
-            key="lang-strip-topbar"
-            layout
-            layoutId="lang-strip"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="flex items-center gap-1.5 rounded-xl border border-border/60 bg-card/60 px-1.5 py-1"
-          >
-            <LanguageSelect
-              value={settings.srcLang}
-              options={SOURCE_LANGUAGES}
-              onChange={(v) => updateSettings({ srcLang: v })}
-              disabled={isActive}
-              size="compact"
-              ariaLabel="Source language"
-            />
-            {settings.translateEnabled && (
-              <>
-                <ArrowRight className="size-3 text-muted-foreground/60" />
-                <LanguageSelect
-                  value={settings.tgtLang}
-                  options={TARGET_LANGUAGES}
-                  onChange={(v) => updateSettings({ tgtLang: v })}
-                  disabled={isActive}
-                  size="compact"
-                  ariaLabel="Target language"
-                />
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() =>
-                !isActive &&
-                updateSettings({ translateEnabled: !settings.translateEnabled })
-              }
-              disabled={isActive}
-              title={
-                settings.translateEnabled
-                  ? "Translation on — click for transcribe-only"
-                  : "Transcribe-only — click to turn translation on"
-              }
-              className={
-                "ml-0.5 inline-flex h-6 items-center rounded-md px-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors " +
-                (settings.translateEnabled
-                  ? "bg-blue-500/10 text-blue-600 hover:bg-blue-500/15 dark:text-blue-400"
-                  : "bg-muted text-muted-foreground hover:bg-muted/70") +
-                (isActive ? " opacity-60" : "")
-              }
-            >
-              {settings.translateEnabled ? "Translate" : "STT only"}
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {isActive && <RecordingTimer paused={isPaused} />}
@@ -309,7 +238,7 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
                 variant="ghost"
                 size="icon"
                 onClick={isPaused ? onResume : onPause}
-                title={isPaused ? "Resume" : "Pause"}
+                data-tip={isPaused ? "Resume" : "Pause"}
                 className="size-9 rounded-full text-foreground/70 hover:bg-accent hover:text-foreground"
               >
                 {isPaused ? (
@@ -345,7 +274,7 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
               size="icon"
               disabled
               aria-label="Connecting"
-              className="size-9 bg-blue-600/60 text-white shadow-sm dark:bg-blue-500/60"
+              className="size-9 bg-brand-600/60 text-white shadow-sm dark:bg-brand-500/60"
             >
               <motion.span
                 animate={{ rotate: 360 }}
@@ -356,26 +285,7 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
               </motion.span>
             </Button>
           </motion.div>
-        ) : (
-          <motion.div
-            key="record"
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.92 }}
-            transition={{ duration: 0.15 }}
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.96 }}
-          >
-            <Button
-              size="default"
-              onClick={onStart}
-              className="gap-1.5 bg-blue-600 text-white shadow-sm hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-            >
-              <Mic className="size-4" />
-              Record
-            </Button>
-          </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
 
       {canTranslate && (
@@ -383,15 +293,23 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
           variant="ghost"
           size="icon"
           onClick={() => void runTranslate()}
-          disabled={activeTranslateForThis}
-          title={
+          disabled={activeTranslateForThis || activeDiarizeForThis}
+          data-tip={
             activeTranslateForThis
-              ? "Already running — see the progress bar"
-              : "Translate untranslated segments (runs in background)"
+              ? "Translating… (see the progress bar)"
+              : activeDiarizeForThis
+                ? "Speaker identification is running — wait for it to finish"
+                : hasUntranslated
+                  ? "Translate untranslated segments (runs in background)"
+                  : "Re-translate all segments (runs in background)"
           }
           className="size-9"
         >
-          <Languages className="size-4" />
+          {activeTranslateForThis ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Languages className="size-4" />
+          )}
         </Button>
       )}
 
@@ -400,23 +318,40 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
           variant="ghost"
           size="icon"
           onClick={() => void runDiarize()}
-          disabled={activeDiarizeForThis}
-          title={
+          disabled={activeDiarizeForThis || activeTranslateForThis}
+          data-tip={
             activeDiarizeForThis
-              ? "Already running — see the progress bar"
-              : "Identify speakers (runs in background)"
+              ? "Identifying speakers… (see the progress bar)"
+              : activeTranslateForThis
+                ? "Translation is running — wait for it to finish"
+                : "Identify speakers (runs in background)"
           }
           className="size-9"
         >
-          <UserSquare2 className="size-4" />
+          {activeDiarizeForThis ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <UserSquare2 className="size-4" />
+          )}
         </Button>
+      )}
+
+      {canDownload && sessionId && (
+        <a
+          href={recordingUrl(sessionId)}
+          download={`${title || sessionId}.wav`}
+          data-tip="Download the full recording (.wav)"
+          className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-9")}
+        >
+          <Download className="size-4" />
+        </a>
       )}
 
       <Button
         variant="ghost"
         size="icon"
         onClick={() => toggleChat()}
-        title="Chat about this session"
+        data-tip="Chat about this session"
         aria-pressed={chatOpen}
         className={
           chatOpen
@@ -425,18 +360,6 @@ export function TopBar({ onStart, onStop, onPause, onResume, inPreFlight }: TopB
         }
       >
         <MessageSquare className="size-4" />
-      </Button>
-
-      <ThemeToggle />
-
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => toggleSettings()}
-        title="Settings"
-        className="size-9"
-      >
-        <Settings className="size-4" />
       </Button>
     </header>
   );

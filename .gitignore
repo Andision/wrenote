@@ -21,6 +21,9 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+
+# Built SPA emitted by `npm run build` (vite outDir); regenerated, not committed.
+backend/static/app/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

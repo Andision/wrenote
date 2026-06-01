@@ -16,6 +16,9 @@ export interface UsePlayback {
   resume: () => void;
   /** Jump the playhead. Useful for the master bar's scrubber. */
   seek: (seconds: number) => void;
+  /** Eagerly build the <audio> so the master bar can show total duration
+   *  before the first play. No-op if there's no session / already built. */
+  prime: () => void;
 }
 
 export function usePlayback(): UsePlayback {
@@ -23,6 +26,10 @@ export function usePlayback(): UsePlayback {
   const segmentOrder = useSessionStore((s) => s.segmentOrder);
   const segments = useSessionStore((s) => s.segments);
   const mode = useSessionStore((s) => s.settings.playbackMode);
+  const rate = useSessionStore((s) => s.playbackRate);
+  const loopMode = useSessionStore((s) => s.loopMode);
+  const loopA = useSessionStore((s) => s.loopA);
+  const loopB = useSessionStore((s) => s.loopB);
   const setPlayback = useSessionStore((s) => s.setPlayback);
   const setPlaybackTime = useSessionStore((s) => s.setPlaybackTime);
   const setPlaybackLevel = useSessionStore((s) => s.setPlaybackLevel);
@@ -39,6 +46,8 @@ export function usePlayback(): UsePlayback {
   const orderedSegsRef = useRef<{ id: string; t0: number; t1: number }[]>([]);
   const currentIdRef = useRef<string | null>(null);
   const modeRef = useRef(mode);
+  const rateRef = useRef(rate);
+  const loopRef = useRef({ mode: loopMode, a: loopA, b: loopB });
 
   // Build an ordered (id, t0, t1) array whenever segments change.
   const ordered = useMemo(() => {
@@ -58,6 +67,54 @@ export function usePlayback(): UsePlayback {
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+
+  // Keep the loop config readable from the timeupdate listener. Turning a
+  // loop on cancels any pending single-mode auto-pause (the loop handler in
+  // timeupdate takes over); turning it off lets the next play re-arm one.
+  useEffect(() => {
+    loopRef.current = { mode: loopMode, a: loopA, b: loopB };
+    if (loopMode !== "off" && stopTimerRef.current) {
+      window.clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+  }, [loopMode, loopA, loopB]);
+
+  // A/B points are absolute times into one recording — clear the loop when
+  // the session changes so it can't carry over to an unrelated audio file.
+  useEffect(() => {
+    const st = useSessionStore.getState();
+    st.setLoopMode("off");
+    st.setLoopA(null);
+    st.setLoopB(null);
+  }, [sessionId]);
+
+  // Apply the playback speed to the live <audio>. If we're mid-segment in
+  // single mode, re-arm the auto-pause so the new rate lands us at the same
+  // segment boundary (the timer is wall-clock, so it must scale by rate).
+  useEffect(() => {
+    rateRef.current = rate;
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.playbackRate = rate;
+    if (
+      !audio.paused &&
+      modeRef.current === "single" &&
+      currentIdRef.current &&
+      stopTimerRef.current
+    ) {
+      const cur = orderedSegsRef.current.find(
+        (s) => s.id === currentIdRef.current,
+      );
+      if (cur) {
+        window.clearTimeout(stopTimerRef.current);
+        const remainMs = Math.max(0, ((cur.t1 - audio.currentTime) * 1000) / rate);
+        stopTimerRef.current = window.setTimeout(() => {
+          audio.pause();
+          stopTimerRef.current = null;
+        }, remainMs);
+      }
+    }
+  }, [rate]);
 
   // Tear down audio when the session changes (new src needed).
   useEffect(() => {
@@ -114,6 +171,7 @@ export function usePlayback(): UsePlayback {
       // origin. Backend CORS lets http://localhost:5173 fetch the wav.
       a.crossOrigin = "anonymous";
       a.preload = "auto";
+      a.playbackRate = rateRef.current;
       a.src = recordingUrl(sessionId);
       a.addEventListener("loadedmetadata", () => {
         setPlaybackTime(a.currentTime || 0, a.duration || 0);
@@ -122,6 +180,27 @@ export function usePlayback(): UsePlayback {
         // Always push the playhead to the store so the master playback
         // bar can paint a live scrubber.
         setPlaybackTime(a.currentTime, a.duration || 0);
+
+        // Loop handling takes priority over single/continuous behaviour.
+        const loop = loopRef.current;
+        if (loop.mode === "ab" && loop.a != null && loop.b != null) {
+          const lo = Math.min(loop.a, loop.b);
+          const hi = Math.max(loop.a, loop.b);
+          if (a.currentTime >= hi || a.currentTime < lo - 0.25) {
+            a.currentTime = lo;
+          }
+          return;
+        }
+        if (loop.mode === "segment") {
+          const cur = orderedSegsRef.current.find(
+            (s) => s.id === currentIdRef.current,
+          );
+          if (cur && a.currentTime >= cur.t1) {
+            a.currentTime = cur.t0;
+          }
+          return;
+        }
+
         // In continuous mode, advance the highlighted segment as the
         // playhead crosses boundaries. (No-op in single mode — the stop
         // timer pauses us before we'd cross.)
@@ -201,6 +280,7 @@ export function usePlayback(): UsePlayback {
       }
 
       audio.currentTime = seg.startedAt;
+      audio.playbackRate = rateRef.current;
       currentIdRef.current = segmentId;
       setPlayback(segmentId, true);
       void audio.play().catch((e) => {
@@ -208,8 +288,11 @@ export function usePlayback(): UsePlayback {
         setPlayback(null, false);
       });
 
-      if (modeRef.current === "single") {
-        const durMs = Math.max(0, (seg.endedAt - seg.startedAt) * 1000);
+      if (modeRef.current === "single" && loopRef.current.mode === "off") {
+        const durMs = Math.max(
+          0,
+          ((seg.endedAt - seg.startedAt) * 1000) / rateRef.current,
+        );
         stopTimerRef.current = window.setTimeout(() => {
           audio.pause();
           stopTimerRef.current = null;
@@ -231,12 +314,19 @@ export function usePlayback(): UsePlayback {
     const audio = audioRef.current;
     if (!audio) return;
     void audio.play().catch((e) => console.warn("playback failed", e));
-    if (modeRef.current === "single" && currentIdRef.current) {
+    if (
+      modeRef.current === "single" &&
+      currentIdRef.current &&
+      loopRef.current.mode === "off"
+    ) {
       // Re-arm the auto-pause for the remainder of the current segment.
       const order = orderedSegsRef.current;
       const cur = order.find((s) => s.id === currentIdRef.current);
       if (cur) {
-        const remainMs = Math.max(0, (cur.t1 - audio.currentTime) * 1000);
+        const remainMs = Math.max(
+          0,
+          ((cur.t1 - audio.currentTime) * 1000) / rateRef.current,
+        );
         if (stopTimerRef.current) window.clearTimeout(stopTimerRef.current);
         stopTimerRef.current = window.setTimeout(() => {
           audio.pause();
@@ -271,5 +361,9 @@ export function usePlayback(): UsePlayback {
     [ensureAudio, setPlayback],
   );
 
-  return { play, pause, resume, seek };
+  const prime = useCallback(() => {
+    ensureAudio();
+  }, [ensureAudio]);
+
+  return { play, pause, resume, seek, prime };
 }

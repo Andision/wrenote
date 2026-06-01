@@ -1,4 +1,4 @@
-// WebSocket lifecycle hook. Connects to ws://<host>:8000/ws (default), sends
+// WebSocket lifecycle hook. Connects to /ws on the same origin (default), sends
 // a "start" message with session config, dispatches incoming events to the
 // store, and exposes a `feedAudio` method for the microphone hook.
 import { useCallback, useEffect, useRef } from "react";
@@ -10,7 +10,28 @@ interface UseWebSocketOptions {
   url?: string;
 }
 
-const DEFAULT_URL = `ws://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:8000/ws`;
+// Same-origin WebSocket: the SPA is served by the backend, so /ws lives on the
+// page's own host+port (works under a dynamic port too). Vite dev proxies /ws.
+//
+// The desktop build gates /ws with a per-launch token. WKWebView/WebView2 send
+// the same-origin cookie on the handshake, but to not depend on that we also
+// read the (non-HttpOnly) token cookie and pass it as ?token=. In dev / browser
+// there is no token cookie, so the query is simply omitted.
+function loopbackToken(): string {
+  if (typeof document === "undefined") return "";
+  const m = document.cookie.match(/(?:^|;\s*)wrenote_token=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : "";
+}
+
+function defaultWsUrl(): string {
+  if (typeof window === "undefined") return "ws://localhost:8000/ws";
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  const token = loopbackToken();
+  const query = token ? `?token=${encodeURIComponent(token)}` : "";
+  return `${proto}://${window.location.host}/ws${query}`;
+}
+
+const DEFAULT_URL = defaultWsUrl();
 
 export function useWebSocket({ url = DEFAULT_URL }: UseWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);

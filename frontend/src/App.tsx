@@ -2,11 +2,14 @@ import { useCallback, useEffect, useRef } from "react";
 import { AnimatePresence, LayoutGroup } from "motion/react";
 
 import { ChatPanel } from "@/components/ChatPanel";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ModelGate } from "@/components/ModelGate";
 import { PreFlight } from "@/components/PreFlight";
 import { ProgressOverlay } from "@/components/ProgressOverlay";
 import { Sidebar } from "@/components/Sidebar";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { StatusBar } from "@/components/StatusBar";
+import { TooltipLayer } from "@/components/Tooltip";
 import { TopBar } from "@/components/TopBar";
 import { Transcript } from "@/components/Transcript";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -35,6 +38,7 @@ export default function App() {
   // a mid-upload refresh picks the progress bar back up.
   useEffect(() => {
     void useSessionStore.getState().refreshPastSessions();
+    void useSessionStore.getState().refreshGroups();
     useJobsStore.getState().hydrateFromStorage();
   }, []);
   // Pre-flight owns the canvas only while truly idle. The moment the user
@@ -66,6 +70,20 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connection]);
 
+  // When a recording finishes (recording/stopping → disconnected) and the
+  // title is still the placeholder, ask the LLM to summarize one.
+  const prevConnRef = useRef(connection);
+  useEffect(() => {
+    const prev = prevConnRef.current;
+    prevConnRef.current = connection;
+    if (
+      (prev === "recording" || prev === "stopping") &&
+      connection === "disconnected"
+    ) {
+      useSessionStore.getState().autoTitleAfterRecording();
+    }
+  }, [connection]);
+
   const handleStart = useCallback(() => {
     startSession();
   }, [startSession]);
@@ -86,37 +104,43 @@ export default function App() {
     <TooltipProvider delay={300}>
       <PlaybackProvider>
       <LayoutGroup>
-        <div className="flex h-screen flex-col bg-background text-foreground">
-          <TopBar
-            onStart={handleStart}
-            onStop={handleStop}
-            onPause={handlePause}
-            onResume={handleResume}
-            inPreFlight={inPreFlight}
-          />
-          <div className="flex flex-1 overflow-hidden">
-            <Sidebar />
-            <main className="relative flex flex-1 flex-col overflow-hidden">
-              {/* No `mode="wait"` — let pre-flight exit and transcript enter
-                  overlap so the lang-strip layoutId handoff stays continuous
-                  (otherwise the source unmounts before the target arrives). */}
-              <AnimatePresence initial={false}>
-                {inPreFlight ? (
-                  <PreFlight key="preflight" onStart={handleStart} />
-                ) : (
-                  <Transcript key="transcript" />
-                )}
-              </AnimatePresence>
-            </main>
-            <ChatPanel />
+        {/* App shell: the sidebar is its own full-height column; the top bar,
+            main content and footer form a single unit to the right of it. */}
+        <div className="flex h-screen bg-background text-foreground">
+          <Sidebar />
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <TopBar
+              onStop={handleStop}
+              onPause={handlePause}
+              onResume={handleResume}
+              inPreFlight={inPreFlight}
+            />
+            <div className="flex flex-1 overflow-hidden">
+              <main className="relative flex flex-1 flex-col overflow-hidden">
+                {/* No `mode="wait"` — let pre-flight exit and transcript enter
+                    overlap so the lang-strip layoutId handoff stays continuous
+                    (otherwise the source unmounts before the target arrives). */}
+                <AnimatePresence initial={false}>
+                  {inPreFlight ? (
+                    <PreFlight key="preflight" onStart={handleStart} />
+                  ) : (
+                    <Transcript key="transcript" />
+                  )}
+                </AnimatePresence>
+              </main>
+              <ChatPanel />
+            </div>
+            <StatusBar />
           </div>
-          <StatusBar />
-          <SettingsDrawer />
         </div>
+        <SettingsDrawer />
         <ProgressOverlay />
       </LayoutGroup>
       </PlaybackProvider>
       <Toaster richColors closeButton />
+      <ConfirmDialog />
+      <ModelGate />
+      <TooltipLayer />
     </TooltipProvider>
   );
 }

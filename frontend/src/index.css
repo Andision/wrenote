@@ -80,6 +80,20 @@ body,
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Wrenote brand palette — warm brown, anchored on #9e6f45 (brand-600). */
+@theme {
+  --color-brand-50: #faf5ef;
+  --color-brand-100: #f3e8d9;
+  --color-brand-200: #e6d0b4;
+  --color-brand-300: #d6b387;
+  --color-brand-400: #c0925f;
+  --color-brand-500: #aa7a4e;
+  --color-brand-600: #9e6f45;
+  --color-brand-700: #835a39;
+  --color-brand-800: #6b4a30;
+  --color-brand-900: #59402c;
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -141,7 +155,7 @@ body,
   --chart-5: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(0.72 0.07 62);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
