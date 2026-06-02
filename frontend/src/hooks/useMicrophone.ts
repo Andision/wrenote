@@ -27,13 +27,28 @@ export function useMicrophone({ onPcm }: UseMicrophoneOptions) {
       );
     }
 
+    const micDeviceId = useSessionStore.getState().settings.micDeviceId;
+    const baseAudio: MediaTrackConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: micDeviceId ? { ...baseAudio, deviceId: { exact: micDeviceId } } : baseAudio,
       });
     } catch (e) {
-      throw new Error(`Microphone permission denied or unavailable: ${(e as Error).message}`);
+      // Chosen device gone (unplugged) → fall back to the system default.
+      if (micDeviceId && (e as Error).name === "OverconstrainedError") {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: baseAudio });
+        } catch (e2) {
+          throw new Error(`Microphone unavailable: ${(e2 as Error).message}`);
+        }
+      } else {
+        throw new Error(`Microphone permission denied or unavailable: ${(e as Error).message}`);
+      }
     }
     streamRef.current = stream;
 

@@ -48,6 +48,7 @@ from .core.config import Config, load_config
 from .core.diarize import diarize_session
 from .core.jobs import JobRegistry, Phase, encode_sse
 from .core.models import download_model, required_models
+from .core.syscap import SystemAudioMixer
 from .core.events import (
     ErrorEvent,
     ReadyEvent,
@@ -1316,6 +1317,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     cfg: Config = ws.app.state.config
     pipeline: Pipeline | None = None
     pump_task: asyncio.Task[None] | None = None
+    mixer: SystemAudioMixer | None = None
     wav_writer: WavWriter | None = None
     # Set in the start-config parse; finally needs them in scope.
     session_id: str | None = None
@@ -1350,6 +1352,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         session_id = raw_sid if _SAFE_SESSION_ID.match(raw_sid) else uuid.uuid4().hex
         src_lang = session_cfg.get("src", cfg.session.default_src_lang)
         tgt_lang = session_cfg.get("tgt", cfg.session.default_tgt_lang)
+        capture_system = bool(session_cfg.get("capture_system"))
         min_silence_ms = int(session_cfg.get("min_silence_ms", 800))
         max_segment_ms = int(session_cfg.get("max_segment_ms", 25000))
         partial_interval_ms = int(session_cfg.get("partial_interval_ms", 800))
@@ -1399,6 +1402,14 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         except FileNotFoundError as e:
             await _send_error(ws, "MODEL_NOT_FOUND", str(e), recoverable=False)
             return
+
+        # System-audio capture (meeting recording): mix the system output into
+        # the mic stream. Falls back to mic-only if the helper/permission isn't
+        # available, so recording still works.
+        if capture_system:
+            mixer = SystemAudioMixer()
+            if not await mixer.start():
+                mixer = None
         except Exception as e:
             log.exception("Pipeline start failed")
             await _send_error(ws, "MODEL_LOAD_FAILED", f"{type(e).__name__}: {e}", recoverable=False)
@@ -1531,6 +1542,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 # live pipeline and the per-session WAV file. Paused chunks
                 # never arrive here (frontend gates them) so the WAV
                 # naturally excludes silence-from-pause.
+                if mixer is not None:
+                    payload_bytes = await mixer.mix(payload_bytes)
                 await pipeline.feed_audio(payload_bytes)
                 if wav_writer is not None:
                     wav_writer.append(payload_bytes)
@@ -1583,6 +1596,11 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         except Exception:
             pass
     finally:
+        if mixer is not None:
+            try:
+                await mixer.stop()
+            except Exception:
+                log.exception("syscap stop failed during cleanup")
         if pump_task is not None:
             pump_task.cancel()
             try:

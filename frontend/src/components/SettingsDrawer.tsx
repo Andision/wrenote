@@ -16,6 +16,7 @@ import { useTheme } from "next-themes";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { listAudioInputs } from "@/lib/devices";
 import { useSessionStore } from "@/store/sessionStore";
 
 type CategoryId = "general" | "segmentation" | "realtime" | "engines";
@@ -120,6 +121,13 @@ export function SettingsDrawer() {
                 {cat === "general" && (
                   <div className="space-y-5">
                     <ThemeField />
+                    <MicDeviceField />
+                    <ToggleField
+                      label="Record system audio"
+                      checked={settings.captureSystemAudio}
+                      hint="Also capture your computer's audio output (e.g. the far side of an online meeting) and mix it into the transcription. macOS asks for Screen Recording permission the first time."
+                      onChange={(v) => updateSettings({ captureSystemAudio: v })}
+                    />
                     <ToggleField
                       label="Speaker identification (live)"
                       checked={settings.speakerEnabled}
@@ -337,6 +345,44 @@ function RangeField({
         onValueChange={(v) => onChange(Array.isArray(v) ? v[0] : v)}
       />
       {hint && <p className="text-[11px] leading-snug text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+function MicDeviceField() {
+  const micDeviceId = useSessionStore((s) => s.settings.micDeviceId);
+  const updateSettings = useSessionStore((s) => s.updateSettings);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void listAudioInputs().then(setDevices);
+    };
+    refresh();
+    navigator.mediaDevices?.addEventListener?.("devicechange", refresh);
+    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", refresh);
+  }, []);
+
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="space-y-0.5">
+        <Label className="text-xs text-foreground">Microphone</Label>
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          Input device for recording. Names appear after you grant mic access.
+        </p>
+      </div>
+      <select
+        value={micDeviceId}
+        onChange={(e) => updateSettings({ micDeviceId: e.target.value })}
+        className="max-w-[180px] shrink-0 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
+      >
+        <option value="">System default</option>
+        {devices.map((d) => (
+          <option key={d.deviceId} value={d.deviceId}>
+            {d.label || `Microphone (${d.deviceId.slice(0, 6)}…)`}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

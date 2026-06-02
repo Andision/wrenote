@@ -44,6 +44,10 @@ export interface SessionSettings {
   playbackMode: "single" | "continuous";
   /** Whether the StatusBar shows the mic + speaker level meters. */
   showLevelMeters: boolean;
+  /** Preferred microphone deviceId from enumerateDevices ("" = system default). */
+  micDeviceId: string;
+  /** Also capture system audio output (meeting recording) and mix it with the mic. */
+  captureSystemAudio: boolean;
 }
 
 const DEFAULT_SETTINGS: SessionSettings = {
@@ -59,6 +63,8 @@ const DEFAULT_SETTINGS: SessionSettings = {
   speakerEnabled: false,
   playbackMode: "continuous",
   showLevelMeters: true,
+  micDeviceId: "",
+  captureSystemAudio: false,
 };
 
 interface State {

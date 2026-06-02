@@ -72,6 +72,7 @@ export function useWebSocket({ url = DEFAULT_URL }: UseWebSocketOptions = {}) {
             translate_partials: s.translatePartials,
             translate_enabled: s.translateEnabled,
             speaker_enabled: s.speakerEnabled,
+            capture_system: s.captureSystemAudio,
           },
         }),
       );
