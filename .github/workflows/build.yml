@@ -45,9 +45,13 @@ jobs:
           pip install pywhispercpp pyinstaller imageio-ffmpeg
           pip install llama-cpp-python --extra-index-url ${{ matrix.llama_index }}
 
-      - name: Install pythonnet (Windows WebView2 backend)
+      - name: Install Windows-only deps (WebView2 + WASAPI loopback)
         if: runner.os == 'Windows'
-        run: pip install pythonnet
+        run: pip install pythonnet soundcard
+
+      - name: Smoke-import backend (catch syntax/import errors before freezing)
+        working-directory: backend
+        run: python -c "import wrenote.server, wrenote.desktop; print('import OK')"
 
       - name: Compile system-audio helper (macOS)
         if: runner.os == 'macOS'

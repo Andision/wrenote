@@ -1402,6 +1402,10 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         except FileNotFoundError as e:
             await _send_error(ws, "MODEL_NOT_FOUND", str(e), recoverable=False)
             return
+        except Exception as e:
+            log.exception("Pipeline start failed")
+            await _send_error(ws, "MODEL_LOAD_FAILED", f"{type(e).__name__}: {e}", recoverable=False)
+            return
 
         # System-audio capture (meeting recording): mix the system output into
         # the mic stream. Falls back to mic-only if the helper/permission isn't
@@ -1410,10 +1414,6 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             mixer = SystemAudioMixer()
             if not await mixer.start():
                 mixer = None
-        except Exception as e:
-            log.exception("Pipeline start failed")
-            await _send_error(ws, "MODEL_LOAD_FAILED", f"{type(e).__name__}: {e}", recoverable=False)
-            return
 
         # Open the raw-audio WAV file for this session. Failures are
         # non-fatal: we log and continue without recording (translation

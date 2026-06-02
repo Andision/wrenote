@@ -79,6 +79,7 @@ hiddenimports += collect_submodules("webview")
 hiddenimports += ["wrenote.server"]
 if IS_WIN:
     hiddenimports += ["clr"]  # pythonnet, for pywebview's edgechromium (WebView2) backend
+    hiddenimports += collect_submodules("soundcard")  # WASAPI loopback (system audio)
 
 excludes = [
     # torch/speechbrain are only for OFFLINE speaker diarization (ONNX model
