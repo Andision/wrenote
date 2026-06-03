@@ -53,10 +53,12 @@ jobs:
         working-directory: backend
         run: python -c "import wrenote.server, wrenote.desktop; print('import OK')"
 
-      - name: Compile system-audio helper (macOS)
+      - name: Compile macOS capture helpers (system-audio + screen/window)
         if: runner.os == 'macOS'
         working-directory: backend/packaging/macos
-        run: swiftc -O -o syscap syscap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia
+        run: |
+          swiftc -O -o syscap syscap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia
+          swiftc -O -o screencap screencap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework AppKit
 
       - name: PyInstaller build
         working-directory: backend

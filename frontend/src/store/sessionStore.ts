@@ -15,6 +15,7 @@ import {
   setSessionGroup as setSessionGroupRemote,
   suggestSessionTitle,
 } from "../lib/storage";
+import type { CaptureTarget } from "../lib/capture";
 import type {
   ConnectionState,
   ReadyInfo,
@@ -48,6 +49,10 @@ export interface SessionSettings {
   micDeviceId: string;
   /** Also capture system audio output (meeting recording) and mix it with the mic. */
   captureSystemAudio: boolean;
+  /** Also record the screen; on stop it's muxed with the audio into an MP4. */
+  captureScreen: boolean;
+  /** Which window/display to record (null = full screen). Used when captureScreen is on. */
+  captureTarget: CaptureTarget | null;
 }
 
 const DEFAULT_SETTINGS: SessionSettings = {
@@ -65,6 +70,8 @@ const DEFAULT_SETTINGS: SessionSettings = {
   showLevelMeters: true,
   micDeviceId: "",
   captureSystemAudio: false,
+  captureScreen: false,
+  captureTarget: null,
 };
 
 interface State {

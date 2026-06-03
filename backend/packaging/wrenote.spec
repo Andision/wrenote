@@ -62,6 +62,9 @@ if IS_MAC:
     syscap = os.path.join(BACKEND, "packaging", "macos", "syscap")
     if os.path.exists(syscap):
         binaries += [(syscap, ".")]  # ScreenCaptureKit system-audio helper
+    screencap = os.path.join(BACKEND, "packaging", "macos", "screencap")
+    if os.path.exists(screencap):
+        binaries += [(screencap, ".")]  # ScreenCaptureKit window/display video helper
 
 datas = [
     (os.path.join(BACKEND, "static", "app"), "static/app"),

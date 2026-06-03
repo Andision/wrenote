@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import ws
 from .api import (
+    capture,
     chat,
     diarize,
     groups,
@@ -53,7 +54,7 @@ APP_DIR = STATIC_DIR / "app"  # built SPA (vite output); served at "/" last.
 # Resource routers, registered in this order before the SPA catch-all.
 _ROUTERS = (
     sessions, groups, recordings, jobs, models,
-    upload, translate, diarize, chat, ws,
+    upload, translate, diarize, chat, capture, ws,
 )
 
 

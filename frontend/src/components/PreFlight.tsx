@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { ArrowRight, Loader2, Mic, ShieldCheck, UploadCloud } from "lucide-react";
+import { ArrowRight, Loader2, Mic, RefreshCw, ShieldCheck, UploadCloud } from "lucide-react";
 
 import {
   LanguageSelect,
@@ -10,6 +10,7 @@ import {
 import { UploadDialog } from "@/components/UploadDialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { type CaptureTargets, listCaptureTargets } from "@/lib/capture";
 import { useSessionStore } from "@/store/sessionStore";
 
 interface PreFlightProps {
@@ -31,6 +32,40 @@ export function PreFlight({ onStart }: PreFlightProps) {
   const isRecording = connection === "recording";
 
   const [uploadOpen, setUploadOpen] = useState(false);
+
+  // Screen/window capture targets — fetched only while "Record screen" is on.
+  // On macOS the list is empty until Screen-Recording permission is granted, so
+  // we expose a Refresh button (the first real recording triggers the prompt).
+  const [targets, setTargets] = useState<CaptureTargets>({ displays: [], windows: [] });
+  const [loadingTargets, setLoadingTargets] = useState(false);
+
+  const refreshTargets = () => {
+    setLoadingTargets(true);
+    void listCaptureTargets().then((t) => {
+      setTargets(t);
+      setLoadingTargets(false);
+    });
+  };
+
+  useEffect(() => {
+    if (!settings.captureScreen) return;
+    refreshTargets();
+  }, [settings.captureScreen]);
+
+  const targetValue = settings.captureTarget
+    ? `${settings.captureTarget.type}:${settings.captureTarget.id}`
+    : "";
+
+  const onPickTarget = (val: string) => {
+    if (!val) {
+      updateSettings({ captureTarget: null });
+      return;
+    }
+    const [type, idStr] = val.split(":");
+    const id = Number(idStr);
+    const pool = type === "display" ? targets.displays : targets.windows;
+    updateSettings({ captureTarget: pool.find((x) => x.id === id) ?? null });
+  };
 
   return (
     <motion.div
@@ -114,6 +149,51 @@ export function PreFlight({ onStart }: PreFlightProps) {
             : "Transcribe only · no translation"}
         </label>
       </div>
+
+      {/* Screen/window picker — only when "Record screen" is enabled (Settings).
+          Lists displays + windows from the backend; "Full screen" = no target. */}
+      {settings.captureScreen && (
+        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+          <span className="font-medium">Record</span>
+          <select
+            value={targetValue}
+            onChange={(e) => onPickTarget(e.target.value)}
+            disabled={isRecording || isBusy}
+            className="max-w-[18rem] truncate rounded-md border border-border bg-card px-2 py-1.5 text-[13px] text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50"
+            aria-label="Screen or window to record"
+          >
+            <option value="">Full screen</option>
+            {targets.displays.length > 0 && (
+              <optgroup label="Displays">
+                {targets.displays.map((d) => (
+                  <option key={`display:${d.id}`} value={`display:${d.id}`}>
+                    {d.title}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {targets.windows.length > 0 && (
+              <optgroup label="Windows">
+                {targets.windows.map((w) => (
+                  <option key={`window:${w.id}`} value={`window:${w.id}`}>
+                    {w.app ? `${w.app} — ${w.title}` : w.title}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          <button
+            type="button"
+            onClick={refreshTargets}
+            disabled={loadingTargets || isRecording || isBusy}
+            data-tip="Refresh the window list (grant Screen Recording first)"
+            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+            aria-label="Refresh capture targets"
+          >
+            <RefreshCw className={`size-3.5 ${loadingTargets ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+      )}
 
       {/* Vertical stack — Start recording is the primary path, Upload is the
           alternative. "or" between them reads as a deliberate fork. */}

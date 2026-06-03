@@ -115,6 +115,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         tgt_lang = session_cfg.get("tgt", cfg.session.default_tgt_lang)
         capture_system = bool(session_cfg.get("capture_system"))
         capture_screen = bool(session_cfg.get("capture_screen"))
+        # Optional chosen target {type: "window"|"display", id, title}. None =
+        # legacy full-screen.
+        capture_target = session_cfg.get("capture_target") or None
         min_silence_ms = int(session_cfg.get("min_silence_ms", 800))
         max_segment_ms = int(session_cfg.get("max_segment_ms", 25000))
         partial_interval_ms = int(session_cfg.get("partial_interval_ms", 800))
@@ -177,12 +180,13 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             if not await mixer.start():
                 mixer = None
 
-        # Optional full-screen recording → muxed with the session audio into an
-        # MP4 on stop. Falls back gracefully if unavailable / no permission.
+        # Optional screen/window recording → muxed with the session audio into an
+        # MP4 on stop. `capture_target` picks a window/display; None = full screen.
+        # Falls back gracefully if unavailable / no permission.
         if capture_screen and session_id:
             recorder = screenrec.ScreenRecorder()
             screen_video_path = resolve_recording_path(session_id).with_suffix(".screen.mp4")
-            if not await recorder.start(screen_video_path):
+            if not await recorder.start(screen_video_path, target=capture_target):
                 recorder = None
                 screen_video_path = None
 

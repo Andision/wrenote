@@ -129,6 +129,12 @@ export function SettingsDrawer() {
                       onChange={(v) => updateSettings({ captureSystemAudio: v })}
                     />
                     <ToggleField
+                      label="Record screen"
+                      checked={settings.captureScreen}
+                      hint="Record the full screen while you transcribe; saved as an MP4 (with the audio) when you stop. macOS asks for Screen Recording permission the first time."
+                      onChange={(v) => updateSettings({ captureScreen: v })}
+                    />
+                    <ToggleField
                       label="Speaker identification (live)"
                       checked={settings.speakerEnabled}
                       hint="Experimental — unreliable mid-call. The post-process Identify speakers button is much better."

@@ -8,6 +8,38 @@ They deliberately avoid paths that would load real STT/translator/chat models.
 from __future__ import annotations
 
 
+def test_capture_targets_returns_enumeration(client, monkeypatch):
+    """GET /capture/targets returns whatever screenrec.list_targets() produces.
+
+    Monkeypatched so the test never spawns the real ScreenCaptureKit helper (which
+    needs Screen-Recording permission); this only checks the router→core wiring.
+    """
+    import wrenote.core.screenrec as screenrec
+
+    async def fake_list_targets():
+        return {
+            "displays": [{"type": "display", "id": 1, "title": "Display 1", "width": 100, "height": 100}],
+            "windows": [{"type": "window", "id": 9, "title": "Notes", "app": "Notes", "width": 80, "height": 80}],
+        }
+
+    monkeypatch.setattr(screenrec, "list_targets", fake_list_targets)
+    r = client.get("/capture/targets")
+    assert r.status_code == 200
+    body = r.json()
+    assert [d["title"] for d in body["displays"]] == ["Display 1"]
+    assert body["windows"][0]["app"] == "Notes"
+
+
+def test_capture_targets_shape_without_permission(client):
+    """Real call on this box: macOS without Screen-Recording permission (or non-mac)
+    degrades to empty lists — still a 200 with the right shape, never a 500."""
+    r = client.get("/capture/targets")
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body.keys()) >= {"displays", "windows"}
+    assert isinstance(body["displays"], list) and isinstance(body["windows"], list)
+
+
 def test_translate_missing_session_404(client):
     assert client.post("/sessions/nope/translate").status_code == 404
 
