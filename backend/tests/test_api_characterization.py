@@ -35,6 +35,7 @@ EXPECTED_ROUTES = {
     ("GET", "/recordings/{session_id}.wav"),
     ("GET", "/sessions"),
     ("GET", "/sessions/{session_id}"),
+    ("GET", "/sessions/{session_id}/export"),
     ("GET", "/sessions/{session_id}/conversations"),
     ("GET", "/sessions/{session_id}/conversations/{conversation_id}/chat"),
     ("MOUNT", "/"),

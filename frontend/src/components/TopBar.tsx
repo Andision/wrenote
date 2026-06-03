@@ -12,6 +12,7 @@ import {
   UserSquare2,
 } from "lucide-react";
 
+import { ExportMenu } from "@/components/ExportMenu";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { startDiarize, startTranslate } from "@/lib/diarize";
@@ -83,6 +84,12 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
       (seg) =>
         seg.origText &&
         (!seg.transText || seg.transStatus === "skipped"),
+    ),
+  );
+  // Any real translation present → offer the bilingual export options.
+  const hasTranslations = useSessionStore((s) =>
+    Object.values(s.segments).some(
+      (seg) => seg.transText && seg.transStatus === "final",
     ),
   );
 
@@ -345,6 +352,10 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
         >
           <Download className="size-4" />
         </a>
+      )}
+
+      {canDownload && sessionId && (
+        <ExportMenu sessionId={sessionId} title={title} hasTranslations={hasTranslations} />
       )}
 
       <Button

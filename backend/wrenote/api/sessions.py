@@ -5,7 +5,9 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 
+from ..core import export as export_mod
 from ..core.recording import resolve_recording_path
 from ..core.store import Store
 from ..deps import get_store
@@ -27,6 +29,29 @@ async def get_session(session_id: str, store: Store = Depends(get_store)) -> dic
     if sess is None:
         raise HTTPException(status_code=404, detail="session not found")
     return sess
+
+
+@router.get("/sessions/{session_id}/export")
+async def export_session(
+    session_id: str,
+    fmt: str = "md",
+    content: str = "both",
+    store: Store = Depends(get_store),
+) -> PlainTextResponse:
+    """Export the transcript as text. ``fmt`` = md|txt|srt|vtt;
+    ``content`` = original|translation|both. Returned as text so the frontend
+    can copy it or save it client-side with a chosen filename."""
+    sid = safe_session_id(session_id)
+    if content not in ("original", "translation", "both"):
+        raise HTTPException(status_code=400, detail="invalid content")
+    sess = await store.get_session(sid)
+    if sess is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    try:
+        text, mime, _ext = export_mod.export_transcript(sess, fmt, content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return PlainTextResponse(text, media_type=mime)
 
 
 @router.patch("/sessions/{session_id}")
