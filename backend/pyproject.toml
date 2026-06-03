@@ -57,6 +57,17 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP", "RUF", "SIM"]
 ignore = ["E501"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's DI/parameter callables are *designed* to be used as argument
+# defaults (Depends/File/Form/Query/...), so they are not B008 mutable-default
+# footguns. Without this, every `x = Depends(...)` would be a false positive.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Query",
+]
+
 [tool.ruff.format]
 quote-style = "double"
 

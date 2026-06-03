@@ -6,13 +6,14 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..core.config import Config
 from ..core.jobs import JobRegistry, Phase
 from ..core.registry import make_translator
 from ..core.store import Store
 from ..core.translation import translate_segments_for_session, translation_candidates
+from ..deps import get_config, get_jobs, get_store
 from ._common import safe_session_id
 
 log = logging.getLogger(__name__)
@@ -25,7 +26,13 @@ _TRANSLATE_PHASES = [
 
 
 @router.post("/sessions/{session_id}/translate")
-async def translate_session(session_id: str, request: Request) -> dict[str, str]:
+async def translate_session(
+    session_id: str,
+    request: Request,
+    store: Store = Depends(get_store),
+    cfg: Config = Depends(get_config),
+    registry: JobRegistry = Depends(get_jobs),
+) -> dict[str, str]:
     """Retroactively translate any segments missing a translation.
 
     Useful for STT-only sessions: user records without translation, then
@@ -42,7 +49,6 @@ async def translate_session(session_id: str, request: Request) -> dict[str, str]
         except json.JSONDecodeError:
             pass
 
-    store: Store = request.app.state.store
     session = await store.get_session(sid)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
@@ -51,8 +57,6 @@ async def translate_session(session_id: str, request: Request) -> dict[str, str]
     # retranslate=True re-does every segment (replacing existing translations);
     # the default only fills in segments that are missing a translation.
     retranslate = bool(body.get("retranslate"))
-    cfg: Config = request.app.state.config
-    registry: JobRegistry = request.app.state.jobs
     job = registry.create(kind="translate", phases=list(_TRANSLATE_PHASES))
 
     async def runner() -> None:

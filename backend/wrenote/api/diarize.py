@@ -5,7 +5,7 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..core.config import Config
 from ..core.diarize import diarize_session
@@ -18,6 +18,8 @@ from ..core.translation import (
     translate_segments_for_session,
     translation_candidates,
 )
+from ..deps import get_config, get_jobs, get_models, get_store
+from ..model_manager import ModelManager
 from ._common import safe_session_id
 
 log = logging.getLogger(__name__)
@@ -39,11 +41,16 @@ _DIARIZE_RETRANSLATE_PHASES = [
 
 
 @router.post("/sessions/{session_id}/diarize")
-async def diarize_endpoint(session_id: str, request: Request) -> dict[str, str]:
+async def diarize_endpoint(
+    session_id: str,
+    store: Store = Depends(get_store),
+    registry: JobRegistry = Depends(get_jobs),
+    models: ModelManager = Depends(get_models),
+    cfg: Config = Depends(get_config),
+) -> dict[str, str]:
     """Kick off offline diarization as a job. Returns ``{job_id}``
     immediately; subscribe to ``/jobs/{job_id}/stream`` for progress."""
     sid = safe_session_id(session_id)
-    store: Store = request.app.state.store
     session = await store.get_session(sid)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
@@ -56,7 +63,6 @@ async def diarize_endpoint(session_id: str, request: Request) -> dict[str, str]:
     segments = session.get("segments", [])
     should_retranslate = has_real_translations(segments)
 
-    registry: JobRegistry = request.app.state.jobs
     job = registry.create(
         kind="diarize",
         phases=list(
@@ -78,7 +84,7 @@ async def diarize_endpoint(session_id: str, request: Request) -> dict[str, str]:
             # ---- Phase 0: load speaker model ----
             registry.advance(job.id, phase_idx=0, phase_inner=0.0,
                              log_line="Loading speaker model")
-            speaker = await request.app.state.models.ensure_diarize_loaded()
+            speaker = await models.ensure_diarize_loaded()
             registry.advance(job.id, phase_inner=1.0)
 
             # ---- Phase 1: embed + cluster ----
@@ -107,7 +113,6 @@ async def diarize_endpoint(session_id: str, request: Request) -> dict[str, str]:
             translated = 0
             if should_retranslate and resegmented:
                 tgt_lang = str(session.get("tgt_lang") or "zh")
-                cfg: Config = request.app.state.config
 
                 # ---- Phase 3: load translator only when the old transcript
                 # had real translations. STT-only sessions stay diarize-only.
@@ -176,7 +181,9 @@ async def diarize_endpoint(session_id: str, request: Request) -> dict[str, str]:
 
 
 @router.patch("/sessions/{session_id}/speakers")
-async def rename_speaker(session_id: str, request: Request) -> dict[str, int]:
+async def rename_speaker(
+    session_id: str, request: Request, store: Store = Depends(get_store)
+) -> dict[str, int]:
     """Body: ``{"from": "Speaker 1", "to": "Alice"}``. Renames every segment
     whose ``speaker`` matches ``from`` to ``to``. Returns count updated."""
     sid = safe_session_id(session_id)
@@ -187,13 +194,14 @@ async def rename_speaker(session_id: str, request: Request) -> dict[str, int]:
         raise HTTPException(status_code=400, detail="from and to are required")
     if old == new:
         return {"updated": 0}
-    store: Store = request.app.state.store
     n = await store.rename_speaker(sid, old, new)
     return {"updated": n}
 
 
 @router.post("/sessions/{session_id}/segments/speaker")
-async def assign_segment_speaker(session_id: str, request: Request) -> dict[str, int]:
+async def assign_segment_speaker(
+    session_id: str, request: Request, store: Store = Depends(get_store)
+) -> dict[str, int]:
     """Body: ``{"segmentIds": [...], "speaker": "Alice"}``. Assigns a speaker
     to specific segments — used to label segments diarization left
     unidentified, without cascading across the whole session."""
@@ -205,7 +213,6 @@ async def assign_segment_speaker(session_id: str, request: Request) -> dict[str,
         raise HTTPException(
             status_code=400, detail="segmentIds and speaker are required"
         )
-    store: Store = request.app.state.store
     labels = {str(s): speaker for s in seg_ids}
     n = await store.set_segment_speakers(sid, labels)
     return {"updated": n}

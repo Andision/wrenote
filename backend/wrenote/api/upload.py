@@ -8,7 +8,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from ..core.config import Config
 from ..core.jobs import JobRegistry
@@ -19,6 +19,7 @@ from ..core.upload import (
     UPLOAD_PHASES_TRANSLATE,
     process_upload,
 )
+from ..deps import get_config, get_jobs, get_store
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,12 +27,14 @@ router = APIRouter()
 
 @router.post("/sessions/upload")
 async def upload_session(
-    request: Request,
     files: list[UploadFile] = File(...),
     title: str = Form("Untitled session"),
     src_lang: str = Form("auto"),
     tgt_lang: str = Form("zh"),
     translate: bool = Form(True),
+    cfg: Config = Depends(get_config),
+    store: Store = Depends(get_store),
+    registry: JobRegistry = Depends(get_jobs),
 ) -> dict[str, str]:
     """Kicks off a background job; returns immediately.
 
@@ -41,7 +44,6 @@ async def upload_session(
     if not files:
         raise HTTPException(status_code=400, detail="no files")
 
-    cfg: Config = request.app.state.config
     if cfg.stt.backend != "whisper_cpp":
         raise HTTPException(
             status_code=400,
@@ -62,9 +64,6 @@ async def upload_session(
         saved_paths.append(dest)
 
     sid = uuid.uuid4().hex
-    store: Store = request.app.state.store
-    registry: JobRegistry = request.app.state.jobs
-
     phases = UPLOAD_PHASES_TRANSLATE if translate else UPLOAD_PHASES_NO_TRANSLATE
     job = registry.create(kind="upload", phases=list(phases))
 

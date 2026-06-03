@@ -4,32 +4,33 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from ..core.jobs import JobRegistry, encode_sse
+from ..deps import get_jobs
 
 router = APIRouter()
 
 
 @router.get("/jobs/{job_id}")
-async def get_job(job_id: str, request: Request) -> dict[str, Any]:
-    registry: JobRegistry = request.app.state.jobs
-    job = registry.get(job_id)
+async def get_job(job_id: str, jobs: JobRegistry = Depends(get_jobs)) -> dict[str, Any]:
+    job = jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return job.snapshot()
 
 
 @router.get("/jobs/{job_id}/stream")
-async def stream_job(job_id: str, request: Request) -> StreamingResponse:
+async def stream_job(
+    job_id: str, jobs: JobRegistry = Depends(get_jobs)
+) -> StreamingResponse:
     """SSE stream of job snapshots. Closes when the job is done/error."""
-    registry: JobRegistry = request.app.state.jobs
-    if registry.get(job_id) is None:
+    if jobs.get(job_id) is None:
         raise HTTPException(status_code=404, detail="job not found")
 
     async def gen() -> AsyncIterator[bytes]:
-        async for snap in registry.subscribe(job_id):
+        async for snap in jobs.subscribe(job_id):
             yield encode_sse(snap)
             if snap.get("status") != "running":
                 # One terminal frame is enough; bail.

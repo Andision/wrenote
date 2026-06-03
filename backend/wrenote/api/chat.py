@@ -6,12 +6,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ..chat.base import ChatMessage
 from ..core.store import Store
 from ..core.transcript import build_chat_system_prompt, build_transcript_snapshot
+from ..deps import get_models, get_store
+from ..model_manager import ModelManager
 from ._common import (
     require_conversation,
     safe_conversation_id,
@@ -23,18 +25,18 @@ router = APIRouter()
 
 
 @router.get("/sessions/{session_id}/conversations")
-async def list_conversations(session_id: str, request: Request) -> dict[str, Any]:
+async def list_conversations(
+    session_id: str, store: Store = Depends(get_store)
+) -> dict[str, Any]:
     sid = safe_session_id(session_id)
-    store: Store = request.app.state.store
     return {"conversations": await store.list_conversations(sid)}
 
 
 @router.post("/sessions/{session_id}/conversations")
 async def create_conversation(
-    session_id: str, request: Request
+    session_id: str, request: Request, store: Store = Depends(get_store)
 ) -> dict[str, Any]:
     sid = safe_session_id(session_id)
-    store: Store = request.app.state.store
     if await store.get_session(sid) is None:
         raise HTTPException(status_code=404, detail="session not found")
     try:
@@ -53,11 +55,11 @@ async def create_conversation(
 
 @router.patch("/sessions/{session_id}/conversations/{conversation_id}")
 async def rename_conversation(
-    session_id: str, conversation_id: str, request: Request
+    session_id: str, conversation_id: str, request: Request,
+    store: Store = Depends(get_store),
 ) -> dict[str, str]:
     sid = safe_session_id(session_id)
     cid = safe_conversation_id(conversation_id)
-    store: Store = request.app.state.store
     await require_conversation(store, sid, cid)
     body = await request.json()
     title = (body.get("title") or "").strip()
@@ -67,11 +69,10 @@ async def rename_conversation(
 
 @router.delete("/sessions/{session_id}/conversations/{conversation_id}")
 async def delete_conversation(
-    session_id: str, conversation_id: str, request: Request
+    session_id: str, conversation_id: str, store: Store = Depends(get_store)
 ) -> dict[str, str]:
     sid = safe_session_id(session_id)
     cid = safe_conversation_id(conversation_id)
-    store: Store = request.app.state.store
     await require_conversation(store, sid, cid)
     await store.delete_conversation(cid)
     return {"status": "ok"}
@@ -79,22 +80,20 @@ async def delete_conversation(
 
 @router.get("/sessions/{session_id}/conversations/{conversation_id}/chat")
 async def list_conversation_chat(
-    session_id: str, conversation_id: str, request: Request
+    session_id: str, conversation_id: str, store: Store = Depends(get_store)
 ) -> dict[str, Any]:
     sid = safe_session_id(session_id)
     cid = safe_conversation_id(conversation_id)
-    store: Store = request.app.state.store
     await require_conversation(store, sid, cid)
     return {"messages": await store.list_chat_messages(cid)}
 
 
 @router.delete("/sessions/{session_id}/conversations/{conversation_id}/chat")
 async def clear_conversation_chat(
-    session_id: str, conversation_id: str, request: Request
+    session_id: str, conversation_id: str, store: Store = Depends(get_store)
 ) -> dict[str, str]:
     sid = safe_session_id(session_id)
     cid = safe_conversation_id(conversation_id)
-    store: Store = request.app.state.store
     await require_conversation(store, sid, cid)
     await store.clear_chat(cid)
     return {"status": "ok"}
@@ -102,7 +101,9 @@ async def clear_conversation_chat(
 
 @router.post("/sessions/{session_id}/conversations/{conversation_id}/chat")
 async def post_conversation_chat(
-    session_id: str, conversation_id: str, request: Request
+    session_id: str, conversation_id: str, request: Request,
+    store: Store = Depends(get_store),
+    models: ModelManager = Depends(get_models),
 ) -> StreamingResponse:
     """Stream the assistant reply for the user's next message in a thread.
 
@@ -120,7 +121,6 @@ async def post_conversation_chat(
     if not text:
         raise HTTPException(status_code=400, detail="text required")
 
-    store: Store = request.app.state.store
     session = await store.get_session(sid)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
@@ -129,7 +129,7 @@ async def post_conversation_chat(
     history_rows = await store.list_chat_messages(cid)
 
     # Lazy-load the model on first chat in this server's lifetime.
-    backend = await request.app.state.models.ensure_chat_loaded()
+    backend = await models.ensure_chat_loaded()
 
     system_msg = ChatMessage(
         role="system",
@@ -189,12 +189,15 @@ _TITLE_SYSTEM = (
 
 
 @router.post("/sessions/{session_id}/title/suggest")
-async def suggest_title(session_id: str, request: Request) -> dict[str, str]:
+async def suggest_title(
+    session_id: str,
+    store: Store = Depends(get_store),
+    models: ModelManager = Depends(get_models),
+) -> dict[str, str]:
     """Summarize a concise title for the session from its transcript using the
     chat model, persist it, and return it. Best-effort: if there's nothing to
     summarize the existing title is returned unchanged."""
     sid = safe_session_id(session_id)
-    store: Store = request.app.state.store
     session = await store.get_session(sid)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
@@ -204,7 +207,7 @@ async def suggest_title(session_id: str, request: Request) -> dict[str, str]:
     if not transcript.strip():
         return {"title": current}
 
-    backend = await request.app.state.models.ensure_chat_loaded()
+    backend = await models.ensure_chat_loaded()
     messages = [
         ChatMessage(role="system", content=_TITLE_SYSTEM),
         ChatMessage(
