@@ -65,12 +65,15 @@ def origin_allowed(origin: str | None) -> bool:
     return False
 
 
-def install_loopback_auth(app: FastAPI) -> None:
+def install_loopback_auth(app: FastAPI, token: str = AUTH_TOKEN) -> None:
     """Register the loopback-auth HTTP middleware when a token is configured.
 
-    No-op when ``AUTH_TOKEN`` is unset (plain dev), so behavior is unchanged.
+    ``token`` is injected by ``create_app`` (defaulting to the env-derived
+    ``AUTH_TOKEN``); an empty token is a no-op, so plain dev is unchanged. Taking
+    the token as a parameter — rather than reading a module global at import —
+    is what lets tests build an authed app via ``create_app(auth_token=...)``.
     """
-    if not AUTH_TOKEN:
+    if not token:
         return
 
     @app.middleware("http")
@@ -79,7 +82,7 @@ def install_loopback_auth(app: FastAPI) -> None:
         if (
             path not in _PUBLIC_PATHS
             and not path.startswith(_PUBLIC_PREFIXES)
-            and token_from_request(request) != AUTH_TOKEN
+            and token_from_request(request) != token
         ):
             return JSONResponse({"detail": "unauthorized"}, status_code=401)
         response = await call_next(request)
@@ -87,6 +90,6 @@ def install_loopback_auth(app: FastAPI) -> None:
         # cookie automatically (same-origin), so no frontend changes are needed.
         if path == "/":
             response.set_cookie(
-                AUTH_COOKIE, AUTH_TOKEN, samesite="strict", path="/", max_age=86400
+                AUTH_COOKIE, token, samesite="strict", path="/", max_age=86400
             )
         return response

@@ -13,7 +13,6 @@ from ..chat.base import ChatMessage
 from ..core.store import Store
 from ..core.transcript import build_chat_system_prompt, build_transcript_snapshot
 from ._common import (
-    ensure_chat_loaded,
     require_conversation,
     safe_conversation_id,
     safe_session_id,
@@ -130,8 +129,7 @@ async def post_conversation_chat(
     history_rows = await store.list_chat_messages(cid)
 
     # Lazy-load the model on first chat in this server's lifetime.
-    await ensure_chat_loaded(request.app)
-    backend = request.app.state.chat_backend
+    backend = await request.app.state.models.ensure_chat_loaded()
 
     system_msg = ChatMessage(
         role="system",
@@ -206,8 +204,7 @@ async def suggest_title(session_id: str, request: Request) -> dict[str, str]:
     if not transcript.strip():
         return {"title": current}
 
-    await ensure_chat_loaded(request.app)
-    backend = request.app.state.chat_backend
+    backend = await request.app.state.models.ensure_chat_loaded()
     messages = [
         ChatMessage(role="system", content=_TITLE_SYSTEM),
         ChatMessage(

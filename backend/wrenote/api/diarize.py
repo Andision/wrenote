@@ -18,7 +18,7 @@ from ..core.translation import (
     translate_segments_for_session,
     translation_candidates,
 )
-from ._common import ensure_diarize_loaded, safe_session_id
+from ._common import safe_session_id
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -78,7 +78,7 @@ async def diarize_endpoint(session_id: str, request: Request) -> dict[str, str]:
             # ---- Phase 0: load speaker model ----
             registry.advance(job.id, phase_idx=0, phase_inner=0.0,
                              log_line="Loading speaker model")
-            speaker = await ensure_diarize_loaded(request.app)
+            speaker = await request.app.state.models.ensure_diarize_loaded()
             registry.advance(job.id, phase_inner=1.0)
 
             # ---- Phase 1: embed + cluster ----

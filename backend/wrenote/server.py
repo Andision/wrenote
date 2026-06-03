@@ -1,27 +1,23 @@
-"""FastAPI WebSocket server.
+"""FastAPI application factory + assembly.
 
-Per design.v1.1 §5. Single endpoint ``/ws`` carries:
+``create_app()`` wires the lifespan, CORS, loopback auth, the ``api/*`` routers,
+the WebSocket router, and the static/SPA mounts — in that order, so every API
+route and ``/static`` take precedence over the SPA catch-all at ``/``.
 
-* Client → server: binary PCM frames + JSON control messages (``start``/``stop``/``switch_lang``).
-* Server → client: JSON events (``ready``, ``speech_start``, ``partial``, ``final``,
-  ``translation``, ``error``, ``metric``).
-
-A new :class:`Pipeline` is created per WebSocket connection. P1-a single-user
-focus; shared-backend pooling is a later optimisation.
+The module also exposes ``app = create_app()`` so the ``"wrenote.server:app"``
+ASGI string used by the desktop launcher and ``__main__`` keeps working. The
+factory takes ``config`` and ``auth_token`` so tests can build an isolated,
+optionally-authenticated app without monkeypatching module globals.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import (
-    FastAPI,
-    Request,
-)
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -37,11 +33,12 @@ from .api import (
     translate,
     upload,
 )
-from .auth import install_loopback_auth
+from .auth import AUTH_TOKEN, install_loopback_auth
 from .core.config import Config, load_config
 from .core.jobs import JobRegistry
 from .core.registry import make_chat, make_speaker
 from .core.store import Store
+from .model_manager import ModelManager
 
 log = logging.getLogger(__name__)
 
@@ -51,137 +48,129 @@ if getattr(sys, "frozen", False):
 else:
     STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
+APP_DIR = STATIC_DIR / "app"  # built SPA (vite output); served at "/" last.
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Load config once at startup; warn loudly on insecure host binding."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-    )
-    cfg = load_config()
-    app.state.config = cfg
-
-    if cfg.server.host not in {"127.0.0.1", "localhost", "::1"}:
-        log.warning(
-            "Server is bound to %s — this exposes the WebSocket to your LAN. "
-            "Anyone on this network can capture your microphone. Bind to "
-            "127.0.0.1 unless you have explicitly opted into LAN access.",
-            cfg.server.host,
-        )
-    log.info("Loaded config: server=%s:%d  stt=%s vad=%s translator=%s",
-             cfg.server.host, cfg.server.port,
-             cfg.stt.backend, cfg.vad.backend, cfg.translator.backend)
-
-    store = Store()
-    await store.open()
-    app.state.store = store
-    # Chat backend is instantiated up-front (cheap) but the model is loaded
-    # lazily on first chat request — Qwen3.5-4B is ~3GB and most sessions
-    # never invoke chat, so paying the load cost at startup is wasteful.
-    app.state.chat_backend = make_chat(cfg.chat.backend, cfg.chat.params)
-    app.state.chat_loaded = False
-    app.state.chat_load_lock = asyncio.Lock()
-    # Offline-diarize backend: also lazy. Same pattern.
-    app.state.diarize_speaker = (
-        make_speaker(cfg.speaker.backend, cfg.speaker.params)
-        if cfg.speaker.backend not in (None, "", "disabled")
-        else None
-    )
-    app.state.diarize_loaded = False
-    app.state.diarize_load_lock = asyncio.Lock()
-    # In-memory job registry for async upload + diarize.
-    app.state.jobs = JobRegistry()
-    try:
-        yield
-    finally:
-        if app.state.chat_loaded:
-            try:
-                await app.state.chat_backend.unload()
-            except Exception:
-                log.exception("chat backend unload failed")
-        if app.state.diarize_loaded and app.state.diarize_speaker is not None:
-            try:
-                await app.state.diarize_speaker.unload()
-            except Exception:
-                log.exception("diarize speaker unload failed")
-        await store.close()
-
-
-app = FastAPI(title="Wrenote", lifespan=lifespan)
-
-# Allow the Vite dev server (different port) to call HTTP endpoints. The
-# WebSocket has its own origin check; this is for fetch/XHR (recording
-# download, future session DB endpoints).
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",
-        "http://localhost:4173", "http://127.0.0.1:4173",
-    ],
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+# Resource routers, registered in this order before the SPA catch-all.
+_ROUTERS = (
+    sessions, groups, recordings, jobs, models,
+    upload, translate, diarize, chat, ws,
 )
 
-# Loopback-auth HTTP middleware (no-op unless WRENOTE_AUTH_TOKEN is set). The WS
-# upgrade is NOT covered by HTTP middleware, so ws.py gates itself separately.
-install_loopback_auth(app)
+
+def _make_lifespan(config: Config | None):
+    """Build a lifespan bound to ``config`` (or ``load_config()`` at startup)."""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        )
+        cfg = config if config is not None else load_config()
+        app.state.config = cfg
+
+        if cfg.server.host not in {"127.0.0.1", "localhost", "::1"}:
+            log.warning(
+                "Server is bound to %s — this exposes the WebSocket to your LAN. "
+                "Anyone on this network can capture your microphone. Bind to "
+                "127.0.0.1 unless you have explicitly opted into LAN access.",
+                cfg.server.host,
+            )
+        log.info("Loaded config: server=%s:%d  stt=%s vad=%s translator=%s",
+                 cfg.server.host, cfg.server.port,
+                 cfg.stt.backend, cfg.vad.backend, cfg.translator.backend)
+
+        store = Store()
+        await store.open()
+        app.state.store = store
+        # Chat + offline-diarize models are instantiated up-front (cheap) but
+        # their weights load lazily on first use — most sessions never invoke
+        # chat (~3GB) or diarization, so paying the load cost at startup is
+        # wasteful. ModelManager owns that lazy lifecycle.
+        diarize_speaker = (
+            make_speaker(cfg.speaker.backend, cfg.speaker.params)
+            if cfg.speaker.backend not in (None, "", "disabled")
+            else None
+        )
+        app.state.models = ModelManager(
+            chat_backend=make_chat(cfg.chat.backend, cfg.chat.params),
+            diarize_speaker=diarize_speaker,
+        )
+        # In-memory job registry for async upload + diarize.
+        app.state.jobs = JobRegistry()
+        try:
+            yield
+        finally:
+            await app.state.models.aclose()
+            await store.close()
+
+    return lifespan
 
 
-APP_DIR = STATIC_DIR / "app"  # built SPA (vite output); served at "/" at EOF.
+def _register_meta_routes(app: FastAPI) -> None:
+    """Health/info, plus a dev-only JSON banner at ``/`` when the SPA isn't built."""
+    if not APP_DIR.exists():
+        # Once the SPA is built, its mount owns "/" instead.
+        @app.get("/")
+        async def root() -> dict[str, Any]:
+            return {
+                "service": "wrenote",
+                "version": "0.1.0",
+                "ws": "/ws",
+                "test_page": "/static/test.html",
+            }
 
-# Resource routers (carved out of this module). Registered before the SPA
-# catch-all mount at EOF so API paths always win over the single-page app.
-app.include_router(sessions.router)
-app.include_router(groups.router)
-app.include_router(recordings.router)
-app.include_router(jobs.router)
-app.include_router(models.router)
-app.include_router(upload.router)
-app.include_router(translate.router)
-app.include_router(diarize.router)
-app.include_router(chat.router)
-app.include_router(ws.router)
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
 
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-
-# ---------- Basic HTTP endpoints ----------
-
-
-# When the SPA hasn't been built yet (dev without `npm run build`), expose a
-# small JSON banner at "/". Once built, the SPA mount at the bottom of this
-# module owns "/" instead.
-if not APP_DIR.exists():
-
-    @app.get("/")
-    async def root() -> dict[str, Any]:
+    @app.get("/info")
+    async def info(request: Request) -> dict[str, Any]:
+        cfg: Config = request.app.state.config
         return {
-            "service": "wrenote",
-            "version": "0.1.0",
-            "ws": "/ws",
-            "test_page": "/static/test.html",
+            "config": cfg.model_dump(),
+            "static_dir_exists": STATIC_DIR.exists(),
         }
 
 
-@app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+def create_app(config: Config | None = None, *, auth_token: str | None = None) -> FastAPI:
+    """Build a wrenote ASGI app.
+
+    ``config``: injected config (tests); ``None`` loads it at startup.
+    ``auth_token``: loopback token; ``None`` falls back to the env-derived
+    ``AUTH_TOKEN`` (empty in plain dev → auth disabled).
+    """
+    app = FastAPI(title="Wrenote", lifespan=_make_lifespan(config))
+
+    # Allow the Vite dev server (different port) to call HTTP endpoints. The
+    # WebSocket has its own origin check; this is for fetch/XHR.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173", "http://127.0.0.1:5173",
+            "http://localhost:4173", "http://127.0.0.1:4173",
+        ],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
+    # Loopback-auth HTTP middleware (no-op when the token is empty). The WS
+    # upgrade is NOT covered by HTTP middleware, so ws.py gates itself separately.
+    install_loopback_auth(app, AUTH_TOKEN if auth_token is None else auth_token)
+
+    for module in _ROUTERS:
+        app.include_router(module.router)
+
+    if STATIC_DIR.exists():
+        app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    _register_meta_routes(app)
+
+    # SPA catch-all, mounted LAST so every API route + /static win; only
+    # unmatched paths fall through. `html=True` serves index.html at "/".
+    if APP_DIR.exists():
+        app.mount("/", StaticFiles(directory=str(APP_DIR), html=True), name="spa")
+
+    return app
 
 
-@app.get("/info")
-async def info(request: Request) -> dict[str, Any]:
-    cfg: Config = request.app.state.config
-    return {
-        "config": cfg.model_dump(),
-        "static_dir_exists": STATIC_DIR.exists(),
-    }
-
-
-# ---------- SPA (built frontend) ----------
-# Mounted LAST so every API route and the /static mount above take precedence;
-# only unmatched paths fall through to the single-page app. `html=True` serves
-# index.html at "/" and for client-side routes.
-if APP_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(APP_DIR), html=True), name="spa")
+app = create_app()

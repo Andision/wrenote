@@ -40,17 +40,35 @@ def _mock_config() -> Config:
     )
 
 
+def _isolate_paths(monkeypatch, tmp_path) -> None:
+    """Point the SQLite DB + recordings at a per-test tmp dir (the app otherwise
+    hard-codes ``~/.wrenote``)."""
+    monkeypatch.setattr(store_mod, "DEFAULT_DB_PATH", tmp_path / "data.db")
+    monkeypatch.setattr(recording_mod, "DEFAULT_DIR", tmp_path / "recordings")
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    """A TestClient bound to the global app, with config + persistence isolated.
+    """A TestClient over a fresh ``create_app(mock_config)`` with isolated state.
 
     Function-scoped: each test gets a fresh empty SQLite DB and recordings dir.
     The ``with TestClient(...)`` block runs the app's lifespan (startup +
     shutdown), so ``app.state.store`` etc. are wired exactly as in production.
     """
-    monkeypatch.setattr(server, "load_config", lambda *a, **k: _mock_config())
-    monkeypatch.setattr(store_mod, "DEFAULT_DB_PATH", tmp_path / "data.db")
-    monkeypatch.setattr(recording_mod, "DEFAULT_DIR", tmp_path / "recordings")
+    _isolate_paths(monkeypatch, tmp_path)
+    with TestClient(server.create_app(_mock_config())) as c:
+        yield c
 
-    with TestClient(server.app) as c:
+
+@pytest.fixture
+def auth_client(monkeypatch, tmp_path):
+    """Like ``client`` but with loopback auth enabled (token ``test-secret``).
+
+    Only possible because ``create_app(auth_token=...)`` makes auth per-app —
+    the previous import-time ``WRENOTE_AUTH_TOKEN`` gating couldn't be toggled
+    per test. Exercises the 401 / cookie / bearer / query-token paths.
+    """
+    _isolate_paths(monkeypatch, tmp_path)
+    app = server.create_app(_mock_config(), auth_token="test-secret")
+    with TestClient(app) as c:
         yield c
