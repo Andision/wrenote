@@ -70,7 +70,7 @@ def translation_candidates(
         and (
             not only_missing
             or not (s.get("trans_text") or "")
-            or s.get("trans_status") == "skipped"
+            or s.get("trans_status") in ("skipped", "stale")
         )
     ]
 

@@ -137,6 +137,28 @@ export async function renameSession(id: string, title: string): Promise<void> {
 }
 
 /**
+ * Edit a segment's text. `origText` edits the transcription (its translation is
+ * flagged stale server-side); `transText` is a manual translation override.
+ */
+export async function editSegment(
+  sessionId: string,
+  segmentId: string,
+  patch: { origText?: string; transText?: string },
+): Promise<void> {
+  const body: Record<string, string> = {};
+  if (patch.origText !== undefined) body.orig_text = patch.origText;
+  if (patch.transText !== undefined) body.trans_text = patch.transText;
+  await fetch(
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}/segments/${encodeURIComponent(segmentId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+/**
  * Ask the backend to summarize a title from the session transcript (LLM).
  * Returns the new title, or null on failure. The backend persists it.
  */

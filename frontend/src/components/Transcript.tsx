@@ -217,6 +217,11 @@ function SegmentCard({
     connection !== "recording" &&
     connection !== "paused" &&
     connection !== "connecting";
+  // Inline text editing: only on a finished, final, single-segment card. A
+  // merged speaker turn (relatedIds 2+) can't map an edit back to one segment —
+  // that needs split/merge (Layer 2).
+  const editSegmentText = useSessionStore((s) => s.editSegmentText);
+  const editable = canPlay && (relatedIds?.length ?? 1) <= 1;
 
   return (
     <motion.article
@@ -289,9 +294,12 @@ function SegmentCard({
 
       <Row
         lang={resolvedSrcLang}
-        text={seg.origText || "…"}
+        text={seg.origText}
+        placeholder="…"
         emphasis="primary"
         partial={isPartial}
+        editable={editable}
+        onCommit={(t) => editSegmentText(seg.segmentId, { origText: t })}
       />
 
       {showTranslation && (
@@ -299,13 +307,14 @@ function SegmentCard({
           <div className="my-2 h-px bg-border/60" />
           <Row
             lang={tgtLang}
-            text={
-              seg.transText ||
-              (seg.transStatus === "pending" ? "Translating…" : "—")
-            }
+            text={seg.transText}
+            placeholder={seg.transStatus === "pending" ? "Translating…" : "—"}
             emphasis="secondary"
             partial={seg.transStatus === "partial"}
             pending={seg.transStatus === "pending"}
+            stale={seg.transStatus === "stale"}
+            editable={editable}
+            onCommit={(t) => editSegmentText(seg.segmentId, { transText: t })}
           />
         </>
       )}
@@ -313,37 +322,121 @@ function SegmentCard({
   );
 }
 
+function autosize(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 function Row({
   lang,
   text,
+  placeholder = "",
   emphasis,
   partial,
   pending,
+  stale,
+  editable,
+  onCommit,
 }: {
   lang: string;
+  /** Raw text (may be empty); `placeholder` is shown when empty & not editing. */
   text: string;
+  placeholder?: string;
   emphasis: "primary" | "secondary";
   partial?: boolean;
   pending?: boolean;
+  /** Translation no longer matches an edited original. */
+  stale?: boolean;
+  editable?: boolean;
+  onCommit?: (text: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      const ta = taRef.current;
+      ta?.focus();
+      ta?.select();
+      autosize(ta);
+    }
+  }, [editing]);
+
+  const begin = () => {
+    if (!editable) return;
+    setDraft(text);
+    setEditing(true);
+  };
+  const commit = () => {
+    setEditing(false);
+    const v = draft.trim();
+    if (onCommit && v !== text.trim()) onCommit(v);
+  };
+
+  const chip = (
+    <span className="mt-1 inline-flex h-[18px] w-9 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      {lang}
+    </span>
+  );
+
+  const textClass = [
+    "flex-1",
+    emphasis === "primary"
+      ? "text-[15.5px] leading-[1.55] text-foreground"
+      : "text-[14px] leading-[1.55] text-muted-foreground",
+    partial ? "italic" : "",
+    pending ? "italic opacity-60" : "",
+    stale ? "opacity-50" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (editing) {
+    return (
+      <div className="flex gap-3">
+        {chip}
+        <textarea
+          ref={taRef}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            autosize(e.target);
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setEditing(false);
+            }
+          }}
+          rows={1}
+          className={`flex-1 resize-none rounded-md border border-brand-500/40 bg-background px-2 py-1 ${
+            emphasis === "primary" ? "text-[15.5px]" : "text-[14px]"
+          } leading-[1.55] text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500/30`}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-3">
-      <span className="mt-1 inline-flex h-[18px] w-9 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {lang}
-      </span>
+      {chip}
       <p
-        className={[
-          "flex-1",
-          emphasis === "primary"
-            ? "text-[15.5px] leading-[1.55] text-foreground"
-            : "text-[14px] leading-[1.55] text-muted-foreground",
-          partial ? "italic" : "",
-          pending ? "italic opacity-60" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        onDoubleClick={begin}
+        title={editable ? "Double-click to edit" : undefined}
+        className={`${textClass}${editable ? " cursor-text rounded hover:bg-accent/30" : ""}`}
       >
-        {text}
+        {text || placeholder}
+        {stale && (
+          <span className="ml-2 align-middle text-[10px] font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
+            · outdated, re-translate
+          </span>
+        )}
       </p>
     </div>
   );

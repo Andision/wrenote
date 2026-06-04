@@ -83,9 +83,10 @@ export interface Segment {
   origStatus: "partial" | "final";
   origLang?: string;
   /** Translation. `skipped` means the backend decided no translation was
-   *  needed (detected source already matches target). */
+   *  needed (detected source already matches target). `stale` means the
+   *  original was edited after translating, so this no longer matches. */
   transText: string;
-  transStatus: "partial" | "final" | "pending" | "skipped";
+  transStatus: "partial" | "final" | "pending" | "skipped" | "stale";
   transLang?: string;
   /** Speaker label, kept for future post-processing — currently not shown. */
   speaker?: string | null;

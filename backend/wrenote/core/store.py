@@ -491,6 +491,46 @@ class Store:
             await db.commit()
             return cur.rowcount
 
+    async def update_segment_text(
+        self,
+        session_id: str,
+        segment_id: str,
+        *,
+        orig_text: str | None = None,
+        trans_text: str | None = None,
+    ) -> bool:
+        """Edit a segment's text. Editing the original marks any existing
+        translation ``stale`` (so the Translate action refreshes it); editing
+        the translation directly is a manual override (status ``final``).
+        Returns False if no such segment exists."""
+        sets: list[str] = []
+        params: list[Any] = []
+        if orig_text is not None:
+            sets.append("orig_text = ?")
+            params.append(orig_text)
+        if trans_text is not None:
+            sets.append("trans_text = ?")
+            params.append(trans_text)
+            sets.append("trans_status = 'final'")
+        elif orig_text is not None:
+            # Original changed → its translation no longer matches.
+            sets.append(
+                "trans_status = CASE WHEN trans_text != '' THEN 'stale' ELSE trans_status END"
+            )
+        if not sets:
+            return False
+        params += [session_id, segment_id]
+        async with self._conn() as db:
+            # NB: the SET clause is assembled from a fixed allowlist of columns
+            # above (never user input); values are bound parameters.
+            cur = await db.execute(
+                f"UPDATE segments SET {', '.join(sets)} "
+                "WHERE session_id = ? AND segment_id = ?",
+                params,
+            )
+            await db.commit()
+            return cur.rowcount > 0
+
     # ---------- Segments ----------
 
     async def replace_segments(

@@ -6,6 +6,7 @@ import {
   createGroup as createGroupRemote,
   deleteGroup as deleteGroupRemote,
   deleteSession as deleteSessionFromStorage,
+  editSegment as editSegmentOnBackend,
   listGroups,
   loadAllSessions,
   loadSession as loadSessionFromBackend,
@@ -136,6 +137,11 @@ interface Actions {
   // await them unless it shows a spinner.
   startNewSession: () => string;
   renameSession: (title: string) => void;
+  /** Edit a segment's original or translated text (finished sessions). */
+  editSegmentText: (
+    segmentId: string,
+    patch: { origText?: string; transText?: string },
+  ) => void;
   /** After a recording stops, ask the LLM for a title (best-effort). */
   autoTitleAfterRecording: () => void;
   saveCurrent: () => Promise<void>;
@@ -312,6 +318,28 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
     // Fire-and-forget; if the session row doesn't exist yet (user typed a
     // title pre-record) the next WS "start" config carries it instead.
     if (s.sessionId) void renameSessionOnBackend(s.sessionId, next);
+  },
+
+  editSegmentText: (segmentId, patch) => {
+    const s = get();
+    const seg = s.segments[segmentId];
+    if (!seg || !s.sessionId) return;
+    // Optimistic local update; the backend is the source of truth and applies
+    // the same rules (edit original → translation goes "stale"; edit the
+    // translation → manual "final").
+    const next: Segment = { ...seg };
+    if (patch.origText !== undefined) {
+      if (patch.origText === seg.origText) return;
+      next.origText = patch.origText;
+      if (next.transText && next.transStatus === "final") next.transStatus = "stale";
+    }
+    if (patch.transText !== undefined) {
+      if (patch.transText === seg.transText) return;
+      next.transText = patch.transText;
+      next.transStatus = "final";
+    }
+    set({ segments: { ...s.segments, [segmentId]: next } });
+    void editSegmentOnBackend(s.sessionId, segmentId, patch);
   },
 
   autoTitleAfterRecording: () => {
