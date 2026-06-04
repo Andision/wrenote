@@ -8,11 +8,25 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ..core import resegment
 from ..core.store import Store
 from ..deps import get_store
 from ._common import safe_session_id
 
 router = APIRouter()
+
+
+async def _resegment(store: Store, sid: str, transform) -> dict[str, object]:
+    """Fetch → apply a resegment transform → persist via replace_segments."""
+    session = await store.get_session(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    try:
+        new_segments = transform(session.get("segments", []))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    n = await store.replace_segments(sid, new_segments)
+    return {"status": "ok", "n_segments": n}
 
 
 @router.patch("/sessions/{session_id}/segments/{segment_id}")
@@ -45,3 +59,33 @@ async def edit_segment(
     if not ok:
         raise HTTPException(status_code=404, detail="segment not found")
     return {"status": "ok"}
+
+
+@router.post("/sessions/{session_id}/segments/{segment_id}/split")
+async def split_segment(
+    session_id: str,
+    segment_id: str,
+    request: Request,
+    store: Store = Depends(get_store),
+) -> dict[str, object]:
+    """Body: ``{"offset": int}`` — split the original text at that char offset
+    into two segments (translation reset; rerun Translate to refresh)."""
+    sid = safe_session_id(session_id)
+    seg = safe_session_id(segment_id)
+    body = await request.json()
+    offset = body.get("offset")
+    if not isinstance(offset, int) or offset < 0:
+        raise HTTPException(status_code=400, detail="offset (non-negative int) required")
+    return await _resegment(store, sid, lambda segs: resegment.split_segment(segs, seg, offset))
+
+
+@router.post("/sessions/{session_id}/segments/{segment_id}/merge")
+async def merge_segment(
+    session_id: str,
+    segment_id: str,
+    store: Store = Depends(get_store),
+) -> dict[str, object]:
+    """Merge this segment with the one that follows it."""
+    sid = safe_session_id(session_id)
+    seg = safe_session_id(segment_id)
+    return await _resegment(store, sid, lambda segs: resegment.merge_with_next(segs, seg))

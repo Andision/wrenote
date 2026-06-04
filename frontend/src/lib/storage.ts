@@ -158,6 +158,27 @@ export async function editSegment(
   );
 }
 
+const segUrl = (sessionId: string, segmentId: string) =>
+  `${BASE}/sessions/${encodeURIComponent(sessionId)}/segments/${encodeURIComponent(segmentId)}`;
+
+/** Split a segment's original text at a character offset into two segments. */
+export async function splitSegment(
+  sessionId: string,
+  segmentId: string,
+  offset: number,
+): Promise<void> {
+  await fetch(`${segUrl(sessionId, segmentId)}/split`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ offset }),
+  });
+}
+
+/** Merge a segment with the one that follows it. */
+export async function mergeSegment(sessionId: string, segmentId: string): Promise<void> {
+  await fetch(`${segUrl(sessionId, segmentId)}/merge`, { method: "POST" });
+}
+
 /**
  * Ask the backend to summarize a title from the session transcript (LLM).
  * Returns the new title, or null on failure. The backend persists it.

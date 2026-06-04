@@ -8,12 +8,14 @@ import {
   deleteSession as deleteSessionFromStorage,
   editSegment as editSegmentOnBackend,
   listGroups,
+  mergeSegment as mergeSegmentOnBackend,
   loadAllSessions,
   loadSession as loadSessionFromBackend,
   newSessionId,
   renameGroup as renameGroupRemote,
   renameSession as renameSessionOnBackend,
   setSessionGroup as setSessionGroupRemote,
+  splitSegment as splitSegmentOnBackend,
   suggestSessionTitle,
 } from "../lib/storage";
 import type { CaptureTarget } from "../lib/capture";
@@ -142,6 +144,10 @@ interface Actions {
     segmentId: string,
     patch: { origText?: string; transText?: string },
   ) => void;
+  /** Split a segment's original text at a char offset into two segments. */
+  splitSegment: (segmentId: string, offset: number) => void;
+  /** Merge a segment with the one that follows it. */
+  mergeWithNext: (segmentId: string) => void;
   /** After a recording stops, ask the LLM for a title (best-effort). */
   autoTitleAfterRecording: () => void;
   saveCurrent: () => Promise<void>;
@@ -340,6 +346,19 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
     }
     set({ segments: { ...s.segments, [segmentId]: next } });
     void editSegmentOnBackend(s.sessionId, segmentId, patch);
+  },
+
+  splitSegment: (segmentId, offset) => {
+    const id = get().sessionId;
+    if (!id) return;
+    // Structural change → let the backend rebuild, then reload the canonical list.
+    void splitSegmentOnBackend(id, segmentId, offset).then(() => get().loadSession(id));
+  },
+
+  mergeWithNext: (segmentId) => {
+    const id = get().sessionId;
+    if (!id) return;
+    void mergeSegmentOnBackend(id, segmentId).then(() => get().loadSession(id));
   },
 
   autoTitleAfterRecording: () => {

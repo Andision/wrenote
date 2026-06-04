@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Loader2, Mic, Pause, Pencil, Play } from "lucide-react";
+import { Check, Loader2, Merge, Mic, Pause, Pencil, Play, Scissors } from "lucide-react";
 
 import { TimelineMinimap } from "@/components/TimelineMinimap";
 import { useAutoScroll } from "@/hooks/useAutoScroll";
@@ -221,7 +221,14 @@ function SegmentCard({
   // merged speaker turn (relatedIds 2+) can't map an edit back to one segment —
   // that needs split/merge (Layer 2).
   const editSegmentText = useSessionStore((s) => s.editSegmentText);
+  const splitSegment = useSessionStore((s) => s.splitSegment);
+  const mergeWithNext = useSessionStore((s) => s.mergeWithNext);
   const editable = canPlay && (relatedIds?.length ?? 1) <= 1;
+  // Merge target is the next segment by order; disabled on the last card.
+  const isLast = useSessionStore(
+    (s) => s.segmentOrder[s.segmentOrder.length - 1] === seg.segmentId,
+  );
+  const canMerge = editable && !isLast;
 
   return (
     <motion.article
@@ -290,6 +297,17 @@ function SegmentCard({
             Live
           </span>
         )}
+        {canMerge && (
+          <button
+            type="button"
+            onClick={() => mergeWithNext(seg.segmentId)}
+            data-tip="Merge with the next segment"
+            className="ml-auto inline-flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+            aria-label="Merge with next segment"
+          >
+            <Merge className="size-3.5" />
+          </button>
+        )}
       </header>
 
       <Row
@@ -300,6 +318,7 @@ function SegmentCard({
         partial={isPartial}
         editable={editable}
         onCommit={(t) => editSegmentText(seg.segmentId, { origText: t })}
+        onSplit={(offset) => splitSegment(seg.segmentId, offset)}
       />
 
       {showTranslation && (
@@ -338,6 +357,7 @@ function Row({
   stale,
   editable,
   onCommit,
+  onSplit,
 }: {
   lang: string;
   /** Raw text (may be empty); `placeholder` is shown when empty & not editing. */
@@ -350,6 +370,8 @@ function Row({
   stale?: boolean;
   editable?: boolean;
   onCommit?: (text: string) => void;
+  /** If set, show a "Split here" action while editing (splits at the caret). */
+  onSplit?: (offset: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -397,28 +419,51 @@ function Row({
     return (
       <div className="flex gap-3">
         {chip}
-        <textarea
-          ref={taRef}
-          value={draft}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            autosize(e.target);
-          }}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              commit();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              setEditing(false);
-            }
-          }}
-          rows={1}
-          className={`flex-1 resize-none rounded-md border border-brand-500/40 bg-background px-2 py-1 ${
-            emphasis === "primary" ? "text-[15.5px]" : "text-[14px]"
-          } leading-[1.55] text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500/30`}
-        />
+        <div className="flex flex-1 flex-col gap-1">
+          <textarea
+            ref={taRef}
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              autosize(e.target);
+            }}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                commit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setEditing(false);
+              }
+            }}
+            rows={1}
+            className={`resize-none rounded-md border border-brand-500/40 bg-background px-2 py-1 ${
+              emphasis === "primary" ? "text-[15.5px]" : "text-[14px]"
+            } leading-[1.55] text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500/30`}
+          />
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            <span>Enter to save · Esc to cancel</span>
+            {onSplit && (
+              <button
+                type="button"
+                // mousedown (not click) + preventDefault keeps the textarea
+                // focused so selectionStart is valid; splits the saved text at
+                // the caret (drops any uncommitted draft change).
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const offset = taRef.current?.selectionStart ?? 0;
+                  setEditing(false);
+                  onSplit(offset);
+                }}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground"
+              >
+                <Scissors className="size-3" />
+                Split here
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
