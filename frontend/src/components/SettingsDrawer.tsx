@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  BookMarked,
   Cpu,
   Monitor,
   Moon,
@@ -13,18 +14,20 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
+import { GlossaryEditor } from "@/components/GlossaryEditor";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { listAudioInputs } from "@/lib/devices";
 import { useSessionStore } from "@/store/sessionStore";
 
-type CategoryId = "general" | "segmentation" | "realtime" | "engines";
+type CategoryId = "general" | "segmentation" | "realtime" | "glossary" | "engines";
 
 const CATEGORIES: { id: CategoryId; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
   { id: "segmentation", label: "Segmentation", icon: Scissors },
   { id: "realtime", label: "Real-time", icon: Zap },
+  { id: "glossary", label: "Glossary", icon: BookMarked },
   { id: "engines", label: "Engines", icon: Cpu },
 ];
 
@@ -204,6 +207,8 @@ export function SettingsDrawer() {
                     />
                   </div>
                 )}
+
+                {cat === "glossary" && <GlossaryEditor />}
 
                 {cat === "engines" && (
                   <div className="space-y-4">

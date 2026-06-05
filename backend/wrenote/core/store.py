@@ -79,6 +79,16 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
 
 CREATE INDEX IF NOT EXISTS idx_conversations_session
     ON chat_conversations(session_id, updated_at DESC);
+
+-- Custom-vocabulary glossary (global for now; a nullable session_id can be
+-- added later for per-session entries). Fed to both STT and translation.
+CREATE TABLE IF NOT EXISTS glossary (
+    id          TEXT PRIMARY KEY,
+    term        TEXT NOT NULL,
+    translation TEXT NOT NULL DEFAULT '',
+    note        TEXT NOT NULL DEFAULT '',
+    position    INTEGER NOT NULL DEFAULT 0
+);
 """
 
 # chat_messages is managed by _migrate_chat() rather than the main SCHEMA: a DB
@@ -530,6 +540,39 @@ class Store:
             )
             await db.commit()
             return cur.rowcount > 0
+
+    # ---------- Glossary (custom vocabulary) ----------
+
+    async def list_glossary(self) -> list[dict[str, Any]]:
+        async with self._conn() as db:
+            cur = await db.execute(
+                "SELECT id, term, translation, note, position "
+                "FROM glossary ORDER BY position, term"
+            )
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def replace_glossary(self, entries: list[dict[str, Any]]) -> int:
+        """Replace the whole glossary in one transaction. Each entry needs a
+        ``term``; ``translation`` / ``note`` are optional."""
+        async with self._conn() as db:
+            await db.execute("DELETE FROM glossary")
+            await db.executemany(
+                "INSERT INTO glossary (id, term, translation, note, position) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    (
+                        str(e.get("id") or uuid.uuid4().hex),
+                        str(e["term"]).strip(),
+                        str(e.get("translation") or "").strip(),
+                        str(e.get("note") or "").strip(),
+                        i,
+                    )
+                    for i, e in enumerate(entries)
+                    if str(e.get("term") or "").strip()
+                ],
+            )
+            await db.commit()
+        return len(entries)
 
     # ---------- Segments ----------
 

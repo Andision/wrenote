@@ -22,7 +22,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from .api._common import SAFE_SESSION_ID
 from .auth import AUTH_COOKIE, AUTH_TOKEN, origin_allowed
-from .core import screenrec
+from .core import glossary, screenrec
 from .core.config import Config
 from .core.events import (
     ErrorEvent,
@@ -140,6 +140,13 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         except ValueError as e:
             await _send_error(ws, "BAD_CONFIG", str(e), recoverable=False)
             return
+
+        # Custom-vocabulary glossary → bias STT + pin translations for this session.
+        try:
+            entries = await ws.app.state.store.list_glossary()
+            glossary.apply_to_backends(entries, stt=stt, translator=translator)
+        except Exception:
+            log.exception("could not apply glossary; continuing without it")
 
         pipeline = Pipeline(
             stt=stt,

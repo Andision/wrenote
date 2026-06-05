@@ -27,6 +27,8 @@ EXPECTED_ROUTES = {
     ("DELETE", "/sessions/{session_id}/conversations/{conversation_id}/chat"),
     ("GET", "/api/models/status"),
     ("GET", "/capture/targets"),
+    ("GET", "/glossary"),
+    ("PUT", "/glossary"),
     ("GET", "/groups"),
     ("GET", "/health"),
     ("GET", "/info"),

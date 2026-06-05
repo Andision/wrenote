@@ -55,6 +55,13 @@ class STTBackend(ABC):
         Chunking strategy is a backend-internal detail.
         """
 
+    def set_initial_prompt(self, prompt: str) -> None:  # noqa: B027 — optional hook, no-op default
+        """Soft-bias decoding toward a custom vocabulary (glossary terms).
+
+        Default no-op; backends with a decoder prompt (Whisper) override.
+        Set per session before :meth:`transcribe_segment`.
+        """
+
     @property
     @abstractmethod
     def info(self) -> BackendInfo:

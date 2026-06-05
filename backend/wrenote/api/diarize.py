@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ..core import glossary
 from ..core.config import Config
 from ..core.diarize import diarize_session
 from ..core.jobs import JobRegistry, Phase
@@ -126,6 +127,7 @@ async def diarize_endpoint(
                     cfg.translator.backend,
                     cfg.translator.params,
                 )
+                glossary.apply_to_backends(await store.list_glossary(), translator=translator)
                 await translator.load()
                 registry.advance(job.id, phase_inner=1.0)
 

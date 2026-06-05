@@ -57,6 +57,8 @@ class LlamaCppTranslator(TranslatorBackend):
         self._max_tokens = max_tokens
         self._n_threads = n_threads or max(1, (os.cpu_count() or 4) - 1)
         self._llm: Any = None
+        # Optional glossary instruction (core.glossary), injected into the prompt.
+        self._glossary_text: str = ""
         # Same reasoning as WhisperCppBackend: llama.cpp + Metal isn't
         # multi-thread safe. A single dedicated worker serialises all C calls
         # (partial-translation loop + final-translation loop both submit here).
@@ -136,10 +138,16 @@ class LlamaCppTranslator(TranslatorBackend):
     def _build_prompt(self, text: str, *, src: str, tgt: str) -> str:
         src_name = _lang_name(src)
         tgt_name = _lang_name(tgt)
+        glossary = f"{self._glossary_text} " if self._glossary_text else ""
         return (
             f"Translate the following {src_name} text into {tgt_name}. "
-            f"Output only the translation, no explanation.\n\n{text}"
+            f"Output only the translation, no explanation. {glossary}\n\n{text}"
         )
+
+    def set_glossary(self, pairs: list[tuple[str, str]]) -> None:
+        from ..core.glossary import mt_glossary_text
+
+        self._glossary_text = mt_glossary_text(pairs)
 
     @property
     def info(self) -> BackendInfo:

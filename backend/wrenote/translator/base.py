@@ -39,6 +39,12 @@ class TranslatorBackend(ABC):
         ``TRANSLATION_TIMEOUT`` (see design.v1.1 §5.4).
         """
 
+    def set_glossary(self, pairs: list[tuple[str, str]]) -> None:  # noqa: B027 — optional hook
+        """Pin ``(term, translation)`` renderings for consistency.
+
+        Default no-op; backends that build a prompt (llama_cpp) override.
+        """
+
     @property
     @abstractmethod
     def info(self) -> BackendInfo:

@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ..core import glossary
 from ..core.config import Config
 from ..core.jobs import JobRegistry, Phase
 from ..core.registry import make_translator
@@ -61,6 +62,7 @@ async def translate_session(
 
     async def runner() -> None:
         translator = make_translator(cfg.translator.backend, cfg.translator.params)
+        glossary.apply_to_backends(await store.list_glossary(), translator=translator)
         try:
             registry.advance(job.id, phase_idx=0, log_line="Loading translator")
             await translator.load()

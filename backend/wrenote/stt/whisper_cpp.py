@@ -57,6 +57,8 @@ class WhisperCppBackend(STTBackend):
         self._language = _normalize_lang(language)
         self._n_threads = n_threads or max(1, (os.cpu_count() or 4) - 1)
         self._model: Model | None = None
+        # Optional glossary bias (core.glossary); prepended to decoding context.
+        self._initial_prompt: str = ""
         # Sticky fallback for short / low-confidence segments. Set after the
         # first segment that detects with confidence >= threshold.
         self._last_detected_lang: str | None = None
@@ -148,7 +150,10 @@ class WhisperCppBackend(STTBackend):
 
         def _transcribe() -> list:
             assert self._model is not None
-            return list(self._model.transcribe(audio, language=lang))
+            kwargs: dict[str, object] = {"language": lang}
+            if self._initial_prompt:
+                kwargs["initial_prompt"] = self._initial_prompt
+            return list(self._model.transcribe(audio, **kwargs))
 
         # All transcribe calls funnel through the single-threaded executor,
         # so partial / final / next-segment-partial run strictly serially —
@@ -202,6 +207,9 @@ class WhisperCppBackend(STTBackend):
             lang, prob, fallback,
         )
         return (fallback, prob)
+
+    def set_initial_prompt(self, prompt: str) -> None:
+        self._initial_prompt = prompt or ""
 
     @property
     def info(self) -> BackendInfo:
