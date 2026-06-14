@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { ArrowRight, Loader2, Mic, RefreshCw, ShieldCheck, UploadCloud } from "lucide-react";
+import { Activity, ArrowRight, Loader2, Mic, Monitor, RefreshCw, ShieldCheck, UploadCloud, Volume2 } from "lucide-react";
 
 import {
   LanguageSelect,
@@ -11,10 +11,60 @@ import { UploadDialog } from "@/components/UploadDialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { type CaptureTargets, listCaptureTargets } from "@/lib/capture";
+import { useMicPreview } from "@/hooks/useMicPreview";
+import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
 
 interface PreFlightProps {
   onStart: () => void;
+}
+
+/** Compact live mic-level bar for the PreFlight capture row. `level` is RMS
+ *  (~0–0.1 while talking); sqrt-scaled so quiet speech is still visible. */
+function MicMeter({ level }: { level: number }) {
+  const pct = Math.min(1, Math.sqrt(level) * 2.2);
+  return (
+    <div className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-border" aria-hidden>
+      <div
+        className="h-full rounded-full bg-brand-500 transition-[width] duration-75"
+        style={{ width: `${pct * 100}%` }}
+      />
+    </div>
+  );
+}
+
+/** Pill toggle for an extra capture source (system audio / screen). Horizontal
+ *  and compact so several sit on one row instead of stacking. */
+function SourceToggle({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+  disabled,
+}: {
+  icon: typeof Mic;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors disabled:opacity-50",
+        active
+          ? "border-brand-500/40 bg-brand-500/15 text-brand-700 dark:text-brand-300"
+          : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground",
+      )}
+    >
+      <Icon className="size-3.5" />
+      {label}
+    </button>
+  );
 }
 
 /**
@@ -28,7 +78,9 @@ export function PreFlight({ onStart }: PreFlightProps) {
   const updateSettings = useSessionStore((s) => s.updateSettings);
   const connection = useSessionStore((s) => s.connection);
 
-  const isBusy = connection === "connecting";
+  // "connected" is the post-socket, pre-`ready` gap — still starting up, so the
+  // controls stay locked (matches TopBar / Transcript's pre-roll handling).
+  const isBusy = connection === "connecting" || connection === "connected";
   const isRecording = connection === "recording";
 
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -49,7 +101,20 @@ export function PreFlight({ onStart }: PreFlightProps) {
 
   useEffect(() => {
     if (!settings.captureScreen) return;
-    refreshTargets();
+    // Fetch inside an async IIFE so the effect body has no synchronous setState
+    // (refreshTargets sets loading state up-front); avoids cascading renders.
+    let cancelled = false;
+    void (async () => {
+      setLoadingTargets(true);
+      const t = await listCaptureTargets();
+      if (!cancelled) {
+        setTargets(t);
+        setLoadingTargets(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [settings.captureScreen]);
 
   const targetValue = settings.captureTarget
@@ -66,6 +131,17 @@ export function PreFlight({ onStart }: PreFlightProps) {
     const pool = type === "display" ? targets.displays : targets.windows;
     updateSettings({ captureTarget: pool.find((x) => x.id === id) ?? null });
   };
+
+  // Device list is always enumerated (cheap, no stream). The level meter is
+  // opt-in: the user taps "Test" to open a preview stream, so we don't hold the
+  // mic — or light the OS indicator — just by sitting on PreFlight. Auto-stops
+  // when recording/connecting starts so it never fights useMicrophone.
+  const [micTest, setMicTest] = useState(false);
+  const previewEnabled = micTest && !isRecording && !isBusy;
+  const { devices: micDevices, level: previewLevel } = useMicPreview(
+    settings.micDeviceId,
+    previewEnabled,
+  );
 
   return (
     <motion.div
@@ -150,50 +226,98 @@ export function PreFlight({ onStart }: PreFlightProps) {
         </label>
       </div>
 
-      {/* Screen/window picker — only when "Record screen" is enabled (Settings).
-          Lists displays + windows from the backend; "Full screen" = no target. */}
-      {settings.captureScreen && (
-        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <span className="font-medium">Record</span>
+      {/* Capture sources — per-session input selection. Model A: these edit the
+          persisted settings directly, which double as the remembered defaults.
+          Mic picker + level meter are live; the screen target list stays empty
+          until macOS Screen-Recording permission (a signed build). */}
+      <div className="flex w-full max-w-md flex-col gap-2.5 rounded-2xl border border-border/60 bg-card/40 px-4 py-3 text-left">
+        {/* Microphone + live level — its own row (the select wants the width). */}
+        <div className="flex items-center gap-2.5">
+          <Mic className="size-4 shrink-0 text-muted-foreground" />
           <select
-            value={targetValue}
-            onChange={(e) => onPickTarget(e.target.value)}
+            value={settings.micDeviceId}
+            onChange={(e) => updateSettings({ micDeviceId: e.target.value })}
             disabled={isRecording || isBusy}
-            className="max-w-[18rem] truncate rounded-md border border-border bg-card px-2 py-1.5 text-[13px] text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50"
-            aria-label="Screen or window to record"
+            aria-label="Microphone"
+            className="min-w-0 flex-1 truncate rounded-md border border-border bg-card px-2 py-1.5 text-[13px] text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50"
           >
-            <option value="">Full screen</option>
-            {targets.displays.length > 0 && (
-              <optgroup label="Displays">
-                {targets.displays.map((d) => (
-                  <option key={`display:${d.id}`} value={`display:${d.id}`}>
-                    {d.title}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {targets.windows.length > 0 && (
-              <optgroup label="Windows">
-                {targets.windows.map((w) => (
-                  <option key={`window:${w.id}`} value={`window:${w.id}`}>
-                    {w.app ? `${w.app} — ${w.title}` : w.title}
-                  </option>
-                ))}
-              </optgroup>
-            )}
+            <option value="">System default microphone</option>
+            {micDevices.map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label || `Microphone (${d.deviceId.slice(0, 6)}…)`}
+              </option>
+            ))}
           </select>
-          <button
-            type="button"
-            onClick={refreshTargets}
-            disabled={loadingTargets || isRecording || isBusy}
-            data-tip="Refresh the window list (grant Screen Recording first)"
-            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-            aria-label="Refresh capture targets"
-          >
-            <RefreshCw className={`size-3.5 ${loadingTargets ? "animate-spin" : ""}`} />
-          </button>
+          <SourceToggle
+            icon={Activity}
+            label="Test"
+            active={micTest}
+            disabled={isRecording || isBusy}
+            onClick={() => setMicTest((v) => !v)}
+          />
+          {micTest && <MicMeter level={previewLevel} />}
         </div>
-      )}
+
+        {/* Extra sources as horizontal pill toggles; the screen target picker
+            rides on the same wrapping row when Screen is on. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <SourceToggle
+            icon={Volume2}
+            label="System audio"
+            active={settings.captureSystemAudio}
+            disabled={isRecording || isBusy}
+            onClick={() => updateSettings({ captureSystemAudio: !settings.captureSystemAudio })}
+          />
+          <SourceToggle
+            icon={Monitor}
+            label="Screen"
+            active={settings.captureScreen}
+            disabled={isRecording || isBusy}
+            onClick={() => updateSettings({ captureScreen: !settings.captureScreen })}
+          />
+          {settings.captureScreen && (
+            <div className="flex min-w-[11rem] flex-1 items-center gap-1.5">
+              <select
+                value={targetValue}
+                onChange={(e) => onPickTarget(e.target.value)}
+                disabled={isRecording || isBusy}
+                aria-label="Screen or window to record"
+                className="min-w-0 flex-1 truncate rounded-md border border-border bg-card px-2 py-1 text-[12.5px] text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50"
+              >
+                <option value="">Full screen</option>
+                {targets.displays.length > 0 && (
+                  <optgroup label="Displays">
+                    {targets.displays.map((d) => (
+                      <option key={`display:${d.id}`} value={`display:${d.id}`}>
+                        {d.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {targets.windows.length > 0 && (
+                  <optgroup label="Windows">
+                    {targets.windows.map((w) => (
+                      <option key={`window:${w.id}`} value={`window:${w.id}`}>
+                        {w.app ? `${w.app} — ${w.title}` : w.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              <button
+                type="button"
+                onClick={refreshTargets}
+                disabled={loadingTargets || isRecording || isBusy}
+                data-tip="Refresh the window list (grant Screen Recording first)"
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                aria-label="Refresh capture targets"
+              >
+                <RefreshCw className={`size-3.5 ${loadingTargets ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Vertical stack — Start recording is the primary path, Upload is the
           alternative. "or" between them reads as a deliberate fork. */}
