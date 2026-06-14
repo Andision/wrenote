@@ -139,7 +139,11 @@ export function Transcript() {
  */
 function ListeningState() {
   const connection = useSessionStore((s) => s.connection);
-  const isConnecting = connection === "connecting";
+  // Both "connecting" (opening the socket) and "connected" (socket open, but
+  // still waiting for the backend's `ready` while it loads models) are pre-roll:
+  // the mic isn't capturing yet, so show a spinner — not "Listening…".
+  const isPreparing =
+    connection === "connecting" || connection === "connected";
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -153,21 +157,21 @@ function ListeningState() {
           animate={{ scale: [1, 1.04, 1] }}
           transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
         >
-          {isConnecting ? (
+          {isPreparing ? (
             <Loader2 className="size-8 animate-spin text-brand-600 dark:text-brand-400" />
           ) : (
             <Mic className="size-8 text-brand-600 dark:text-brand-400" />
           )}
         </motion.div>
-        {!isConnecting && (
+        {!isPreparing && (
           <span className="absolute -right-1 -bottom-1 size-3 animate-pulse rounded-full bg-brand-500 ring-2 ring-background" />
         )}
       </div>
       <h2 className="mt-6 text-xl font-semibold tracking-tight text-foreground">
-        {isConnecting ? "Warming up models…" : "Listening…"}
+        {isPreparing ? "Preparing…" : "Listening…"}
       </h2>
       <p className="mt-2 max-w-md text-[14px] leading-relaxed text-muted-foreground">
-        {isConnecting
+        {isPreparing
           ? "First start takes a moment while Whisper and the translator load."
           : "Start speaking. Words will appear here as they're recognised."}
       </p>
