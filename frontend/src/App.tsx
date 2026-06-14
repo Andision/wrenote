@@ -17,6 +17,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { useMicrophone } from "@/hooks/useMicrophone";
 import { PlaybackProvider } from "@/hooks/playbackContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { initOverlayPublisher } from "@/lib/overlayBridge";
 import { useJobsStore } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -41,6 +42,9 @@ export default function App() {
     void useSessionStore.getState().refreshGroups();
     useJobsStore.getState().hydrateFromStorage();
   }, []);
+
+  // Feed the floating subtitle overlay (if open) with live transcript state.
+  useEffect(() => initOverlayPublisher(), []);
   // Pre-flight owns the canvas only while truly idle. The moment the user
   // clicks Start (connection → "connecting"), we hand off so the magic-move
   // animation fires immediately instead of waiting on the backend's model
@@ -81,6 +85,9 @@ export default function App() {
       connection === "disconnected"
     ) {
       useSessionStore.getState().autoTitleAfterRecording();
+      // The subtitle overlay is a live-recording companion — dismiss it
+      // with the session instead of leaving it parked over the desktop.
+      void window.wrenoteDesktop?.closeOverlay();
     }
   }, [connection]);
 

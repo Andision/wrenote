@@ -7,6 +7,7 @@ import {
   MessageSquare,
   Pause,
   Pencil,
+  PictureInPicture2,
   Play,
   Square,
   UserSquare2,
@@ -16,6 +17,7 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { startDiarize, startTranslate } from "@/lib/diarize";
+import { hasDesktopOverlay } from "@/lib/overlayBridge";
 import { recordingUrl } from "@/lib/recording";
 import { confirmDialog } from "@/lib/confirm";
 import { cn } from "@/lib/utils";
@@ -190,7 +192,12 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
   const isRecording = connection === "recording";
   const isPaused = connection === "paused";
   const isActive = isRecording || isPaused;
-  const isBusy = connection === "connecting" || connection === "stopping";
+  // "connected" is the gap between the socket opening and the backend's `ready`
+  // (model load) — still busy, so keep the spinner up instead of going blank.
+  const isBusy =
+    connection === "connecting" ||
+    connection === "connected" ||
+    connection === "stopping";
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-card px-4">
@@ -229,6 +236,19 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
       <AnimatePresence>
         {isActive && <RecordingTimer paused={isPaused} />}
       </AnimatePresence>
+
+      {/* Floating subtitles — desktop shell only, while a recording is live. */}
+      {isActive && hasDesktopOverlay() && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => void window.wrenoteDesktop?.toggleOverlay()}
+          data-tip="Floating subtitles (always-on-top live transcript)"
+          className="size-9"
+        >
+          <PictureInPicture2 className="size-4" />
+        </Button>
+      )}
 
       <AnimatePresence mode="wait" initial={false}>
         {inPreFlight ? null : isActive ? (
