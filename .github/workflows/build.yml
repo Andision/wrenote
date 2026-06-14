@@ -43,7 +43,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[desktop]"
           pip install pywhispercpp pyinstaller imageio-ffmpeg
-          pip install llama-cpp-python --extra-index-url ${{ matrix.llama_index }}
+          # --no-cache-dir: the prebuilt llama wheels are served from GitHub
+          # Pages and occasionally land corrupted; a bad download then gets
+          # cached and every rerun re-hits it (BadZipFile / Bad CRC-32). Skip
+          # the cache so each run fetches a fresh wheel; --retries covers
+          # transient network blips.
+          pip install --no-cache-dir --retries 5 llama-cpp-python --extra-index-url ${{ matrix.llama_index }}
 
       - name: Install Windows-only deps (WebView2 + WASAPI loopback)
         if: runner.os == 'Windows'
