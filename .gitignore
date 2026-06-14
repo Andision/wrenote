@@ -22,6 +22,10 @@ dist/
 dist-ssr/
 *.local
 
+# ---- Electron desktop shell ----
+# electron-builder output (the packaged .app / installer); regenerated.
+electron/release/
+
 # Built SPA emitted by `npm run build` (vite outDir); regenerated, not committed.
 backend/static/app/
 
