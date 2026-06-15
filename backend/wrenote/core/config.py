@@ -128,7 +128,10 @@ def load_config(
     for path in yaml_paths:
         if not path.exists():
             continue
-        with open(path) as f:
+        # Always UTF-8: config files are UTF-8, but Python's default text
+        # encoding is the locale's (cp936/GBK on zh-CN Windows), which chokes
+        # on non-ASCII bytes — a packaged-app crash on first launch.
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         if not isinstance(data, dict):
             raise ValueError(f"Config file {path} did not parse to a mapping")
