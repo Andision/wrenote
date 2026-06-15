@@ -114,8 +114,9 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    # Keep a real stdout for the Electron port handshake (`WRENOTE_PORT=`). It's
-    # spawned by Electron, so no terminal window ever appears.
+    # Keep a real stdout for the Electron port handshake (`WRENOTE_PORT=`). This
+    # makes it a console-subsystem exe; on Windows that would pop a terminal
+    # window, which Electron suppresses by spawning with windowsHide:true.
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,

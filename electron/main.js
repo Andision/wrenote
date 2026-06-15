@@ -55,6 +55,10 @@ function startServer(token) {
       cwd,
       env: { ...process.env, WRENOTE_AUTH_TOKEN: token },
       stdio: ["ignore", "pipe", "inherit"], // stdout: parse port; stderr: uvicorn logs
+      // The frozen server is a console-subsystem exe (it must keep a real stdout
+      // for the WRENOTE_PORT handshake), so Windows would pop a terminal window
+      // for it. windowsHide suppresses that without affecting the stdout pipe.
+      windowsHide: true,
     });
     pyProc = proc;
 
