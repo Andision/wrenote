@@ -19,6 +19,9 @@ dependencies = [
     "python-multipart>=0.0.20",
     "aiosqlite>=0.20",
     "onnxruntime>=1.20",
+    # CA bundle for HTTPS model downloads — the frozen app has no system certs,
+    # so we point urllib at certifi's bundle (see core/models._ssl_context).
+    "certifi",
 ]
 
 [project.optional-dependencies]

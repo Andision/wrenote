@@ -16,6 +16,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import ssl
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -127,6 +128,22 @@ def required_models(cfg: Config) -> list[ModelEntry]:
     return [e for e in entries if e is not None]
 
 
+def _ssl_context() -> ssl.SSLContext:
+    """A verifying SSL context that works inside a PyInstaller-frozen app.
+
+    Frozen builds ship no OpenSSL cert paths, so the default context can't find
+    a CA bundle and every HTTPS download dies with CERTIFICATE_VERIFY_FAILED
+    (notably on Windows). certifi — bundled with the app — supplies the roots.
+    Falls back to the system default if certifi is somehow unavailable.
+    """
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
 async def download_model(
     entry: ModelEntry,
     on_progress: Callable[[float, str], None],
@@ -144,7 +161,7 @@ async def download_model(
         req = urllib.request.Request(entry.url)
         if have:
             req.add_header("Range", f"bytes={have}-")
-        return urllib.request.urlopen(req, timeout=30)  # HF / mirror, https
+        return urllib.request.urlopen(req, timeout=30, context=_ssl_context())  # HF / mirror, https
 
     resp = await asyncio.to_thread(_open)
     # Total = bytes already on disk + what the server will send now. If the server
