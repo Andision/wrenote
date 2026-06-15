@@ -82,6 +82,7 @@ hiddenimports += collect_submodules("uvicorn")
 hiddenimports += ["wrenote.server", "wrenote.run_server"]
 if IS_WIN:
     hiddenimports += collect_submodules("soundcard")  # WASAPI loopback (system audio)
+    datas += collect_data_files("soundcard")  # soundcard's cffi .py.h cdef files
 
 excludes = [
     # torch/speechbrain are only for OFFLINE speaker diarization (ONNX model

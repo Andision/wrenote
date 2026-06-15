@@ -159,11 +159,27 @@ class WindowsSystemAudioSource(SystemAudioSource):
         return True
 
     def _capture(self) -> None:
+        # WASAPI is a COM API, and COM must be initialized per-thread. This runs
+        # on a worker thread that never inherits the main thread's init, so
+        # without an explicit CoInitializeEx the very first soundcard call fails
+        # with CO_E_NOTINITIALIZED — silently, in frozen Windows builds, leaving
+        # the mic recording fine but no system audio. ctypes avoids a pywin32 dep.
+        com_ready = False
+        try:
+            import ctypes
+
+            # COINIT_APARTMENTTHREADED = 0x2; S_OK/S_FALSE both mean usable.
+            hr = ctypes.windll.ole32.CoInitializeEx(None, 0x2)
+            com_ready = hr in (0, 1)
+        except Exception:
+            log.exception("CoInitializeEx failed; system audio may not start")
         try:
             import soundcard as sc
 
             speaker = sc.default_speaker()
-            loopback = sc.get_microphone(speaker.name, include_loopback=True)
+            # Match by stable device id, not the display name (name matching is
+            # fuzzy and can pick the wrong endpoint or raise IndexError).
+            loopback = sc.get_microphone(speaker.id, include_loopback=True)
             with loopback.recorder(samplerate=SAMPLE_RATE, channels=1) as rec:
                 while self._running:
                     frames = rec.record(numframes=1600)  # ~0.1 s, float32 [-1, 1]
@@ -173,6 +189,12 @@ class WindowsSystemAudioSource(SystemAudioSource):
         except Exception:
             log.exception("WASAPI loopback capture error; system audio stopped")
             self._running = False
+        finally:
+            if com_ready:
+                try:
+                    ctypes.windll.ole32.CoUninitialize()
+                except Exception:
+                    pass
 
     async def stop(self) -> None:
         self._running = False
