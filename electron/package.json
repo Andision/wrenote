@@ -1,0 +1,43 @@
+{
+  "name": "wrenote-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron shell for Wrenote — hosts the Python server as a loopback sidecar (P0 migration off pywebview).",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "latest",
+    "electron-builder": "latest"
+  },
+  "build": {
+    "appId": "com.wrenote.app",
+    "productName": "Wrenote",
+    "directories": { "output": "release" },
+    "files": ["main.js", "preload.js", "package.json"],
+    "extraResources": [
+      { "from": "../backend/dist/wrenote-server", "to": "wrenote-server" }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dir"],
+      "identity": null,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Wrenote transcribes speech from your microphone, locally on your device.",
+        "NSCameraUsageDescription": "Wrenote records a chosen window or screen alongside your audio when you enable screen capture."
+      }
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": false,
+      "include": "nsis/installer.nsh"
+    }
+  }
+}

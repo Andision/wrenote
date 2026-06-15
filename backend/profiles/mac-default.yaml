@@ -1,0 +1,28 @@
+# mac-default profile: real models on Apple Silicon (Metal acceleration).
+# Per design.v1.1 §3.4 (mac-default).
+#
+# Apply by symlinking / copying to ~/.wrenote/config.yaml, or pointing
+# the config loader at this file explicitly. Will be used after task #8
+# (whisper.cpp backend) and task #?? (llama.cpp translator) are implemented.
+
+stt:
+  backend: whisper_cpp
+  params:
+    model_path: ~/.wrenote/models/ggml-large-v3-turbo-q5_0.bin
+    device: auto              # metal / cuda / cpu / auto
+    language: en              # P1 hard-coded English
+
+vad:
+  backend: silero
+  params:
+    threshold: 0.5
+    min_silence_ms: 500
+    min_speech_ms: 250
+
+translator:
+  backend: llama_cpp
+  params:
+    model_path: ~/.wrenote/models/Hy-MT2-1.8B-Q4_K_M.gguf
+    n_ctx: 4096
+    n_gpu_layers: -1
+    timeout_s: 10

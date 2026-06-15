@@ -1,0 +1,85 @@
+[project]
+name = "wrenote"
+version = "0.1.0"
+description = "Local real-time speech transcription and translation"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "andision" },
+]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+    "soundfile>=0.12",
+    "python-multipart>=0.0.20",
+    "aiosqlite>=0.20",
+    "onnxruntime>=1.20",
+    # CA bundle for HTTPS model downloads — the frozen app has no system certs,
+    # so we point urllib at certifi's bundle (see core/models._ssl_context).
+    "certifi",
+]
+
+[project.optional-dependencies]
+# Native, platform-specific ML/runtime deps (pywhispercpp, llama-cpp-python,
+# torch for offline diarization) are pinned per-platform for packaging; see the
+# per-OS requirements files. They are intentionally not listed here.
+desktop = [
+    "pywebview>=5",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-timeout>=2.3",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "websockets>=13.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["wrenote*"]
+
+[tool.setuptools.package-data]
+# Ship the bundled Silero VAD ONNX model with the package.
+wrenote = ["vad/assets/*.onnx"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's DI/parameter callables are *designed* to be used as argument
+# defaults (Depends/File/Form/Query/...), so they are not B008 mutable-default
+# footguns. Without this, every `x = Depends(...)` would be a false positive.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Query",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+timeout = 30
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
