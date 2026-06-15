@@ -17,9 +17,11 @@ jobs:
           - os: macos-14 # Apple Silicon
             artifact: Wrenote-macos-arm64
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/metal
+            dist_glob: electron/release/mac-arm64
           - os: windows-latest
             artifact: Wrenote-windows-x64
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
+            dist_glob: electron/release/*.exe
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +59,7 @@ jobs:
 
       - name: Smoke-import backend (catch syntax/import errors before freezing)
         working-directory: backend
-        run: python -c "import wrenote.server, wrenote.desktop; print('import OK')"
+        run: python -c "import wrenote.server, wrenote.run_server; print('import OK')"
 
       - name: Compile macOS capture helpers (system-audio + screen/window)
         if: runner.os == 'macOS'
@@ -66,16 +68,29 @@ jobs:
           swiftc -O -o syscap syscap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia
           swiftc -O -o screencap screencap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework AppKit
 
-      - name: PyInstaller build
+      # Freeze the pure FastAPI server (no pywebview) into dist/wrenote-server/.
+      # electron-builder picks it up via extraResources (../backend/dist/wrenote-server).
+      - name: Freeze backend sidecar (PyInstaller)
         working-directory: backend
-        run: pyinstaller packaging/wrenote.spec --noconfirm --distpath packaging/dist --workpath packaging/build
+        run: pyinstaller packaging/wrenote_server.spec --noconfirm --distpath dist --workpath packaging/build
+
+      - name: Build Electron desktop app (electron-builder)
+        working-directory: electron
+        env:
+          # No code signing in CI: ad-hoc on macOS (identity:null), unsigned on
+          # Windows. Disable auto-discovery so the mac build doesn't probe the
+          # (empty) keychain and fail.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm install --no-audit --no-fund
+          npm run dist
 
       - name: List output
-        working-directory: backend/packaging/dist
+        working-directory: electron/release
         run: ls -R . || dir
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: backend/packaging/dist/
+          path: ${{ matrix.dist_glob }}
           if-no-files-found: error

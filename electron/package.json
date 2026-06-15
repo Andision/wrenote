@@ -28,6 +28,14 @@
         "NSMicrophoneUsageDescription": "Wrenote transcribes speech from your microphone, locally on your device.",
         "NSCameraUsageDescription": "Wrenote records a chosen window or screen alongside your audio when you enable screen capture."
       }
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }
