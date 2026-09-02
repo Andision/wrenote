@@ -240,11 +240,11 @@ def test_status_shape(tmp_path):
 
 
 def test_compute_status_endpoint(client):
-    r = client.get("/api/compute/status")
+    r = client.get("/v1/compute/status")
     assert r.status_code == 200
     body = r.json()
     assert body["active"] == body["selection"]["variant"]
     assert body["candidates"][-1] == body["builtin"] or "cpu" in body["candidates"]
-    info = client.get("/info").json()
+    info = client.get("/v1/info").json()
     assert info["compute"]["active"] == body["active"]
     assert set(info["platform"]) == {"name", "capabilities"}

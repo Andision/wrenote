@@ -1,11 +1,10 @@
+import { API_BASE as BASE } from "./api";
 // Chat HTTP helpers. Chat is organised into per-session "conversations"
 // (threads); messages hang off a conversation. POST streams the assistant
 // reply as text/plain chunks, GET lists history, DELETE clears.
 
 // Same-origin: the SPA is served by the backend, so talk to our own origin
 // (port included). Vite dev proxies these paths to the backend — see vite.config.ts.
-const BASE =
-  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
 
 export interface ChatMessage {
   ord: number;

@@ -11,7 +11,7 @@ TOKEN = "test-secret"
 
 
 def test_protected_route_401_without_token(auth_client):
-    assert auth_client.get("/sessions").status_code == 401
+    assert auth_client.get("/v1/sessions").status_code == 401
 
 
 def test_health_is_public(auth_client):
@@ -24,16 +24,16 @@ def test_static_prefix_is_public(auth_client):
 
 
 def test_bearer_token_grants_access(auth_client):
-    r = auth_client.get("/sessions", headers={"Authorization": f"Bearer {TOKEN}"})
+    r = auth_client.get("/v1/sessions", headers={"Authorization": f"Bearer {TOKEN}"})
     assert r.status_code == 200
 
 
 def test_query_token_grants_access(auth_client):
-    assert auth_client.get(f"/sessions?token={TOKEN}").status_code == 200
+    assert auth_client.get(f"/v1/sessions?token={TOKEN}").status_code == 200
 
 
 def test_wrong_token_is_401(auth_client):
-    r = auth_client.get("/sessions", headers={"Authorization": "Bearer nope"})
+    r = auth_client.get("/v1/sessions", headers={"Authorization": "Bearer nope"})
     assert r.status_code == 401
 
 
@@ -46,4 +46,4 @@ def test_root_hands_back_the_cookie(auth_client):
 
 def test_cookie_grants_access(auth_client):
     auth_client.cookies.set("wrenote_token", TOKEN)
-    assert auth_client.get("/sessions").status_code == 200
+    assert auth_client.get("/v1/sessions").status_code == 200

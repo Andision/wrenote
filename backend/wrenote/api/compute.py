@@ -16,7 +16,7 @@ from ..deps import get_runtimes
 router = APIRouter()
 
 
-@router.get("/api/compute/status")
+@router.get("/compute/status")
 async def compute_status(runtimes: RuntimeManager = Depends(get_runtimes)) -> dict[str, Any]:
     """Detected hardware, the runtime-pack chain, and which one is active."""
     return runtimes.status()

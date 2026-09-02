@@ -8,11 +8,7 @@ import type {
   SessionMeta,
   StoredSession,
 } from "../types";
-
-// Same-origin: the SPA is served by the backend, so talk to our own origin
-// (port included). Vite dev proxies these paths to the backend — see vite.config.ts.
-const BASE =
-  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
+import { API_BASE as BASE } from "./api";
 
 // snake_case row → camelCase frontend object
 interface SessionRow {

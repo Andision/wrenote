@@ -80,12 +80,12 @@ def test_empty_segments_produce_empty_output():
 
 
 def test_export_missing_session_404(client):
-    assert client.get("/sessions/nope/export?fmt=md").status_code == 404
+    assert client.get("/v1/sessions/nope/export?fmt=md").status_code == 404
 
 
 def test_export_bad_content_400(client):
     # content is validated before the session lookup, so any sid works.
-    assert client.get("/sessions/any/export?content=bogus").status_code == 400
+    assert client.get("/v1/sessions/any/export?content=bogus").status_code == 400
 
 
 def test_export_happy_path_through_http(client):
@@ -110,11 +110,11 @@ def test_export_happy_path_through_http(client):
 
     asyncio.run(seed())
 
-    r = client.get("/sessions/s1/export?fmt=srt&content=original")
+    r = client.get("/v1/sessions/s1/export?fmt=srt&content=original")
     assert r.status_code == 200
     assert "00:00:01,000 --> 00:00:03,000" in r.text
     assert "Hello world" in r.text
 
-    md = client.get("/sessions/s1/export?fmt=md&content=original")
+    md = client.get("/v1/sessions/s1/export?fmt=md&content=original")
     assert md.status_code == 200
     assert md.text.startswith("# Demo")

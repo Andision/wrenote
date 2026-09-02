@@ -39,8 +39,8 @@ def _seed_one_segment():
 
 def test_edit_original_marks_translation_stale_but_keeps_it(client):
     _seed_one_segment()
-    assert client.patch("/sessions/s1/segments/a", json={"orig_text": "hello"}).status_code == 200
-    seg = client.get("/sessions/s1").json()["segments"][0]
+    assert client.patch("/v1/sessions/s1/segments/a", json={"orig_text": "hello"}).status_code == 200
+    seg = client.get("/v1/sessions/s1").json()["segments"][0]
     assert seg["orig_text"] == "hello"
     assert seg["trans_status"] == "stale"   # flagged for re-translation
     assert seg["trans_text"] == "你好"        # but kept (shown dimmed) until refreshed
@@ -48,15 +48,15 @@ def test_edit_original_marks_translation_stale_but_keeps_it(client):
 
 def test_edit_translation_is_manual_final(client):
     _seed_one_segment()
-    assert client.patch("/sessions/s1/segments/a", json={"trans_text": "你好啊"}).status_code == 200
-    seg = client.get("/sessions/s1").json()["segments"][0]
+    assert client.patch("/v1/sessions/s1/segments/a", json={"trans_text": "你好啊"}).status_code == 200
+    seg = client.get("/v1/sessions/s1").json()["segments"][0]
     assert seg["trans_text"] == "你好啊"
     assert seg["trans_status"] == "final"
 
 
 def test_edit_missing_segment_404(client):
-    assert client.patch("/sessions/nope/segments/x", json={"orig_text": "y"}).status_code == 404
+    assert client.patch("/v1/sessions/nope/segments/x", json={"orig_text": "y"}).status_code == 404
 
 
 def test_edit_requires_a_field_400(client):
-    assert client.patch("/sessions/any/segments/any", json={}).status_code == 400
+    assert client.patch("/v1/sessions/any/segments/any", json={}).status_code == 400

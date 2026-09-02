@@ -23,7 +23,7 @@ def test_capture_targets_returns_enumeration(client, monkeypatch):
         }
 
     monkeypatch.setattr(screenrec, "list_targets", fake_list_targets)
-    r = client.get("/capture/targets")
+    r = client.get("/v1/capture/targets")
     assert r.status_code == 200
     body = r.json()
     assert [d["title"] for d in body["displays"]] == ["Display 1"]
@@ -33,7 +33,7 @@ def test_capture_targets_returns_enumeration(client, monkeypatch):
 def test_capture_targets_shape_without_permission(client):
     """Real call on this box: macOS without Screen-Recording permission (or non-mac)
     degrades to empty lists — still a 200 with the right shape, never a 500."""
-    r = client.get("/capture/targets")
+    r = client.get("/v1/capture/targets")
     assert r.status_code == 200
     body = r.json()
     assert set(body.keys()) >= {"displays", "windows"}
@@ -41,49 +41,49 @@ def test_capture_targets_shape_without_permission(client):
 
 
 def test_translate_missing_session_404(client):
-    assert client.post("/sessions/nope/translate").status_code == 404
+    assert client.post("/v1/sessions/nope/translate").status_code == 404
 
 
 def test_diarize_missing_session_404(client):
-    assert client.post("/sessions/nope/diarize").status_code == 404
+    assert client.post("/v1/sessions/nope/diarize").status_code == 404
 
 
 def test_conversations_list_empty(client):
-    r = client.get("/sessions/any-sid/conversations")
+    r = client.get("/v1/sessions/any-sid/conversations")
     assert r.status_code == 200
     assert r.json() == {"conversations": []}
 
 
 def test_create_conversation_missing_session_404(client):
-    r = client.post("/sessions/nope/conversations", json={"title": "x"})
+    r = client.post("/v1/sessions/nope/conversations", json={"title": "x"})
     assert r.status_code == 404
 
 
 def test_chat_post_requires_text_400(client):
     # text is validated before any session/model work, so this is model-free.
     r = client.post(
-        "/sessions/any/conversations/anyconv/chat", json={"text": "   "}
+        "/v1/sessions/any/conversations/anyconv/chat", json={"text": "   "}
     )
     assert r.status_code == 400
 
 
 def test_rename_speaker_requires_from_and_to_400(client):
-    r = client.patch("/sessions/any/speakers", json={"from": "", "to": ""})
+    r = client.patch("/v1/sessions/any/speakers", json={"from": "", "to": ""})
     assert r.status_code == 400
 
 
 def test_assign_segment_speaker_validation_400(client):
     r = client.post(
-        "/sessions/any/segments/speaker", json={"segmentIds": [], "speaker": ""}
+        "/v1/sessions/any/segments/speaker", json={"segmentIds": [], "speaker": ""}
     )
     assert r.status_code == 400
 
 
 def test_title_suggest_missing_session_404(client):
-    assert client.post("/sessions/nope/title/suggest").status_code == 404
+    assert client.post("/v1/sessions/nope/title/suggest").status_code == 404
 
 
 def test_chat_routes_resolve_to_api_not_spa(client):
     """A carved POST route must hit the router (JSON 4xx), never the SPA."""
-    r = client.post("/sessions/nope/diarize")
+    r = client.post("/v1/sessions/nope/diarize")
     assert r.headers["content-type"].startswith("application/json")

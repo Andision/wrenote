@@ -1,6 +1,5 @@
+import { API_BASE as BASE } from "./api";
 // Global custom-vocabulary glossary (fed to STT + translation server-side).
-const BASE =
-  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
 
 export interface GlossaryEntry {
   id?: string;

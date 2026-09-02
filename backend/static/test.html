@@ -201,7 +201,7 @@
       setStatus('connecting websocket…');
 
       try {
-        ws = new WebSocket(`ws://${location.host}/ws`);
+        ws = new WebSocket(`ws://${location.host}/v1/ws`);
         ws.binaryType = 'arraybuffer';
       } catch (e) {
         setStatus('failed to construct WebSocket: ' + e.message, true);

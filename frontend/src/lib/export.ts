@@ -1,7 +1,6 @@
+import { API_BASE as BASE } from "./api";
 // Transcript export — fetch the backend-rendered text, then copy or save it
 // client-side (one source of truth: the formatting lives in core/export.py).
-const BASE =
-  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
 
 export type ExportFormat = "md" | "txt" | "srt" | "vtt";
 export type ExportContent = "original" | "translation" | "both";

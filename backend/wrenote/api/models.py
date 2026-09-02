@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/api/models/status")
+@router.get("/models/status")
 async def models_status(cfg: Config = Depends(get_config)) -> dict[str, Any]:
     """Which required models are present in ~/.wrenote/models/, and their sizes."""
     entries = required_models(cfg)
@@ -26,13 +26,13 @@ async def models_status(cfg: Config = Depends(get_config)) -> dict[str, Any]:
     }
 
 
-@router.post("/api/models/download")
+@router.post("/models/download")
 async def models_download(
     cfg: Config = Depends(get_config),
     jobs: JobRegistry = Depends(get_jobs),
 ) -> dict[str, Any]:
     """Start downloading any missing models as a background job. Progress streams
-    over ``/jobs/{job_id}/stream`` (one weighted phase per model)."""
+    over ``/v1/jobs/{job_id}/stream`` (one weighted phase per model)."""
     missing = [e for e in required_models(cfg) if not e.present]
     if not missing:
         return {"job_id": None, "all_present": True}

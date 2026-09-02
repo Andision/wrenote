@@ -64,9 +64,9 @@ def test_apply_to_backends_drives_hooks():
 
 
 def test_glossary_endpoint_roundtrip(client):
-    assert client.get("/glossary").json() == {"glossary": []}
+    assert client.get("/v1/glossary").json() == {"glossary": []}
     r = client.put(
-        "/glossary",
+        "/v1/glossary",
         json={"glossary": [
             {"term": "Kubernetes", "translation": "Kubernetes"},
             {"term": "", "translation": "dropped"},  # blank term dropped
@@ -77,8 +77,8 @@ def test_glossary_endpoint_roundtrip(client):
     assert len(saved) == 1
     assert saved[0]["term"] == "Kubernetes" and saved[0]["id"]  # id assigned
     # persisted
-    assert client.get("/glossary").json()["glossary"][0]["term"] == "Kubernetes"
+    assert client.get("/v1/glossary").json()["glossary"][0]["term"] == "Kubernetes"
 
 
 def test_glossary_put_rejects_non_list(client):
-    assert client.put("/glossary", json={"glossary": "nope"}).status_code == 400
+    assert client.put("/v1/glossary", json={"glossary": "nope"}).status_code == 400

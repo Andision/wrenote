@@ -1,7 +1,6 @@
+import { API_BASE as BASE } from "./api";
 // Capture-target enumeration for the PreFlight screen/window picker.
 // Same-origin: the SPA is served by the backend, so the auth cookie rides along.
-const BASE =
-  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
 
 export interface CaptureTarget {
   type: "window" | "display";

@@ -18,7 +18,7 @@ def test_ws_start_persists_session_and_acks_ready(client):
     that the refactor must preserve.
     """
     sid = "test-session-abc"
-    with client.websocket_connect("/ws") as ws:
+    with client.websocket_connect("/v1/ws") as ws:
         ws.send_json(
             {"type": "start", "config": {"session_id": sid, "title": "Daily sync"}}
         )
@@ -27,14 +27,14 @@ def test_ws_start_persists_session_and_acks_ready(client):
         # graceful stop so cleanup runs the normal path
         ws.send_json({"type": "stop"})
 
-    sess = client.get(f"/sessions/{sid}")
+    sess = client.get(f"/v1/sessions/{sid}")
     assert sess.status_code == 200
     assert sess.json()["title"] == "Daily sync"
 
 
 def test_ws_first_message_must_be_start(client):
     """A non-'start' first message yields a BAD_CONFIG error event."""
-    with client.websocket_connect("/ws") as ws:
+    with client.websocket_connect("/v1/ws") as ws:
         ws.send_json({"type": "feed"})
         evt = ws.receive_json()
         assert evt["type"] == "error"
@@ -42,7 +42,7 @@ def test_ws_first_message_must_be_start(client):
 
 
 def test_ws_invalid_json_first_message(client):
-    with client.websocket_connect("/ws") as ws:
+    with client.websocket_connect("/v1/ws") as ws:
         ws.send_text("not json{")
         evt = ws.receive_json()
         assert evt["type"] == "error"
@@ -52,6 +52,6 @@ def test_ws_invalid_json_first_message(client):
 def test_ws_rejects_foreign_origin(client):
     """A non-local Origin is closed (1008) before accept — the LAN guard."""
     with pytest.raises(WebSocketDisconnect), client.websocket_connect(
-        "/ws", headers={"origin": "http://evil.example.com"}
+        "/v1/ws", headers={"origin": "http://evil.example.com"}
     ):
         pass

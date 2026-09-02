@@ -1,10 +1,9 @@
+import { API_BASE as BASE } from "./api";
 // Kick off an upload job. Returns {jobId, sessionId} immediately;
 // progress is streamed separately via subscribeJob (handled by jobsStore).
 
 // Same-origin: the SPA is served by the backend, so talk to our own origin
 // (port included). Vite dev proxies these paths to the backend — see vite.config.ts.
-const BASE =
-  typeof window !== "undefined" ? window.location.origin : "http://localhost:8000";
 
 export interface UploadParams {
   files: File[];

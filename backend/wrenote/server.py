@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from . import ws
+from . import __version__, ws
 from .api import (
     capture,
     chat,
@@ -55,6 +55,12 @@ else:
     STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 APP_DIR = STATIC_DIR / "app"  # built SPA (vite output); served at "/" last.
+
+# Every HTTP resource and the WebSocket live under this prefix. Bump it (and
+# keep the old one mounted) when a breaking change to the contract ships;
+# clients pin the version they were built against. ``/health`` stays at the
+# root: it is the shell's readiness probe and predates any versioning.
+API_PREFIX = "/v1"
 
 # Resource routers, registered in this order before the SPA catch-all.
 _ROUTERS = (
@@ -124,12 +130,13 @@ def _register_meta_routes(app: FastAPI) -> None:
     """Health/info, plus a dev-only JSON banner at ``/`` when the SPA isn't built."""
     if not APP_DIR.exists():
         # Once the SPA is built, its mount owns "/" instead.
-        @app.get("/")
+        @app.get("/", include_in_schema=False)
         async def root() -> dict[str, Any]:
             return {
                 "service": "wrenote",
                 "version": "0.1.0",
-                "ws": "/ws",
+                "api": API_PREFIX,
+                "ws": f"{API_PREFIX}/ws",
                 "test_page": "/static/test.html",
             }
 
@@ -137,7 +144,7 @@ def _register_meta_routes(app: FastAPI) -> None:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/info")
+    @app.get(f"{API_PREFIX}/info")
     async def info(request: Request) -> dict[str, Any]:
         cfg: Config = request.app.state.config
         plat = get_platform()
@@ -160,7 +167,7 @@ def create_app(config: Config | None = None, *, auth_token: str | None = None) -
     ``auth_token``: loopback token; ``None`` falls back to the env-derived
     ``AUTH_TOKEN`` (empty in plain dev → auth disabled).
     """
-    app = FastAPI(title="Wrenote", lifespan=_make_lifespan(config))
+    app = FastAPI(title="Wrenote Engine", version=__version__, lifespan=_make_lifespan(config))
 
     # Allow the Vite dev server (different port) to call HTTP endpoints. The
     # WebSocket has its own origin check; this is for fetch/XHR.
@@ -178,7 +185,7 @@ def create_app(config: Config | None = None, *, auth_token: str | None = None) -
     install_loopback_auth(app, AUTH_TOKEN if auth_token is None else auth_token)
 
     for module in _ROUTERS:
-        app.include_router(module.router)
+        app.include_router(module.router, prefix=API_PREFIX)
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

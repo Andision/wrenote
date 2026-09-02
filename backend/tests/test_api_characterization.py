@@ -16,51 +16,52 @@ from starlette.routing import Mount, WebSocketRoute
 
 import wrenote.server as server
 
-# Frozen snapshot of the route surface as of the pre-refactor baseline.
+# Frozen snapshot of the route surface (contract v1: everything under /v1
+# except the shell's /health probe and the static/SPA mounts).
 # (method, path) for every API route, plus WS and mounts. Captured from the
 # live app; the refactor must reproduce this set exactly.
 EXPECTED_ROUTES = {
-    ("DELETE", "/groups/{group_id}"),
-    ("DELETE", "/recordings/{session_id}.wav"),
-    ("DELETE", "/sessions/{session_id}"),
-    ("DELETE", "/sessions/{session_id}/conversations/{conversation_id}"),
-    ("DELETE", "/sessions/{session_id}/conversations/{conversation_id}/chat"),
-    ("GET", "/api/compute/status"),
-    ("GET", "/api/models/status"),
-    ("GET", "/capture/targets"),
-    ("GET", "/glossary"),
-    ("PUT", "/glossary"),
-    ("GET", "/groups"),
+    ("DELETE", "/v1/groups/{group_id}"),
+    ("DELETE", "/v1/recordings/{session_id}.wav"),
+    ("DELETE", "/v1/sessions/{session_id}"),
+    ("DELETE", "/v1/sessions/{session_id}/conversations/{conversation_id}"),
+    ("DELETE", "/v1/sessions/{session_id}/conversations/{conversation_id}/chat"),
+    ("GET", "/v1/compute/status"),
+    ("GET", "/v1/models/status"),
+    ("GET", "/v1/capture/targets"),
+    ("GET", "/v1/glossary"),
+    ("PUT", "/v1/glossary"),
+    ("GET", "/v1/groups"),
     ("GET", "/health"),
-    ("GET", "/info"),
-    ("GET", "/jobs/{job_id}"),
-    ("GET", "/jobs/{job_id}/stream"),
-    ("GET", "/recordings/{session_id}.wav"),
-    ("GET", "/sessions"),
-    ("GET", "/sessions/{session_id}"),
-    ("GET", "/sessions/{session_id}/export"),
-    ("GET", "/sessions/{session_id}/conversations"),
-    ("GET", "/sessions/{session_id}/conversations/{conversation_id}/chat"),
+    ("GET", "/v1/info"),
+    ("GET", "/v1/jobs/{job_id}"),
+    ("GET", "/v1/jobs/{job_id}/stream"),
+    ("GET", "/v1/recordings/{session_id}.wav"),
+    ("GET", "/v1/sessions"),
+    ("GET", "/v1/sessions/{session_id}"),
+    ("GET", "/v1/sessions/{session_id}/export"),
+    ("GET", "/v1/sessions/{session_id}/conversations"),
+    ("GET", "/v1/sessions/{session_id}/conversations/{conversation_id}/chat"),
     ("MOUNT", "/"),
     ("MOUNT", "/static"),
-    ("PATCH", "/groups/{group_id}"),
-    ("PATCH", "/sessions/{session_id}"),
-    ("PATCH", "/sessions/{session_id}/conversations/{conversation_id}"),
-    ("PATCH", "/sessions/{session_id}/group"),
-    ("PATCH", "/sessions/{session_id}/speakers"),
-    ("POST", "/api/models/download"),
-    ("POST", "/groups"),
-    ("POST", "/sessions/upload"),
-    ("POST", "/sessions/{session_id}/conversations"),
-    ("POST", "/sessions/{session_id}/conversations/{conversation_id}/chat"),
-    ("POST", "/sessions/{session_id}/diarize"),
-    ("PATCH", "/sessions/{session_id}/segments/{segment_id}"),
-    ("POST", "/sessions/{session_id}/segments/speaker"),
-    ("POST", "/sessions/{session_id}/segments/{segment_id}/split"),
-    ("POST", "/sessions/{session_id}/segments/{segment_id}/merge"),
-    ("POST", "/sessions/{session_id}/title/suggest"),
-    ("POST", "/sessions/{session_id}/translate"),
-    ("WS", "/ws"),
+    ("PATCH", "/v1/groups/{group_id}"),
+    ("PATCH", "/v1/sessions/{session_id}"),
+    ("PATCH", "/v1/sessions/{session_id}/conversations/{conversation_id}"),
+    ("PATCH", "/v1/sessions/{session_id}/group"),
+    ("PATCH", "/v1/sessions/{session_id}/speakers"),
+    ("POST", "/v1/models/download"),
+    ("POST", "/v1/groups"),
+    ("POST", "/v1/sessions/upload"),
+    ("POST", "/v1/sessions/{session_id}/conversations"),
+    ("POST", "/v1/sessions/{session_id}/conversations/{conversation_id}/chat"),
+    ("POST", "/v1/sessions/{session_id}/diarize"),
+    ("PATCH", "/v1/sessions/{session_id}/segments/{segment_id}"),
+    ("POST", "/v1/sessions/{session_id}/segments/speaker"),
+    ("POST", "/v1/sessions/{session_id}/segments/{segment_id}/split"),
+    ("POST", "/v1/sessions/{session_id}/segments/{segment_id}/merge"),
+    ("POST", "/v1/sessions/{session_id}/title/suggest"),
+    ("POST", "/v1/sessions/{session_id}/translate"),
+    ("WS", "/v1/ws"),
 }
 
 
@@ -110,7 +111,7 @@ def test_health(client):
 
 
 def test_info(client):
-    r = client.get("/info")
+    r = client.get("/v1/info")
     assert r.status_code == 200
     body = r.json()
     assert "config" in body and isinstance(body["config"], dict)
@@ -120,61 +121,61 @@ def test_info(client):
 
 
 def test_sessions_empty_on_fresh_db(client):
-    r = client.get("/sessions")
+    r = client.get("/v1/sessions")
     assert r.status_code == 200
     assert r.json() == {"sessions": []}
 
 
 def test_groups_empty_on_fresh_db(client):
-    r = client.get("/groups")
+    r = client.get("/v1/groups")
     assert r.status_code == 200
     assert r.json() == {"groups": []}
 
 
 def test_missing_session_404(client):
-    r = client.get("/sessions/does-not-exist")
+    r = client.get("/v1/sessions/does-not-exist")
     assert r.status_code == 404
 
 
 def test_missing_job_404(client):
-    r = client.get("/jobs/nope")
+    r = client.get("/v1/jobs/nope")
     assert r.status_code == 404
 
 
 def test_missing_recording_404(client):
-    r = client.get("/recordings/nope.wav")
+    r = client.get("/v1/recordings/nope.wav")
     assert r.status_code == 404
 
 
 def test_models_status(client):
-    r = client.get("/api/models/status")
+    r = client.get("/v1/models/status")
     assert r.status_code == 200
     assert isinstance(r.json(), dict)
 
 
 def test_group_create_list_roundtrip(client):
-    created = client.post("/groups", json={"name": "Meetings"})
+    created = client.post("/v1/groups", json={"name": "Meetings"})
     assert created.status_code == 200
     grp = created.json()["group"]
     assert grp["name"] == "Meetings"
     gid = grp["id"]
 
-    listed = client.get("/groups").json()["groups"]
+    listed = client.get("/v1/groups").json()["groups"]
     assert any(g["id"] == gid and g["name"] == "Meetings" for g in listed)
 
     # rename → reflected in the list
-    assert client.patch(f"/groups/{gid}", json={"name": "Standups"}).status_code == 200
-    listed2 = client.get("/groups").json()["groups"]
+    assert client.patch(f"/v1/groups/{gid}", json={"name": "Standups"}).status_code == 200
+    listed2 = client.get("/v1/groups").json()["groups"]
     assert any(g["id"] == gid and g["name"] == "Standups" for g in listed2)
 
     # delete → gone
-    assert client.delete(f"/groups/{gid}").json() == {"status": "ok"}
-    assert all(g["id"] != gid for g in client.get("/groups").json()["groups"])
+    assert client.delete(f"/v1/groups/{gid}").json() == {"status": "ok"}
+    assert all(g["id"] != gid for g in client.get("/v1/groups").json()["groups"])
 
 
 def test_patch_session_requires_title(client):
     # 400 (bad body), not 404/500, is the current contract for an empty title.
-    r = client.patch("/sessions/whatever", json={"title": "  "})
+    r = client.patch("/v1/sessions/whatever", json={"title": "  "})
     assert r.status_code == 400
 
 
@@ -182,8 +183,8 @@ def test_patch_session_requires_title(client):
 
 
 def test_api_route_not_swallowed_by_spa(client):
-    """/sessions must hit the API (JSON), not the SPA catch-all at '/'."""
-    r = client.get("/sessions")
+    """/v1/sessions must hit the API (JSON), not the SPA catch-all at '/'."""
+    r = client.get("/v1/sessions")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("application/json")
 

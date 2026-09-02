@@ -83,23 +83,23 @@ def _seed(*, two=True):
 
 def test_split_endpoint(client):
     _seed(two=False)
-    r = client.post("/sessions/s1/segments/a/split", json={"offset": 5})
+    r = client.post("/v1/sessions/s1/segments/a/split", json={"offset": 5})
     assert r.status_code == 200 and r.json()["n_segments"] == 2
-    texts = [s["orig_text"] for s in client.get("/sessions/s1").json()["segments"]]
+    texts = [s["orig_text"] for s in client.get("/v1/sessions/s1").json()["segments"]]
     assert texts == ["hello", "world"]
 
 
 def test_merge_endpoint(client):
     _seed(two=True)
-    r = client.post("/sessions/s1/segments/a/merge")
+    r = client.post("/v1/sessions/s1/segments/a/merge")
     assert r.status_code == 200 and r.json()["n_segments"] == 1
-    assert client.get("/sessions/s1").json()["segments"][0]["orig_text"] == "hello world again"
+    assert client.get("/v1/sessions/s1").json()["segments"][0]["orig_text"] == "hello world again"
 
 
 def test_split_bad_offset_400(client):
     _seed(two=False)
-    assert client.post("/sessions/s1/segments/a/split", json={}).status_code == 400
+    assert client.post("/v1/sessions/s1/segments/a/split", json={}).status_code == 400
 
 
 def test_merge_missing_session_404(client):
-    assert client.post("/sessions/nope/segments/a/merge").status_code == 404
+    assert client.post("/v1/sessions/nope/segments/a/merge").status_code == 404

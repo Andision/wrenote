@@ -4,7 +4,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// dev: vite serves on 5173; the page connects directly to ws://localhost:8000/ws
+// dev: vite serves on 5173; /v1 (HTTP + WS) is proxied to the engine on :8000
 // prod: `npm run build` → backend/static/app/, which the FastAPI server serves at `/`.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -19,14 +19,9 @@ export default defineConfig({
     // The SPA now uses same-origin URLs (window.location). In dev it loads from
     // :5173, so proxy the backend's API + WS routes to the uvicorn dev server.
     proxy: {
-      "/ws": { target: "http://127.0.0.1:8000", ws: true, changeOrigin: true },
-      "/api": "http://127.0.0.1:8000",
+      // Contract v1 (HTTP + WS) and the shell's readiness probe.
+      "/v1": { target: "http://127.0.0.1:8000", ws: true, changeOrigin: true },
       "/health": "http://127.0.0.1:8000",
-      "/info": "http://127.0.0.1:8000",
-      "/sessions": "http://127.0.0.1:8000",
-      "/groups": "http://127.0.0.1:8000",
-      "/jobs": "http://127.0.0.1:8000",
-      "/recordings": "http://127.0.0.1:8000",
     },
   },
   build: {
