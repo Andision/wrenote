@@ -11,13 +11,16 @@ import concurrent.futures
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-from pywhispercpp.model import Model
 
 from ..core.events import AudioSegment, BackendInfo, TranscriptEvent
 from ..core.registry import register_stt
 from .base import PartialCallback, STTBackend
+
+if TYPE_CHECKING:
+    from pywhispercpp.model import Model
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +82,11 @@ class WhisperCppBackend(STTBackend):
             raise FileNotFoundError(f"Whisper model not found at {self._model_path}")
 
         def _load() -> Model:
+            # Imported here, not at module top: the native binding is part of
+            # the (swappable) compute runtime and must not be a hard import
+            # dependency of the engine package. See core/runtimes.py.
+            from pywhispercpp.model import Model
+
             return Model(
                 self._model_path,
                 n_threads=self._n_threads,

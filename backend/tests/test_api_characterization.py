@@ -63,16 +63,33 @@ EXPECTED_ROUTES = {
 }
 
 
+def _walk_routes(routes, prefix: str = ""):
+    """Yield (route, effective_path) for every leaf route.
+
+    FastAPI < 0.140 flattens included routers into ``app.routes``; newer
+    versions keep an ``_IncludedRouter`` node whose ``include_context.prefix``
+    must be prepended to the original router's route paths.
+    """
+    for r in routes:
+        original = getattr(r, "original_router", None)
+        if original is not None:
+            ctx = getattr(r, "include_context", None)
+            sub_prefix = prefix + (getattr(ctx, "prefix", "") or "")
+            yield from _walk_routes(original.routes, sub_prefix)
+        else:
+            yield r, prefix + (getattr(r, "path", "") or "")
+
+
 def _current_routes() -> set[tuple[str, str]]:
     rows: set[tuple[str, str]] = set()
-    for r in server.app.routes:
+    for r, path in _walk_routes(server.app.routes):
         if isinstance(r, APIRoute):
             for m in r.methods - {"HEAD", "OPTIONS"}:
-                rows.add((m, r.path))
+                rows.add((m, path))
         elif isinstance(r, WebSocketRoute):
-            rows.add(("WS", r.path))
+            rows.add(("WS", path))
         elif isinstance(r, Mount):
-            rows.add(("MOUNT", r.path or "/"))
+            rows.add(("MOUNT", path or "/"))
     return rows
 
 

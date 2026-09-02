@@ -33,6 +33,7 @@ import uvicorn
 import webview
 
 from .core.config import load_config
+from .platform import get_platform
 
 log = logging.getLogger(__name__)
 
@@ -51,14 +52,7 @@ def _acquire_single_instance_lock(path: Path) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = open(path, "w")  # noqa: SIM115 — held open for the process lifetime to hold the lock
     try:
-        if sys.platform == "win32":
-            import msvcrt
-
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        get_platform().lock_file(handle)
     except OSError:
         handle.close()
         return False
@@ -106,7 +100,7 @@ def _grant_webview_media() -> None:
     + the audio-input entitlement, and only our own loopback page is ever loaded,
     so this just unblocks our own recording UI.
     """
-    if sys.platform != "darwin":
+    if get_platform().name != "darwin":
         return
     try:
         from webview.platforms import cocoa
