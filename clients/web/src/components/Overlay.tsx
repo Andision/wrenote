@@ -1,7 +1,7 @@
 // Floating subtitle overlay — the "desktop lyrics" window.
 //
 // Rendered instead of the full App when the page is loaded with #overlay
-// (see main.tsx). The Electron shell hosts it in a frameless transparent
+// (see main.tsx). The desktop shell hosts it in a frameless transparent
 // always-on-top window; live text + mic level arrive over a BroadcastChannel
 // from the main window (overlayBridge.ts). The whole pill is draggable except
 // the control buttons, which stay visible (a drag region swallows hover, so
@@ -13,20 +13,21 @@
 import { useEffect, useState } from "react";
 import { Minimize2, Maximize2, X } from "lucide-react";
 
+import { startWindowDrag } from "@/lib/desktop";
 import {
   connectOverlayListener,
   type OverlayStateMsg,
 } from "@/lib/overlayBridge";
 
-// `-webkit-app-region` is Electron-only, so it lives in inline styles that
-// TypeScript's CSSProperties doesn't know about.
+// `-webkit-app-region` is Electron-only (Tauri drags via startWindowDrag below),
+// so it lives in inline styles that TypeScript's CSSProperties doesn't know about.
 const DRAG: React.CSSProperties = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const NO_DRAG: React.CSSProperties = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 type OverlayMode = "full" | "compact";
 
-// Window size per mode. Kept in sync with the Electron shell's initial size
-// (shells/electron/main.js createOverlayWindow uses the "full" dimensions).
+// Window size per mode. Kept in sync with the shells' initial overlay size
+// (shells/electron/main.js and shells/tauri overlay.rs open at the "full" size).
 const SIZES: Record<OverlayMode, { w: number; h: number }> = {
   full: { w: 760, h: 184 },
   compact: { w: 240, h: 64 },
@@ -102,6 +103,12 @@ export function Overlay() {
     <div
       className="flex h-screen w-screen select-none items-end justify-center p-2"
       style={DRAG}
+      // Tauri has no CSS drag region; start a native drag on mousedown anywhere
+      // except the control buttons (same reachable area as the Electron region).
+      onMouseDown={(e) => {
+        if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+        startWindowDrag();
+      }}
     >
       {mode === "compact" ? (
         <CompactBar state={state} controls={controls} />

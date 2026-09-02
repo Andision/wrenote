@@ -3,8 +3,8 @@
 // Both windows are served from the same loopback origin, so a BroadcastChannel
 // carries the live transcript without any Electron IPC — which also means the
 // overlay can be exercised in a plain browser tab during dev (open /#overlay).
-// Electron is only involved for window management (toggle/close), exposed by
-// preload.js as `window.wrenoteDesktop`.
+// The shell is only involved for window management (toggle/close), exposed as
+// `window.wrenoteDesktop` by Electron's preload.js or, under Tauri, by desktop.ts.
 import { useSessionStore } from "../store/sessionStore";
 import type { ConnectionState, Segment } from "../types";
 
@@ -34,7 +34,7 @@ type OverlayMsg = OverlayStateMsg | OverlayHelloMsg;
 
 declare global {
   interface Window {
-    /** Injected by shells/electron/preload.js; absent in a plain browser. */
+    /** Injected by shells/electron/preload.js or lib/desktop.ts (Tauri); absent in a plain browser. */
     wrenoteDesktop?: {
       toggleOverlay: () => Promise<void>;
       closeOverlay: () => Promise<void>;

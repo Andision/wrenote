@@ -21,7 +21,8 @@ wrenote/
 ├── clients/
 │   └── web/                React SPA — the reference client. Served by the engine at "/".
 ├── shells/
-│   └── electron/           desktop host: spawns the engine, owns windows/overlay/permissions
+│   ├── tauri/              desktop host (system WebView): spawns the engine, windows, overlay
+│   └── electron/           the shipping host until the Tauri checklist is green
 ├── packaging/              PyInstaller specs, macOS Swift capture helpers, entitlements
 ├── docs/plans/             historical design/migration plans (paths pre-date this layout)
 └── .github/workflows/      CI: builds the SPA, freezes the engine, packages the shell
@@ -67,8 +68,11 @@ works under a dynamic port and under any shell.
 A shell is the smallest possible native host: spawn the engine, wait for
 `/health`, open a window at the loopback URL, provide what the web platform
 can't (the always-on-top subtitle overlay, media permission prompts, tray,
-menus). Today this is Electron (~300 lines). Replacing it with Tauri or a
-per-platform WebView host touches nothing outside `shells/`.
+menus). Two exist: `shells/tauri/` (Rust, system WebView, a few MB) is the
+target; `shells/electron/` (~300 lines) ships until the Tauri validation
+checklist in `shells/tauri/README.md` is ticked on real macOS and Windows
+machines. Both expose the identical `window.wrenoteDesktop` surface to the web
+client, so swapping them touches nothing outside `shells/`.
 
 ## Platform adapter (`engine/wrenote/platform/`)
 
@@ -142,11 +146,12 @@ speaker model stay on CPU (ONNX Runtime) by design.
 
 1. ✅ Engine abstractions: platform adapter, compute runtime interface,
    versioned contract, repo layout.
-2. Tauri shell replacing Electron (native window chrome, tray, menus, overlay
-   via multi-window; PyInstaller onedir engine shipped as a resource, not
-   `externalBin`). Validate `getUserMedia` / AudioWorklet in WKWebView and
-   WebView2; fall back to engine-side mic capture via the platform adapter
-   if a WebView can't. Keep `shells/electron/` until Tauri is green in CI.
+2. 🔧 Tauri shell replacing Electron — written (`shells/tauri/`, engine
+   sidecar as a bundle resource, overlay via multi-window, CI packaging job)
+   and compiling against Tauri 2; awaiting the on-device checklist
+   (`getUserMedia` / AudioWorklet in WKWebView and WebView2, overlay
+   transparency, signing). Fall back to engine-side mic capture via the
+   platform adapter if a WebView can't. `shells/electron/` ships until then.
 3. CI builds and publishes runtime packs (`cpu`, `vulkan`, `cuda` for
    Windows); wire `ensure()` downloads and the settings UI.
 4. Native clients only where native matters (macOS menu bar / overlay),

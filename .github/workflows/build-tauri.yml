@@ -1,0 +1,58 @@
+name: build (tauri)
+
+# Packages the Tauri shell alongside the Electron one while it is being
+# validated (see shells/tauri/README.md for the manual checklist). Once Tauri is
+# the shipping shell, this replaces build.yml.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["init-codebase"]
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14 # Apple Silicon
+            artifact: Wrenote-tauri-macos-arm64
+            llama_index: https://abetlen.github.io/llama-cpp-python/whl/metal
+            bundle_glob: |
+              shells/tauri/src-tauri/target/release/bundle/dmg/*.dmg
+              shells/tauri/src-tauri/target/release/bundle/macos/*.app
+          - os: windows-latest
+            artifact: Wrenote-tauri-windows-x64
+            llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
+            bundle_glob: shells/tauri/src-tauri/target/release/bundle/nsis/*.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/build-engine
+        with:
+          llama_index: ${{ matrix.llama_index }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: shells/tauri/src-tauri
+
+      - name: Build Tauri desktop app
+        working-directory: shells/tauri
+        env:
+          # No code signing in CI. macOS: Tauri skips signing without an
+          # identity (the .app runs locally; Gatekeeper needs a signed build
+          # for distribution). Windows: unsigned NSIS installer.
+          CI: "true"
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.bundle_glob }}
+          if-no-files-found: error

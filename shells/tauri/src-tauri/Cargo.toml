@@ -1,0 +1,30 @@
+[package]
+name = "wrenote-shell"
+version = "0.1.0"
+description = "Tauri desktop shell for Wrenote"
+edition = "2021"
+rust-version = "1.77"
+publish = false
+
+[lib]
+name = "wrenote_shell_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# macos-private-api: transparent windows on macOS (the subtitle overlay).
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

@@ -4,10 +4,15 @@ import { ThemeProvider } from "next-themes";
 
 import App from "./App.tsx";
 import { Overlay } from "./components/Overlay.tsx";
+import { installDesktopBridge } from "./lib/desktop.ts";
 import { isOverlayWindow } from "./lib/overlayBridge.ts";
 import "./index.css";
 
-// #overlay → the floating subtitle window (hosted by the Electron shell, or a
+// Under the Tauri shell, expose the same window.wrenoteDesktop the Electron
+// preload provides, so components stay shell-agnostic.
+installDesktopBridge();
+
+// #overlay → the floating subtitle window (hosted by the desktop shell, or a
 // plain browser tab during dev). It skips the theme provider: the overlay is
 // always dark-on-translucent regardless of the app theme.
 createRoot(document.getElementById("root")!).render(

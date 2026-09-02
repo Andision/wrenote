@@ -15,7 +15,8 @@ a chat over your notes. Everything runs on your machine; nothing leaves it.
 |--------------------|--------------------------------------------------------------------------|
 | `engine/`          | Python engine (FastAPI + WebSocket on loopback). The product. No UI.     |
 | `clients/web/`     | React web client — reference client, bundled into the desktop app        |
-| `shells/electron/` | Desktop host: spawns the engine, owns windows / overlay / permissions     |
+| `shells/tauri/`    | Desktop host (Rust + system WebView): spawns the engine, windows, overlay |
+| `shells/electron/` | Previous desktop host; still the shipping one until Tauri is validated   |
 | `packaging/`       | PyInstaller specs, macOS capture helpers (Swift), entitlements           |
 | `engine/contract/` | `openapi.json` + `ws-protocol.md`: the API clients are built against     |
 | `docs/plans/`      | historical design and migration plans                                    |
@@ -47,14 +48,17 @@ npm run dev                  # http://localhost:5173, proxies /v1 and /health to
 npm run build                # → engine/static/app/, served by the engine at /
 ```
 
-Desktop shell (needs the engine deps installed in a Python the shell can find —
-see `serverCommand()` in `shells/electron/main.js`):
+Desktop shell (needs the engine deps installed in a Python the shell can find;
+set `WRENOTE_PYTHON` to point at it, default `python3` / `python` on PATH):
 
 ```bash
-cd shells/electron
+cd shells/tauri            # Rust toolchain + Tauri CLI; see shells/tauri/README.md
 npm install
-npm start
+npm run dev
 ```
+
+The Electron shell (`shells/electron`, `npm start`) remains until the Tauri
+validation checklist is complete.
 
 Real models: install `pywhispercpp` and `llama-cpp-python` for your platform
 (CI pins the exact wheels in `.github/workflows/build.yml`), then set the
@@ -69,8 +73,10 @@ Locally, from the repo root:
 
 ```bash
 pyinstaller packaging/wrenote_server.spec --distpath engine/dist --workpath packaging/build
-cd shells/electron && npm run dist
+cd shells/tauri && npm run build       # or: cd shells/electron && npm run dist
 ```
+
+`build-tauri.yml` packages the Tauri shell the same way.
 
 ## License
 

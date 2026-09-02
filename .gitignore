@@ -22,9 +22,12 @@ dist/
 dist-ssr/
 *.local
 
-# ---- Electron desktop shell ----
+# ---- Desktop shells ----
 # electron-builder output (the packaged .app / installer); regenerated.
 shells/electron/release/
+# Tauri: cargo build dir + generated schemas (tauri-build writes gen/ on every build)
+shells/tauri/src-tauri/target/
+shells/tauri/src-tauri/gen/
 
 # Built SPA emitted by `npm run build` (vite outDir); regenerated, not committed.
 engine/static/app/
