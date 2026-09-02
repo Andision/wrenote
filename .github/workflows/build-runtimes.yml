@@ -105,6 +105,11 @@ jobs:
           CUDA_PATH: ${{ steps.cuda.outputs.CUDA_PATH }}
         run: |
           set -euo pipefail
+          # pywhispercpp's source build nests deep under pip's temp dir; on
+          # Windows that blows past MAX_PATH and MSBuild's FileTracker fails
+          # with FTK1011. Point every temp dir at a short root for this step.
+          mkdir -p /d/t
+          export TMP='D:\t' TEMP='D:\t' TMPDIR='D:\t'
           python -m pip install --upgrade pip
           extra=()
           if [ -n "${{ matrix.llama_index }}" ]; then
@@ -130,6 +135,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Packs are built --no-deps; the frozen engine ships these. Mirror
+          # that here so the import check sees the same environment.
+          python -m pip install --quiet numpy typing_extensions diskcache jinja2
           zip="$(ls dist/runtimes/wrenote-runtime-*.zip)"
           python - "$zip" <<'EOF'
           import importlib, json, os, pathlib, sys, tempfile, zipfile
