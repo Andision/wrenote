@@ -382,3 +382,51 @@ def test_compute_install_job_end_to_end(install_client, tmp_path):
     # already installed → no job
     assert c.post("/v1/compute/install", json={"variant": "vulkan"}).json()["job_id"] is None
     shutil.rmtree(tmp_path / "runtimes" / "vulkan")
+
+
+# ---------- build_pack module detection ----------
+
+
+def test_top_level_modules_ignores_wheel_install_leftovers(tmp_path):
+    """llama-cpp-python's wheel drops bin/ include/ lib/ next to the package;
+    those are not importable and must never be routed by the finder."""
+    site = tmp_path / "site-packages"
+    (site / "llama_cpp").mkdir(parents=True)
+    (site / "llama_cpp" / "__init__.py").write_text("")
+    (site / "llama_cpp" / "lib").mkdir()
+    (site / "llama_cpp" / "lib" / "llama.dll").write_bytes(b"")
+    (site / "_pywhispercpp.cp311-win_amd64.pyd").write_bytes(b"")
+    (site / "pywhispercpp").mkdir()
+    (site / "pywhispercpp" / "__init__.py").write_text("")
+    for d in ("bin", "include", "lib"):
+        (site / d).mkdir()
+    (site / "bin" / "llama-cli.exe").write_bytes(b"")
+    (site / "include" / "ggml.h").write_text("")
+    (site / "lib" / "ggml.lib").write_bytes(b"")
+    (site / "lib" / "cmake").mkdir()
+    (site / "lib" / "cmake" / "ggml-config.cmake").write_text("")
+    info = site / "llama_cpp_python-0.3.28.dist-info"
+    info.mkdir()
+    (info / "RECORD").write_text(
+        "llama_cpp/__init__.py,,\nllama_cpp/lib/llama.dll,,\nbin/llama-cli.exe,,\n"
+        "include/ggml.h,,\nlib/ggml.lib,,\nlib/cmake/ggml-config.cmake,,\n"
+    )
+    info2 = site / "pywhispercpp-1.4.1.dist-info"
+    info2.mkdir()
+    (info2 / "top_level.txt").write_text("_pywhispercpp\npywhispercpp\n")
+
+    assert build_pack.top_level_modules(site) == ["_pywhispercpp", "llama_cpp", "pywhispercpp"]
+    removed = build_pack.prune_dev_files(site)
+    assert sorted(removed) == ["include/", "lib/"]
+    assert not (site / "include").exists() and not (site / "lib").exists()
+    assert (site / "bin" / "llama-cli.exe").exists()  # executables are left alone
+    assert (site / "llama_cpp" / "lib" / "llama.dll").exists()  # package-internal DLLs untouched
+
+
+def test_prune_keeps_lib_with_runtime_dlls(tmp_path):
+    site = tmp_path / "sp"
+    (site / "lib").mkdir(parents=True)
+    (site / "lib" / "ggml.lib").write_bytes(b"")
+    (site / "lib" / "ggml.dll").write_bytes(b"")
+    assert build_pack.prune_dev_files(site) == []
+    assert (site / "lib" / "ggml.dll").exists()

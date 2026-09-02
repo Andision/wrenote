@@ -49,9 +49,11 @@ jobs:
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
           - variant: vulkan
             cmake_args: -DGGML_VULKAN=on
+            no_binary: --no-binary pywhispercpp
           - variant: cuda
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cu124
             cmake_args: -DGGML_CUDA=on
+            no_binary: --no-binary pywhispercpp
     steps:
       - uses: actions/checkout@v4
 
@@ -73,10 +75,12 @@ jobs:
         if: matrix.variant == 'vulkan'
         uses: jakoch/install-vulkan-sdk-action@v1
         with:
-          vulkan_version: 1.3.290.0
+          # llama.cpp's Vulkan backend needs the SPIRV-Headers CMake package,
+          # which older SDKs (1.3.290) don't ship; keep the full SDK layout.
+          vulkan_version: latest
           install_runtime: true
           cache: true
-          stripdown: true
+          stripdown: false
 
       - name: Install CUDA toolkit
         if: matrix.variant == 'cuda'
@@ -120,7 +124,7 @@ jobs:
             --version "${{ steps.ver.outputs.version }}" \
             --spec "llama-cpp-python==${LLAMA_CPP_PYTHON}" \
             --spec "pywhispercpp==${PYWHISPERCPP}" \
-            --out dist/runtimes "${extra[@]}" "${bins[@]}"
+            --out dist/runtimes "${extra[@]}" "${bins[@]}" ${{ matrix.no_binary }}
 
       - name: Smoke-import the pack
         shell: bash
@@ -128,12 +132,24 @@ jobs:
           set -euo pipefail
           zip="$(ls dist/runtimes/wrenote-runtime-*.zip)"
           python - "$zip" <<'EOF'
-          import json, sys, zipfile, tempfile, pathlib, importlib
+          import importlib, json, os, pathlib, sys, tempfile, zipfile
           z = zipfile.ZipFile(sys.argv[1]); d = pathlib.Path(tempfile.mkdtemp()); z.extractall(d)
-          m = json.loads((d / "MANIFEST.json").read_text()); print(m)
+          m = json.loads((d / "MANIFEST.json").read_text()); print(json.dumps(m, indent=1))
           sys.path.insert(0, str(d / "site-packages"))
+          if (d / "bin").is_dir() and hasattr(os, "add_dll_directory"):
+              os.add_dll_directory(str(d / "bin"))
+          bad = []
           for mod in m["modules"]:
-              importlib.import_module(mod); print("import", mod, "OK")
+              try:
+                  importlib.import_module(mod); print("import", mod, "OK")
+              except ModuleNotFoundError as e:
+                  bad.append(f"{mod}: {e}")  # packaging error: the pack is wrong
+              except (ImportError, OSError) as e:
+                  # DLL load failures are expected on a runner without a GPU
+                  # driver (nvcuda.dll / vulkan-1.dll); the module itself exists.
+                  print(f"::warning::import {mod} needs a driver on this runner: {e}")
+          if bad:
+              sys.exit("packaging errors: " + "; ".join(bad))
           EOF
 
       - uses: actions/upload-artifact@v4
