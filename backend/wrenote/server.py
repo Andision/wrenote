@@ -25,6 +25,7 @@ from . import ws
 from .api import (
     capture,
     chat,
+    compute,
     diarize,
     glossary,
     groups,
@@ -40,8 +41,10 @@ from .auth import AUTH_TOKEN, install_loopback_auth
 from .core.config import Config, load_config
 from .core.jobs import JobRegistry
 from .core.registry import make_chat, make_speaker
+from .core.runtimes import RuntimeManager
 from .core.store import Store
 from .model_manager import ModelManager
+from .platform import get_platform
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +59,7 @@ APP_DIR = STATIC_DIR / "app"  # built SPA (vite output); served at "/" last.
 # Resource routers, registered in this order before the SPA catch-all.
 _ROUTERS = (
     sessions, groups, recordings, jobs, models,
-    upload, translate, diarize, segments, chat, capture, glossary, ws,
+    upload, translate, diarize, segments, chat, capture, glossary, compute, ws,
 )
 
 
@@ -82,6 +85,13 @@ def _make_lifespan(config: Config | None):
         log.info("Loaded config: server=%s:%d  stt=%s vad=%s translator=%s",
                  cfg.server.host, cfg.server.port,
                  cfg.stt.backend, cfg.vad.backend, cfg.translator.backend)
+
+        # Pick the compute runtime (CUDA / Vulkan / Metal / CPU) before any
+        # native backend is imported — backends import their bindings lazily
+        # in load() for exactly this reason. Falls back to the built-in runtime.
+        runtimes = RuntimeManager(cfg.compute, get_platform())
+        runtimes.activate()
+        app.state.runtimes = runtimes
 
         store = Store()
         await store.open()
@@ -130,9 +140,16 @@ def _register_meta_routes(app: FastAPI) -> None:
     @app.get("/info")
     async def info(request: Request) -> dict[str, Any]:
         cfg: Config = request.app.state.config
+        plat = get_platform()
+        runtimes: RuntimeManager = request.app.state.runtimes
         return {
             "config": cfg.model_dump(),
             "static_dir_exists": STATIC_DIR.exists(),
+            "platform": {"name": plat.name, "capabilities": plat.capabilities.to_dict()},
+            "compute": {
+                "active": runtimes.active.variant if runtimes.active else None,
+                "builtin": runtimes.builtin,
+            },
         }
 
 

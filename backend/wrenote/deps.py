@@ -11,6 +11,7 @@ from fastapi import Request
 
 from .core.config import Config
 from .core.jobs import JobRegistry
+from .core.runtimes import RuntimeManager
 from .core.store import Store
 from .model_manager import ModelManager
 
@@ -29,3 +30,7 @@ def get_jobs(request: Request) -> JobRegistry:
 
 def get_models(request: Request) -> ModelManager:
     return request.app.state.models
+
+
+def get_runtimes(request: Request) -> RuntimeManager:
+    return request.app.state.runtimes

@@ -3,6 +3,17 @@
 # User overrides go in ~/.wrenote/config.yaml
 # Env vars: WRENOTE_<SECTION>__<PARAMS>__<KEY>=...
 
+compute:
+  # Which native runtime build the STT / translator / chat backends run on.
+  # auto = rank by detected hardware (see GET /api/compute/status), or pin one
+  # of: cpu | metal | cuda | vulkan. The app bundle ships one built-in runtime
+  # (metal on Apple Silicon, cpu elsewhere); accelerated packs are fetched into
+  # runtimes_dir on demand. Takes effect on the next launch.
+  accelerator: auto
+  gpu_layers: null          # null = derive n_gpu_layers from the VRAM budget; int forces it
+  vram_budget_mb: null      # null = 90% of the largest discrete GPU; unified memory = unbudgeted
+  runtimes_dir: ~/.wrenote/runtimes
+
 server:
   host: 127.0.0.1           # default localhost-only; do not change unless you accept LAN exposure
   port: 8000

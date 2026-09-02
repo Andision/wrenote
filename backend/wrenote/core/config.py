@@ -41,6 +41,21 @@ class SessionConfig(BaseModel):
     default_tgt_lang: str = "zh"
 
 
+class ComputeConfig(BaseModel):
+    """Which native runtime (accelerator build) the inference backends use.
+
+    See :mod:`wrenote.core.runtimes`. ``accelerator`` is ``auto`` (rank by
+    detected hardware) or a pin: ``cpu`` | ``metal`` | ``cuda`` | ``vulkan``.
+    """
+
+    accelerator: str = "auto"
+    # None = derive n_gpu_layers from the VRAM budget; an int forces it.
+    gpu_layers: int | None = None
+    # None = 90% of the largest discrete GPU; unified memory = unbudgeted.
+    vram_budget_mb: int | None = None
+    runtimes_dir: str = "~/.wrenote/runtimes"
+
+
 class Config(BaseSettings):
     """Top-level settings. Env vars override init kwargs (= loaded YAML)."""
 
@@ -58,6 +73,7 @@ class Config(BaseSettings):
     speaker: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="ecapa"))
     chat: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="mock"))
     session: SessionConfig = Field(default_factory=SessionConfig)
+    compute: ComputeConfig = Field(default_factory=ComputeConfig)
 
     @classmethod
     def settings_customise_sources(

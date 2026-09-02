@@ -26,7 +26,7 @@ import wrenote.server as server
 from wrenote.core.config import Config
 
 
-def _mock_config() -> Config:
+def _mock_config(runtimes_dir=None) -> Config:
     """All-mock, native-dep-free config. `model_validate` bypasses the env-var
     source (same path `load_config(use_env=False)` uses)."""
     return Config.model_validate(
@@ -36,6 +36,8 @@ def _mock_config() -> Config:
             "translator": {"backend": "mock"},
             "speaker": {"backend": "disabled"},
             "chat": {"backend": "mock"},
+            # Never read/write the real ~/.wrenote/runtimes/state.json.
+            "compute": {"runtimes_dir": str(runtimes_dir) if runtimes_dir else "~/.wrenote/runtimes"},
         }
     )
 
@@ -56,7 +58,7 @@ def client(monkeypatch, tmp_path):
     shutdown), so ``app.state.store`` etc. are wired exactly as in production.
     """
     _isolate_paths(monkeypatch, tmp_path)
-    with TestClient(server.create_app(_mock_config())) as c:
+    with TestClient(server.create_app(_mock_config(tmp_path / "runtimes"))) as c:
         yield c
 
 
@@ -69,6 +71,6 @@ def auth_client(monkeypatch, tmp_path):
     per test. Exercises the 401 / cookie / bearer / query-token paths.
     """
     _isolate_paths(monkeypatch, tmp_path)
-    app = server.create_app(_mock_config(), auth_token="test-secret")
+    app = server.create_app(_mock_config(tmp_path / "runtimes"), auth_token="test-secret")
     with TestClient(app) as c:
         yield c
