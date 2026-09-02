@@ -14,6 +14,12 @@ name: build runtimes
 # none at all for Vulkan). Expect 30-60 min each. Run manually via
 # workflow_dispatch; not wired to push.
 on:
+  # Push trigger scoped to this workflow file so the first run registers it
+  # with GitHub (the API refuses to dispatch a never-run workflow that is not
+  # on the default branch). Remove once merged to the default branch.
+  push:
+    branches: ["claude/wrenote-repo-review-rurfrj"]
+    paths: [".github/workflows/build-runtimes.yml"]
   workflow_dispatch:
     inputs:
       version:

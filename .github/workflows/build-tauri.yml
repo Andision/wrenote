@@ -6,7 +6,7 @@ name: build (tauri)
 on:
   workflow_dispatch:
   push:
-    branches: ["init-codebase"]
+    branches: ["init-codebase", "claude/wrenote-repo-review-rurfrj"]
     tags: ["v*"]
 
 jobs:
