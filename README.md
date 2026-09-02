@@ -1,1 +1,77 @@
-# wrenote
+# Wrenote
+
+Local, real-time speech transcription and translation for meetings — with
+speaker diarization, a floating subtitle overlay, transcript editing/export and
+a chat over your notes. Everything runs on your machine; nothing leaves it.
+
+* **STT** whisper.cpp · **VAD** Silero · **Translation / chat** llama.cpp
+  (Hy-MT2, Qwen3) · **Speakers** ECAPA-TDNN (ONNX)
+* macOS (Apple Silicon, Metal) and Windows (CPU today; CUDA / Vulkan runtime
+  packs planned — see `ARCHITECTURE.md`)
+
+## Layout
+
+| path               | what                                                                     |
+|--------------------|--------------------------------------------------------------------------|
+| `engine/`          | Python engine (FastAPI + WebSocket on loopback). The product. No UI.     |
+| `clients/web/`     | React web client — reference client, bundled into the desktop app        |
+| `shells/electron/` | Desktop host: spawns the engine, owns windows / overlay / permissions     |
+| `packaging/`       | PyInstaller specs, macOS capture helpers (Swift), entitlements           |
+| `engine/contract/` | `openapi.json` + `ws-protocol.md`: the API clients are built against     |
+| `docs/plans/`      | historical design and migration plans                                    |
+
+Read `ARCHITECTURE.md` for how the layers fit and the rules that keep new
+platforms cheap.
+
+## Develop
+
+Engine (Python ≥ 3.11):
+
+```bash
+cd engine
+pip install -e ".[dev]"
+# native inference deps are per-platform and optional for dev; the mock
+# backends run the whole engine without them. For real models see below.
+python -m wrenote            # http://127.0.0.1:8000  (config: engine/config.yaml, ~/.wrenote/config.yaml)
+pytest                       # 120+ tests, no models or native libs needed
+ruff check .
+python -m wrenote.contract   # regenerate engine/contract/openapi.json after API changes
+```
+
+Web client:
+
+```bash
+cd clients/web
+npm install
+npm run dev                  # http://localhost:5173, proxies /v1 and /health to :8000
+npm run build                # → engine/static/app/, served by the engine at /
+```
+
+Desktop shell (needs the engine deps installed in a Python the shell can find —
+see `serverCommand()` in `shells/electron/main.js`):
+
+```bash
+cd shells/electron
+npm install
+npm start
+```
+
+Real models: install `pywhispercpp` and `llama-cpp-python` for your platform
+(CI pins the exact wheels in `.github/workflows/build.yml`), then set the
+backends in `~/.wrenote/config.yaml` (see `engine/profiles/mac-default.yaml`).
+Models are downloaded on first run into `~/.wrenote/models/`.
+
+## Package
+
+CI (`.github/workflows/build.yml`) builds the SPA, freezes the engine with
+PyInstaller and packages the Electron app for macOS arm64 and Windows x64.
+Locally, from the repo root:
+
+```bash
+pyinstaller packaging/wrenote_server.spec --distpath engine/dist --workpath packaging/build
+cd shells/electron && npm run dist
+```
+
+## License
+
+AGPL-3.0 — see `LICENSE`.
