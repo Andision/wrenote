@@ -5,10 +5,11 @@ Unlike wrenote.spec (the legacy pywebview app that BUNDLEs Wrenote.app), this
 freezes the pure FastAPI server with NO window / pywebview — Electron owns the
 window and spawns this as a sidecar over loopback HTTP/WS. Output:
 
-    dist/wrenote-server/   (onedir: `wrenote-server` exe + _internal + helpers)
+    engine/dist/wrenote-server/   (onedir: `wrenote-server` exe + _internal + helpers)
 
-Electron bundles that folder via electron-builder `extraResources`. Run from backend/:
-    pyinstaller packaging/wrenote_server.spec
+The Electron shell bundles that folder via electron-builder `extraResources`
+(shells/electron/package.json). Run from the repo root:
+    pyinstaller packaging/wrenote_server.spec --distpath engine/dist --workpath packaging/build
 """
 import os
 import shutil
@@ -22,8 +23,9 @@ from PyInstaller.utils.hooks import (
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
-BACKEND = os.path.dirname(SPECPATH)  # noqa: F821 — SPECPATH injected by PyInstaller
-CACHE = os.path.join(BACKEND, "packaging", ".build_cache")
+# SPECPATH (injected by PyInstaller) is this packaging/ dir; the engine is its sibling.
+ENGINE = os.path.normpath(os.path.join(SPECPATH, "..", "engine"))  # noqa: F821
+CACHE = os.path.join(SPECPATH, ".build_cache")  # noqa: F821
 
 
 def _bundled_ffmpeg() -> str | None:
@@ -59,17 +61,17 @@ if ffmpeg:
     binaries += [(ffmpeg, ".")]  # next to the executable; launcher adds that dir to PATH
 
 if IS_MAC:
-    syscap = os.path.join(BACKEND, "packaging", "macos", "syscap")
+    syscap = os.path.join(SPECPATH, "macos", "syscap")  # noqa: F821
     if os.path.exists(syscap):
         binaries += [(syscap, ".")]  # ScreenCaptureKit system-audio helper
-    screencap = os.path.join(BACKEND, "packaging", "macos", "screencap")
+    screencap = os.path.join(SPECPATH, "macos", "screencap")  # noqa: F821
     if os.path.exists(screencap):
         binaries += [(screencap, ".")]  # ScreenCaptureKit window/display video helper
 
 datas = [
-    (os.path.join(BACKEND, "static", "app"), "static/app"),
-    (os.path.join(BACKEND, "config.yaml"), "."),
-    (os.path.join(BACKEND, "wrenote", "vad", "assets", "silero_vad.onnx"), "wrenote/vad/assets"),
+    (os.path.join(ENGINE, "static", "app"), "static/app"),
+    (os.path.join(ENGINE, "config.yaml"), "."),
+    (os.path.join(ENGINE, "wrenote", "vad", "assets", "silero_vad.onnx"), "wrenote/vad/assets"),
 ]
 datas += collect_data_files("pywhispercpp")
 datas += collect_data_files("llama_cpp")
@@ -93,8 +95,8 @@ excludes = [
 ]
 
 a = Analysis(
-    [os.path.join(BACKEND, "server_entry.py")],
-    pathex=[BACKEND],
+    [os.path.join(ENGINE, "server_entry.py")],
+    pathex=[ENGINE],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

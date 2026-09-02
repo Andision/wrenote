@@ -26,7 +26,7 @@ const NO_DRAG: React.CSSProperties = { WebkitAppRegion: "no-drag" } as React.CSS
 type OverlayMode = "full" | "compact";
 
 // Window size per mode. Kept in sync with the Electron shell's initial size
-// (electron/main.js createOverlayWindow uses the "full" dimensions).
+// (shells/electron/main.js createOverlayWindow uses the "full" dimensions).
 const SIZES: Record<OverlayMode, { w: number; h: number }> = {
   full: { w: 760, h: 184 },
   compact: { w: 240, h: 64 },

@@ -1,3 +1,5 @@
+> **Historical planning document.** Paths refer to the pre-reorganisation layout (`backend/` → `engine/`, `frontend/` → `clients/web/`, `electron/` → `shells/electron/`, `backend/packaging/` → `packaging/`). See `ARCHITECTURE.md` for the current structure.
+
 # Wrenote Backend Architecture Refactor — Plan v2
 
 > v2 incorporates a `codex exec` design review of v1 (read-only). Codex caught several

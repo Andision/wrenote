@@ -18,7 +18,7 @@
     "directories": { "output": "release" },
     "files": ["main.js", "preload.js", "package.json"],
     "extraResources": [
-      { "from": "../backend/dist/wrenote-server", "to": "wrenote-server" }
+      { "from": "../../engine/dist/wrenote-server", "to": "wrenote-server" }
     ],
     "mac": {
       "category": "public.app-category.productivity",

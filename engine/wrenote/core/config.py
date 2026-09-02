@@ -3,7 +3,7 @@
 Per design.v1.1 §6. Loads layered config from (low → high priority):
 
 1. Hard-coded defaults (Pydantic model defaults)
-2. Repo default YAML (backend/config.yaml)
+2. Repo default YAML (engine/config.yaml)
 3. User override YAML (~/.wrenote/config.yaml)
 4. Environment variables (WRENOTE_<SECTION>__<KEY>__... with `__` nesting)
 

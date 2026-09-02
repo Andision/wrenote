@@ -17,11 +17,11 @@ jobs:
           - os: macos-14 # Apple Silicon
             artifact: Wrenote-macos-arm64
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/metal
-            dist_glob: electron/release/mac-arm64
+            dist_glob: shells/electron/release/mac-arm64
           - os: windows-latest
             artifact: Wrenote-windows-x64
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
-            dist_glob: electron/release/*.exe
+            dist_glob: shells/electron/release/*.exe
     steps:
       - uses: actions/checkout@v4
 
@@ -33,14 +33,14 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Build frontend SPA
-        working-directory: frontend
+      - name: Build web client SPA
+        working-directory: clients/web
         run: |
           npm install --no-audit --no-fund
           npm run build
 
-      - name: Install backend + packaging deps
-        working-directory: backend
+      - name: Install engine + packaging deps
+        working-directory: engine
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[desktop]"
@@ -57,25 +57,26 @@ jobs:
         if: runner.os == 'Windows'
         run: pip install pythonnet soundcard
 
-      - name: Smoke-import backend (catch syntax/import errors before freezing)
-        working-directory: backend
-        run: python -c "import wrenote.server, wrenote.run_server; print('import OK')"
+      - name: Smoke-import engine (catch syntax/import errors before freezing)
+        working-directory: engine
+        run: |
+          python -c "import wrenote.server, wrenote.run_server; print('import OK')"
+          python -m wrenote.contract --check
 
       - name: Compile macOS capture helpers (system-audio + screen/window)
         if: runner.os == 'macOS'
-        working-directory: backend/packaging/macos
+        working-directory: packaging/macos
         run: |
           swiftc -O -o syscap syscap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia
           swiftc -O -o screencap screencap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework AppKit
 
-      # Freeze the pure FastAPI server (no pywebview) into dist/wrenote-server/.
-      # electron-builder picks it up via extraResources (../backend/dist/wrenote-server).
-      - name: Freeze backend sidecar (PyInstaller)
-        working-directory: backend
-        run: pyinstaller packaging/wrenote_server.spec --noconfirm --distpath dist --workpath packaging/build
+      # Freeze the pure FastAPI server (no pywebview) into engine/dist/wrenote-server/.
+      # electron-builder picks it up via extraResources (../../engine/dist/wrenote-server).
+      - name: Freeze engine sidecar (PyInstaller)
+        run: pyinstaller packaging/wrenote_server.spec --noconfirm --distpath engine/dist --workpath packaging/build
 
       - name: Build Electron desktop app (electron-builder)
-        working-directory: electron
+        working-directory: shells/electron
         env:
           # No code signing in CI: ad-hoc on macOS (identity:null), unsigned on
           # Windows. Disable auto-discovery so the mac build doesn't probe the
@@ -86,7 +87,7 @@ jobs:
           npm run dist
 
       - name: List output
-        working-directory: electron/release
+        working-directory: shells/electron/release
         run: ls -R . || dir
 
       - uses: actions/upload-artifact@v4

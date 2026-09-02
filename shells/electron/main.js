@@ -1,4 +1,4 @@
-// electron/main.js — P1 of the pywebview→Electron migration.
+// shells/electron/main.js — thin desktop host for the Wrenote engine.
 //
 // The shell spawns the wrenote FastAPI server as a *sidecar* and points a
 // BrowserWindow at its loopback URL. The React SPA is served by the server and
@@ -34,7 +34,7 @@ function serverCommand() {
   return {
     cmd: python,
     args: ["-m", "wrenote.run_server"],
-    cwd: path.join(__dirname, "..", "backend"),
+    cwd: path.join(__dirname, "..", "..", "engine"),
   };
 }
 

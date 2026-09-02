@@ -34,7 +34,7 @@ type OverlayMsg = OverlayStateMsg | OverlayHelloMsg;
 
 declare global {
   interface Window {
-    /** Injected by electron/preload.js; absent in a plain browser. */
+    /** Injected by shells/electron/preload.js; absent in a plain browser. */
     wrenoteDesktop?: {
       toggleOverlay: () => Promise<void>;
       closeOverlay: () => Promise<void>;

@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 // dev: vite serves on 5173; /v1 (HTTP + WS) is proxied to the engine on :8000
-// prod: `npm run build` → backend/static/app/, which the FastAPI server serves at `/`.
+// prod: `npm run build` → engine/static/app/, which the engine serves at `/`.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -25,9 +25,9 @@ export default defineConfig({
     },
   },
   build: {
-    // Emit straight into the backend's static dir so the packaged server can
+    // Emit straight into the engine's static dir so the packaged server can
     // serve the SPA at `/` with no copy step.
-    outDir: path.resolve(__dirname, "../backend/static/app"),
+    outDir: path.resolve(__dirname, "../../engine/static/app"),
     emptyOutDir: true,
     sourcemap: true,
   },

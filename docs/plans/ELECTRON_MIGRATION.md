@@ -1,3 +1,5 @@
+> **Historical planning document.** Paths refer to the pre-reorganisation layout (`backend/` → `engine/`, `frontend/` → `clients/web/`, `electron/` → `shells/electron/`, `backend/packaging/` → `packaging/`). See `ARCHITECTURE.md` for the current structure.
+
 # Wrenote Shell Migration — pywebview → Electron
 
 **Goal:** Replace the pywebview native shell with an Electron shell, *without

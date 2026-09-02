@@ -1,3 +1,5 @@
+> **Historical planning document.** Paths refer to the pre-reorganisation layout (`backend/` → `engine/`, `frontend/` → `clients/web/`, `electron/` → `shells/electron/`, `backend/packaging/` → `packaging/`). See `ARCHITECTURE.md` for the current structure.
+
 # Window/Screen Capture — design + manual-test checklist
 
 Feature: in the PreFlight screen, let the user **pick a specific window or display** to
