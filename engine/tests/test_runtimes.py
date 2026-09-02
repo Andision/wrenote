@@ -13,8 +13,10 @@ import pytest
 
 from wrenote.core.config import ComputeConfig
 from wrenote.core.runtimes import (
+    DEFAULT_PACK_MODULES,
     PACK_MANIFEST,
     VARIANTS,
+    PackFinder,
     RuntimeManager,
     RuntimeUnavailable,
     builtin_variant_for,
@@ -49,6 +51,7 @@ def _install_pack(root: Path, variant: str) -> Path:
 
 def _mgr(tmp_path: Path, platform=None, **cfg) -> RuntimeManager:
     cfg.setdefault("runtimes_dir", str(tmp_path / "runtimes"))
+    cfg.setdefault("runtimes_index_url", "")  # never touch the network here
     return RuntimeManager(ComputeConfig(**cfg), platform or FakePlatform())
 
 
@@ -162,7 +165,7 @@ def test_corrupt_state_file_is_ignored(tmp_path):
 def test_ensure_returns_installed_or_raises(tmp_path):
     m = _mgr(tmp_path)
     assert m.ensure("cpu").builtin
-    with pytest.raises(RuntimeUnavailable, match="not published yet"):
+    with pytest.raises(RuntimeUnavailable, match="no runtime index configured"):
         m.ensure("cuda")
     _install_pack(tmp_path / "runtimes", "cuda")
     assert m.ensure("cuda").installed
@@ -170,25 +173,31 @@ def test_ensure_returns_installed_or_raises(tmp_path):
         m.pack("opencl")
 
 
-def test_activate_puts_pack_on_sys_path_once(tmp_path, monkeypatch):
-    monkeypatch.setattr(sys, "path", list(sys.path))
+def test_activate_routes_pack_modules_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "meta_path", list(sys.meta_path))
     d = _install_pack(tmp_path / "runtimes", "vulkan")
     m = _mgr(tmp_path)
     sel = m.activate()
     assert sel.variant == "vulkan"
-    assert sys.path[0] == str(d / "site-packages")
+    finder = sys.meta_path[0]
+    assert isinstance(finder, PackFinder)
+    assert finder.site == d / "site-packages"
+    # no "modules" in the manifest → the default native module names are routed
+    assert finder.modules == frozenset(DEFAULT_PACK_MODULES)
     # idempotent
     assert m.activate() is sel
-    assert sys.path.count(str(d / "site-packages")) == 1
+    assert sum(isinstance(f, PackFinder) for f in sys.meta_path) == 1
     assert m.active is sel
+    m.deactivate()
+    assert not any(isinstance(f, PackFinder) for f in sys.meta_path)
 
 
-def test_activate_builtin_leaves_sys_path_alone(tmp_path, monkeypatch):
-    monkeypatch.setattr(sys, "path", list(sys.path))
-    before = list(sys.path)
+def test_activate_builtin_leaves_import_system_alone(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "meta_path", list(sys.meta_path))
+    before = list(sys.meta_path)
     m = _mgr(tmp_path)
     assert m.activate().variant == "cpu"
-    assert sys.path == before
+    assert sys.meta_path == before
 
 
 # ---------- VRAM budgeting ----------

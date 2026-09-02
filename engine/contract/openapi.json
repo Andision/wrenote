@@ -51,6 +51,32 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "InstallRequest": {
+        "properties": {
+          "variant": {
+            "title": "Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant"
+        ],
+        "title": "InstallRequest",
+        "type": "object"
+      },
+      "SelectRequest": {
+        "properties": {
+          "accelerator": {
+            "title": "Accelerator",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accelerator"
+        ],
+        "title": "SelectRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -148,9 +174,132 @@
         "summary": "Capture Targets"
       }
     },
+    "/v1/compute/install": {
+      "post": {
+        "description": "Install a runtime pack in the background. Returns ``job_id`` (``None``\nwhen it is already installed). 409 when no pack is published for this\nmachine, so the UI can say so without starting a job.",
+        "operationId": "compute_install_v1_compute_install_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compute Install V1 Compute Install Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compute Install"
+      }
+    },
+    "/v1/compute/packs/{variant}": {
+      "delete": {
+        "operationId": "compute_remove_v1_compute_packs__variant__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "variant",
+            "required": true,
+            "schema": {
+              "title": "Variant",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compute Remove V1 Compute Packs  Variant  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compute Remove"
+      }
+    },
+    "/v1/compute/select": {
+      "post": {
+        "description": "Pin (or ``auto``) the accelerator for the next launch.",
+        "operationId": "compute_select_v1_compute_select_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compute Select V1 Compute Select Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compute Select"
+      }
+    },
     "/v1/compute/status": {
       "get": {
-        "description": "Detected hardware, the runtime-pack chain, and which one is active.",
+        "description": "Detected hardware, the runtime-pack chain, which one is active, and\nwhich packs can be installed (index lookup runs off the event loop).",
         "operationId": "compute_status_v1_compute_status_get",
         "responses": {
           "200": {

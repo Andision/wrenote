@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+import wrenote.core.config as config_mod
 import wrenote.core.recording as recording_mod
 import wrenote.core.store as store_mod
 import wrenote.server as server
@@ -37,16 +38,20 @@ def _mock_config(runtimes_dir=None) -> Config:
             "speaker": {"backend": "disabled"},
             "chat": {"backend": "mock"},
             # Never read/write the real ~/.wrenote/runtimes/state.json.
-            "compute": {"runtimes_dir": str(runtimes_dir) if runtimes_dir else "~/.wrenote/runtimes"},
+            "compute": {
+                "runtimes_dir": str(runtimes_dir) if runtimes_dir else "~/.wrenote/runtimes",
+                "runtimes_index_url": "",
+            },
         }
     )
 
 
 def _isolate_paths(monkeypatch, tmp_path) -> None:
-    """Point the SQLite DB + recordings at a per-test tmp dir (the app otherwise
-    hard-codes ``~/.wrenote``)."""
+    """Point the SQLite DB, recordings and the user config file at a per-test
+    tmp dir (the app otherwise hard-codes ``~/.wrenote``)."""
     monkeypatch.setattr(store_mod, "DEFAULT_DB_PATH", tmp_path / "data.db")
     monkeypatch.setattr(recording_mod, "DEFAULT_DIR", tmp_path / "recordings")
+    monkeypatch.setattr(config_mod, "USER_CONFIG", tmp_path / "config.yaml")
 
 
 @pytest.fixture

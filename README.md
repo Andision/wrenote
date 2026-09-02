@@ -6,8 +6,8 @@ a chat over your notes. Everything runs on your machine; nothing leaves it.
 
 * **STT** whisper.cpp · **VAD** Silero · **Translation / chat** llama.cpp
   (Hy-MT2, Qwen3) · **Speakers** ECAPA-TDNN (ONNX)
-* macOS (Apple Silicon, Metal) and Windows (CPU today; CUDA / Vulkan runtime
-  packs planned — see `ARCHITECTURE.md`)
+* macOS (Apple Silicon, Metal) and Windows (CPU built in; CUDA / Vulkan
+  runtime packs installable from Settings → Compute — see `ARCHITECTURE.md`)
 
 ## Layout
 
@@ -17,7 +17,7 @@ a chat over your notes. Everything runs on your machine; nothing leaves it.
 | `clients/web/`     | React web client — reference client, bundled into the desktop app        |
 | `shells/tauri/`    | Desktop host (Rust + system WebView): spawns the engine, windows, overlay |
 | `shells/electron/` | Previous desktop host; still the shipping one until Tauri is validated   |
-| `packaging/`       | PyInstaller specs, macOS capture helpers (Swift), entitlements           |
+| `packaging/`       | PyInstaller specs, macOS capture helpers (Swift), entitlements, runtime-pack builder |
 | `engine/contract/` | `openapi.json` + `ws-protocol.md`: the API clients are built against     |
 | `docs/plans/`      | historical design and migration plans                                    |
 

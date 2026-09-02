@@ -16,31 +16,52 @@ Lifecycle, all owned by :class:`RuntimeManager`:
 2. **select** — intersect that with the ``compute.accelerator`` config (``auto``
    or a pin), drop variants previously marked bad, and pick the first one that
    is installed. Falls through to the built-in runtime, which always exists.
-3. **ensure** — download + unpack a pack that isn't installed yet. *Not wired
-   yet*: raises :class:`RuntimeUnavailable` until CI publishes packs. The
-   interface is fixed so config, API and UI can code against it now.
-4. **activate** — put the pack's ``site-packages`` at the front of ``sys.path``
-   (and its DLL dir on the loader path on Windows) **before** any native
-   module is imported. The backends import ``llama_cpp`` / ``pywhispercpp``
-   lazily inside ``load()`` for exactly this reason.
+3. **ensure** — download + verify + unpack a pack that isn't installed yet.
+   Packs are listed in an index (``compute.runtimes_index_url``, published by
+   ``.github/workflows/build-runtimes.yml``) and built by
+   ``packaging/runtimes/build_pack.py``.
+4. **activate** — make the pack's modules win over the built-in ones **before**
+   any native module is imported. A PyInstaller-frozen app resolves bundled
+   modules through its own importer at the front of ``sys.meta_path``, so a
+   plain ``sys.path`` entry would lose; instead a finder for exactly the
+   pack's top-level modules (from its manifest) is put in front of it. The
+   backends import ``llama_cpp`` / ``pywhispercpp`` lazily inside ``load()``
+   for exactly this reason.
 
 If a native backend fails to load or crashes, the caller marks the variant bad
 (:meth:`RuntimeManager.mark_bad`); the choice is persisted so the next launch
 skips it and degrades one step down the chain instead of crash-looping.
+
+Pack layout (a zip, see ``packaging/runtimes/build_pack.py``)::
+
+    MANIFEST.json      {"schema": 1, "variant", "platform_tag", "python": "3.11",
+                        "version", "modules": [top-level import names], "packages": {...}}
+    site-packages/     the pip-installed bindings (no deps: the app ships those)
+    bin/               optional extra shared libraries (e.g. CUDA runtime DLLs)
 """
 from __future__ import annotations
 
+import hashlib
+import importlib.abc
+import importlib.machinery
 import json
 import logging
 import os
+import shutil
 import sys
-from collections.abc import Callable
+import tempfile
+import time
+import urllib.request
+import zipfile
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
+from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import Any
 
 from ..platform import HardwareInfo, PlatformAdapter
 from .config import ComputeConfig
+from .models import _ssl_context
 
 log = logging.getLogger(__name__)
 
@@ -50,19 +71,30 @@ VARIANTS: tuple[str, ...] = ("cpu", "metal", "cuda", "vulkan")
 
 #: The runtime compiled into the app bundle per platform tag. Anything not
 #: listed ships the portable CPU build. CI must keep this in sync with the
-#: wheels it installs before freezing (see .github/workflows/build.yml).
+#: wheels it installs before freezing (see .github/actions/build-engine).
 BUILTIN_VARIANT: dict[str, str] = {
     "darwin-arm64": "metal",
 }
 
 STATE_FILE = "state.json"
 PACK_MANIFEST = "MANIFEST.json"
+PACK_SCHEMA = 1
+INDEX_SCHEMA = 1
+#: Top-level modules a pack provides when its manifest doesn't say.
+DEFAULT_PACK_MODULES: tuple[str, ...] = ("llama_cpp", "pywhispercpp", "_pywhispercpp")
+_CHUNK = 1 << 20
+_INDEX_TTL_S = 300.0
 
 ProgressCallback = Callable[[float, str], None]
 
 
 class RuntimeUnavailable(RuntimeError):
-    """A runtime pack is not installed and cannot (yet) be fetched."""
+    """A runtime pack is not installed and cannot be fetched (no index, no pack
+    for this platform, wrong Python, checksum mismatch, …)."""
+
+
+def python_tag() -> str:
+    return f"{sys.version_info[0]}.{sys.version_info[1]}"
 
 
 @dataclass(frozen=True)
@@ -70,21 +102,40 @@ class RuntimePack:
     variant: str
     platform_tag: str  # "<os>-<arch>", e.g. "win32-x86_64"
     builtin: bool  # compiled into the app bundle → always installed
-    path: Path | None  # download location for non-builtin packs
+    path: Path | None  # install location for non-builtin packs
+
+    @property
+    def manifest_path(self) -> Path | None:
+        return None if self.path is None else self.path / PACK_MANIFEST
 
     @property
     def installed(self) -> bool:
         if self.builtin:
             return True
-        return self.path is not None and (self.path / PACK_MANIFEST).exists()
+        return self.manifest_path is not None and self.manifest_path.exists()
+
+    def manifest(self) -> dict[str, Any]:
+        """The installed pack's manifest (``{}`` for the built-in / missing)."""
+        if self.manifest_path is None or not self.manifest_path.exists():
+            return {}
+        try:
+            with open(self.manifest_path, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            log.warning("unreadable pack manifest %s", self.manifest_path)
+            return {}
 
     def to_dict(self) -> dict[str, Any]:
+        m = self.manifest()
         return {
             "variant": self.variant,
             "platform_tag": self.platform_tag,
             "builtin": self.builtin,
             "installed": self.installed,
             "path": str(self.path) if self.path else None,
+            "version": m.get("version"),
+            "packages": m.get("packages"),
         }
 
 
@@ -102,6 +153,38 @@ class RuntimeSelection:
         return d
 
 
+@dataclass(frozen=True)
+class PackRelease:
+    """One downloadable pack, as listed in the index."""
+
+    variant: str
+    platform_tag: str
+    python: str
+    version: str
+    url: str
+    sha256: str
+    size: int
+    modules: tuple[str, ...]
+
+    @classmethod
+    def from_index(cls, row: dict[str, Any]) -> PackRelease:
+        return cls(
+            variant=str(row["variant"]),
+            platform_tag=str(row["platform_tag"]),
+            python=str(row.get("python", "")),
+            version=str(row.get("version", "")),
+            url=str(row["url"]),
+            sha256=str(row.get("sha256", "")).lower(),
+            size=int(row.get("size") or 0),
+            modules=tuple(row.get("modules") or DEFAULT_PACK_MODULES),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["modules"] = list(self.modules)
+        return d
+
+
 def platform_tag(hw: HardwareInfo) -> str:
     return f"{hw.os}-{hw.arch}"
 
@@ -114,6 +197,40 @@ def builtin_variant_for(tag: str) -> str:
     if env in VARIANTS:
         return env
     return BUILTIN_VARIANT.get(tag, "cpu")
+
+
+# ---------- import routing ----------
+
+
+class PackFinder(importlib.abc.MetaPathFinder):
+    """Resolve a pack's top-level modules from its ``site-packages`` first.
+
+    Installed at ``sys.meta_path[0]`` so it runs before PyInstaller's frozen
+    importer (and before the normal path finder in dev). Only the names in
+    ``modules`` are routed; everything else falls through untouched, so the
+    pack cannot shadow the app's numpy, pydantic, …
+    """
+
+    def __init__(self, site: Path, modules: Sequence[str]) -> None:
+        self.site = site
+        self.modules = frozenset(modules)
+
+    def find_spec(
+        self, fullname: str, path: Sequence[str] | None = None, target: Any = None
+    ) -> ModuleSpec | None:
+        top = fullname.partition(".")[0]
+        if top not in self.modules:
+            return None
+        # Top-level: look only in the pack. Submodules: ``path`` is the parent
+        # package's __path__, which already points into the pack.
+        search = [str(self.site)] if path is None else list(path)
+        return importlib.machinery.PathFinder.find_spec(fullname, search, target)
+
+    def __repr__(self) -> str:
+        return f"<PackFinder {sorted(self.modules)} @ {self.site}>"
+
+
+# ---------- manager ----------
 
 
 class RuntimeManager:
@@ -131,7 +248,10 @@ class RuntimeManager:
         self._builtin = builtin or builtin_variant_for(self._tag)
         self._dir = Path(config.runtimes_dir).expanduser()
         self._active: RuntimeSelection | None = None
+        self._finder: PackFinder | None = None
         self._bad: dict[str, str] = self._load_state().get("bad", {})
+        self._index_cache: tuple[float, list[PackRelease]] | None = None
+        self._index_error: str | None = None
 
     # --- introspection ----------------------------------------------------
 
@@ -140,12 +260,20 @@ class RuntimeManager:
         return self._hardware
 
     @property
+    def platform_tag(self) -> str:
+        return self._tag
+
+    @property
     def builtin(self) -> str:
         return self._builtin
 
     @property
     def active(self) -> RuntimeSelection | None:
         return self._active
+
+    @property
+    def runtimes_dir(self) -> Path:
+        return self._dir
 
     def pack(self, variant: str) -> RuntimePack:
         if variant not in VARIANTS:
@@ -210,36 +338,168 @@ class RuntimeManager:
 
     # --- 3: ensure ----------------------------------------------------------
 
-    def ensure(self, variant: str, progress: ProgressCallback | None = None) -> RuntimePack:
-        """Make ``variant`` installed, downloading it if needed.
+    def index(self, *, refresh: bool = False) -> list[PackRelease]:
+        """Packs published for this platform + Python, from the index URL.
 
-        Downloading is not implemented until CI publishes packs; until then a
-        non-builtin, not-yet-installed variant raises :class:`RuntimeUnavailable`
-        with an actionable message. The signature (variant + progress callback,
-        same shape as ``core.models.download_model``) is final.
+        Cached for a few minutes. Raises :class:`RuntimeUnavailable` when the
+        index can't be fetched or parsed; :meth:`status` reports that instead
+        of failing.
         """
+        now = time.monotonic()
+        if not refresh and self._index_cache and now - self._index_cache[0] < _INDEX_TTL_S:
+            return self._index_cache[1]
+        url = self._config.runtimes_index_url
+        if not url:
+            raise RuntimeUnavailable("no runtime index configured (compute.runtimes_index_url)")
+        try:
+            with urllib.request.urlopen(
+                urllib.request.Request(url), timeout=15, context=_ssl_context()
+            ) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:  # network, JSON, file-not-found — all "unavailable"
+            self._index_error = f"{e.__class__.__name__}: {e}"
+            raise RuntimeUnavailable(f"could not fetch runtime index {url}: {e}") from e
+        if not isinstance(data, dict) or int(data.get("schema", 0)) != INDEX_SCHEMA:
+            self._index_error = "unsupported index schema"
+            raise RuntimeUnavailable(f"runtime index {url}: unsupported schema")
+        py = python_tag()
+        packs: list[PackRelease] = []
+        for row in data.get("packs", []):
+            try:
+                rel = PackRelease.from_index(row)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if rel.platform_tag == self._tag and (not rel.python or rel.python == py):
+                packs.append(rel)
+        self._index_cache = (now, packs)
+        self._index_error = None
+        return packs
+
+    def release_for(self, variant: str) -> PackRelease | None:
+        return next((p for p in self.index() if p.variant == variant), None)
+
+    def ensure(self, variant: str, progress: ProgressCallback | None = None) -> RuntimePack:
+        """Make ``variant`` installed, downloading it if needed. Blocking.
+
+        ``progress(fraction, status)`` is called from the calling thread: the
+        download phase moves 0→0.9, verification + unpacking 0.9→1.0.
+        Raises :class:`RuntimeUnavailable` when the pack can't be obtained.
+        """
+        report = progress or (lambda _f, _s: None)
         pack = self.pack(variant)
         if pack.installed:
+            report(1.0, f"{variant} runtime ready")
             return pack
-        raise RuntimeUnavailable(
-            f"runtime pack {variant!r} for {self._tag} is not installed and packs are "
-            "not published yet; the built-in runtime "
-            f"({self._builtin!r}) is used instead"
-        )
+        rel = self.release_for(variant)
+        if rel is None:
+            raise RuntimeUnavailable(
+                f"no {variant!r} runtime pack is published for {self._tag} / Python "
+                f"{python_tag()}; the built-in runtime ({self._builtin!r}) is used instead"
+            )
+        assert pack.path is not None
+        self._dir.mkdir(parents=True, exist_ok=True)
+        archive = self._dir / f"{variant}.zip.partial"
+        try:
+            self._download(rel, archive, report)
+            report(0.9, "verifying")
+            digest = _sha256(archive)
+            if rel.sha256 and digest != rel.sha256:
+                raise RuntimeUnavailable(
+                    f"{variant} runtime pack checksum mismatch (got {digest[:12]}…, "
+                    f"expected {rel.sha256[:12]}…)"
+                )
+            report(0.93, "unpacking")
+            self._unpack(archive, pack.path, rel)
+        finally:
+            archive.unlink(missing_ok=True)
+        # A freshly installed pack is a fresh chance for a variant marked bad.
+        if variant in self._bad:
+            self.clear_bad(variant)
+        report(1.0, f"{variant} runtime installed")
+        log.info("installed runtime pack %s %s → %s", variant, rel.version, pack.path)
+        return pack
+
+    def _download(self, rel: PackRelease, dest: Path, report: ProgressCallback) -> None:
+        mb = 1 << 20
+        req = urllib.request.Request(rel.url)
+        try:
+            resp = urllib.request.urlopen(req, timeout=30, context=_ssl_context())
+        except Exception as e:
+            raise RuntimeUnavailable(f"download failed for {rel.url}: {e}") from e
+        total = int(resp.headers.get("Content-Length") or 0) or rel.size
+        done = 0
+        try:
+            with open(dest, "wb") as f:
+                while True:
+                    chunk = resp.read(_CHUNK)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    done += len(chunk)
+                    frac = min(0.9, 0.9 * done / total) if total else 0.0
+                    report(frac, f"downloading {rel.variant} runtime {done // mb}/{total // mb} MB")
+        finally:
+            resp.close()
+        if total and done < total:
+            raise RuntimeUnavailable(f"{rel.variant} runtime download truncated ({done}/{total} bytes)")
+
+    def _unpack(self, archive: Path, dest: Path, rel: PackRelease) -> None:
+        tmp = Path(tempfile.mkdtemp(prefix=f"{rel.variant}.", dir=self._dir))
+        try:
+            with zipfile.ZipFile(archive) as z:
+                for member in z.namelist():
+                    # Refuse anything that would escape the target dir.
+                    if member.startswith(("/", "\\")) or ".." in Path(member).parts:
+                        raise RuntimeUnavailable(f"runtime pack contains an unsafe path: {member}")
+                z.extractall(tmp)
+            manifest_path = tmp / PACK_MANIFEST
+            if not manifest_path.exists():
+                raise RuntimeUnavailable("runtime pack has no MANIFEST.json")
+            with open(manifest_path, encoding="utf-8") as f:
+                manifest = json.load(f)
+            _validate_manifest(manifest, rel.variant, self._tag)
+            if dest.exists():
+                shutil.rmtree(dest)
+            os.replace(tmp, dest)
+        except zipfile.BadZipFile as e:
+            raise RuntimeUnavailable(f"runtime pack is not a valid zip: {e}") from e
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def remove(self, variant: str) -> bool:
+        """Delete an installed (non-builtin) pack. Returns whether anything was removed."""
+        pack = self.pack(variant)
+        if pack.builtin or pack.path is None or not pack.path.exists():
+            return False
+        if self._active and self._active.variant == variant:
+            log.warning("removing the active runtime pack %s; restart to apply", variant)
+        shutil.rmtree(pack.path)
+        return True
 
     # --- 4: activate --------------------------------------------------------
 
     def activate(self, selection: RuntimeSelection | None = None) -> RuntimeSelection:
-        """Put the selected pack on the import path. Idempotent. Must run before
-        any native backend module is imported (they import lazily in ``load()``)."""
+        """Route the selected pack's modules ahead of the built-in ones. Idempotent.
+        Must run before any native backend module is imported (they import
+        lazily in ``load()``)."""
         if self._active is not None:
             return self._active
         sel = selection or self.select()
         pack = self.pack(sel.variant)
         if not pack.builtin and pack.path is not None:
+            manifest = pack.manifest()
+            wanted_py = str(manifest.get("python") or "")
+            if wanted_py and wanted_py != python_tag():
+                log.error(
+                    "runtime pack %s was built for Python %s, this engine runs %s; "
+                    "marking it bad", sel.variant, wanted_py, python_tag(),
+                )
+                self.mark_bad(sel.variant, f"built for Python {wanted_py}")
+                return self.activate(self.select())
             site = pack.path / "site-packages"
-            if site.exists() and str(site) not in sys.path:
-                sys.path.insert(0, str(site))
+            modules = manifest.get("modules") or list(DEFAULT_PACK_MODULES)
+            self._finder = PackFinder(site, modules)
+            sys.meta_path.insert(0, self._finder)
             dll_dir = pack.path / "bin"
             add_dll = getattr(os, "add_dll_directory", None)
             if add_dll is not None and dll_dir.exists():
@@ -250,6 +510,14 @@ class RuntimeManager:
             sel.variant, sel.reason, "→".join(sel.chain), self._builtin,
         )
         return sel
+
+    def deactivate(self) -> None:
+        """Undo :meth:`activate`'s import routing (tests; a running engine can't
+        re-import native modules anyway)."""
+        if self._finder is not None and self._finder in sys.meta_path:
+            sys.meta_path.remove(self._finder)
+        self._finder = None
+        self._active = None
 
     # --- failure feedback -----------------------------------------------------
 
@@ -262,8 +530,12 @@ class RuntimeManager:
         self._save_state()
         log.warning("compute runtime %s marked bad: %s", variant, reason)
 
-    def clear_bad(self) -> None:
-        self._bad = {}
+    def clear_bad(self, variant: str | None = None) -> None:
+        """Forget bad marks (all, or one variant)."""
+        if variant is None:
+            self._bad = {}
+        else:
+            self._bad.pop(variant, None)
         self._save_state()
 
     @property
@@ -305,11 +577,33 @@ class RuntimeManager:
 
     # --- status -------------------------------------------------------------
 
-    def status(self) -> dict[str, Any]:
-        """Everything a settings UI needs to render the compute panel."""
+    def status(self, *, include_index: bool = False) -> dict[str, Any]:
+        """Everything a settings UI needs to render the compute panel.
+
+        With ``include_index`` the published packs are looked up (network;
+        call from a worker thread) and each pack row gains ``available`` +
+        ``release``; an unreachable index is reported, never raised.
+        """
         selection = self._active or self.select()
+        packs = [self.pack(v).to_dict() for v in VARIANTS]
+        index_info: dict[str, Any] = {"url": self._config.runtimes_index_url, "checked": False}
+        if include_index:
+            index_info["checked"] = True
+            try:
+                releases = {r.variant: r for r in self.index()}
+                index_info["reachable"] = True
+                index_info["error"] = None
+            except RuntimeUnavailable as e:
+                releases = {}
+                index_info["reachable"] = False
+                index_info["error"] = str(e)
+            for row in packs:
+                rel = releases.get(row["variant"])
+                row["available"] = row["builtin"] or rel is not None
+                row["release"] = rel.to_dict() if rel else None
         return {
             "platform_tag": self._tag,
+            "python": python_tag(),
             "hardware": self._hardware.to_dict(),
             "capabilities": self._platform.capabilities.to_dict(),
             "config": self._config.model_dump(),
@@ -317,9 +611,10 @@ class RuntimeManager:
             "candidates": list(self.candidates()),
             "selection": selection.to_dict(),
             "active": self._active.variant if self._active else None,
-            "packs": [self.pack(v).to_dict() for v in VARIANTS],
+            "packs": packs,
             "bad": self.bad,
             "vram_budget_mb": self.vram_budget_mb(),
+            "index": index_info,
         }
 
     # --- persistence --------------------------------------------------------
@@ -345,3 +640,34 @@ class RuntimeManager:
                 json.dump({"bad": self._bad}, f, indent=2)
         except OSError:
             log.exception("could not persist runtime state to %s", self._state_path())
+
+
+# ---------- helpers ----------
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(_CHUNK):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _validate_manifest(manifest: Any, variant: str, tag: str) -> None:
+    if not isinstance(manifest, dict):
+        raise RuntimeUnavailable("runtime pack manifest is not an object")
+    if int(manifest.get("schema", 0)) != PACK_SCHEMA:
+        raise RuntimeUnavailable(f"runtime pack manifest schema {manifest.get('schema')!r} unsupported")
+    if manifest.get("variant") != variant:
+        raise RuntimeUnavailable(
+            f"runtime pack is for variant {manifest.get('variant')!r}, expected {variant!r}"
+        )
+    if manifest.get("platform_tag") != tag:
+        raise RuntimeUnavailable(
+            f"runtime pack is for {manifest.get('platform_tag')!r}, this machine is {tag!r}"
+        )
+    py = str(manifest.get("python") or "")
+    if py and py != python_tag():
+        raise RuntimeUnavailable(
+            f"runtime pack was built for Python {py}, this engine runs {python_tag()}"
+        )

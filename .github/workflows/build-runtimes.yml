@@ -1,0 +1,176 @@
+name: build runtimes
+
+# Builds the downloadable compute runtime packs (see packaging/runtimes/ and
+# engine/wrenote/core/runtimes.py) and publishes them, with runtimes.json, to
+# the rolling "runtimes" GitHub release that the engine's default
+# compute.runtimes_index_url points at.
+#
+# Windows only for now: macOS arm64 ships Metal built in, and the Windows app
+# ships the CPU build built in, so the packs that matter are the accelerated
+# Windows ones. Python must match the frozen engine (3.11).
+#
+# NOTE: the CUDA and Vulkan jobs compile llama.cpp / whisper.cpp from source
+# on the runner (no upstream accelerated wheels exist for pywhispercpp, and
+# none at all for Vulkan). Expect 30-60 min each. Run manually via
+# workflow_dispatch; not wired to push.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Pack version (default = today's date)
+        required: false
+        default: ""
+      publish:
+        description: Publish to the "runtimes" release (else artifacts only)
+        type: boolean
+        default: false
+
+env:
+  LLAMA_CPP_PYTHON: "0.3.28"
+  PYWHISPERCPP: "1.4.1"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  pack:
+    name: pack (${{ matrix.variant }})
+    runs-on: windows-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cpu
+            llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
+          - variant: vulkan
+            cmake_args: -DGGML_VULKAN=on
+          - variant: cuda
+            llama_index: https://abetlen.github.io/llama-cpp-python/whl/cu124
+            cmake_args: -DGGML_CUDA=on
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          v="${{ inputs.version }}"
+          [ -z "$v" ] && v="$(date -u +%Y.%m.%d)"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      # --- accelerator toolchains -------------------------------------------
+
+      - name: Install Vulkan SDK
+        if: matrix.variant == 'vulkan'
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.3.290.0
+          install_runtime: true
+          cache: true
+          stripdown: true
+
+      - name: Install CUDA toolkit
+        if: matrix.variant == 'cuda'
+        id: cuda
+        uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: "12.4.1"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
+
+      # --- build the pack ----------------------------------------------------
+
+      - name: Build pack
+        shell: bash
+        env:
+          # llama-cpp-python: prebuilt wheel from the extra index when one
+          # exists (cpu, cuda); Vulkan is built from source with CMAKE_ARGS.
+          # pywhispercpp: always from source; it reads GGML_* env flags.
+          CMAKE_ARGS: ${{ matrix.cmake_args }}
+          GGML_VULKAN: ${{ matrix.variant == 'vulkan' && '1' || '' }}
+          GGML_CUDA: ${{ matrix.variant == 'cuda' && '1' || '' }}
+          CUDA_PATH: ${{ steps.cuda.outputs.CUDA_PATH }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          extra=()
+          if [ -n "${{ matrix.llama_index }}" ]; then
+            extra+=(--extra-index-url "${{ matrix.llama_index }}")
+          fi
+          bins=()
+          if [ "${{ matrix.variant }}" = "cuda" ]; then
+            # The cu12x wheels link against the CUDA runtime but do not ship it;
+            # bundle the redistributable runtime DLLs so users need only a driver.
+            for f in cudart64_12.dll cublas64_12.dll cublasLt64_12.dll; do
+              p="$(find "$CUDA_PATH/bin" -iname "$f" | head -n1)"
+              [ -n "$p" ] && bins+=(--bin "$p")
+            done
+          fi
+          python packaging/runtimes/build_pack.py \
+            --variant "${{ matrix.variant }}" \
+            --version "${{ steps.ver.outputs.version }}" \
+            --spec "llama-cpp-python==${LLAMA_CPP_PYTHON}" \
+            --spec "pywhispercpp==${PYWHISPERCPP}" \
+            --out dist/runtimes "${extra[@]}" "${bins[@]}"
+
+      - name: Smoke-import the pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip="$(ls dist/runtimes/wrenote-runtime-*.zip)"
+          python - "$zip" <<'EOF'
+          import json, sys, zipfile, tempfile, pathlib, importlib
+          z = zipfile.ZipFile(sys.argv[1]); d = pathlib.Path(tempfile.mkdtemp()); z.extractall(d)
+          m = json.loads((d / "MANIFEST.json").read_text()); print(m)
+          sys.path.insert(0, str(d / "site-packages"))
+          for mod in m["modules"]:
+              importlib.import_module(mod); print("import", mod, "OK")
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ matrix.variant }}
+          path: dist/runtimes/*
+          if-no-files-found: error
+
+  index:
+    name: index + publish
+    needs: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-*
+          path: dist/runtimes
+          merge-multiple: true
+      - name: Write runtimes.json
+        run: |
+          python packaging/runtimes/make_index.py --dir dist/runtimes \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/runtimes"
+          cat dist/runtimes/runtimes.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtimes-index
+          path: dist/runtimes/runtimes.json
+      - name: Publish to the rolling "runtimes" release
+        if: inputs.publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: runtimes
+          name: Compute runtime packs
+          body: >-
+            Downloadable accelerator builds of llama.cpp / whisper.cpp for Wrenote.
+            The app fetches these on demand (Settings → Compute); you do not need
+            to download them by hand. Index: runtimes.json.
+          prerelease: true
+          files: |
+            dist/runtimes/*.zip
+            dist/runtimes/*.sha256
+            dist/runtimes/runtimes.json

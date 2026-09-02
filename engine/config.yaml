@@ -13,6 +13,8 @@ compute:
   gpu_layers: null          # null = derive n_gpu_layers from the VRAM budget; int forces it
   vram_budget_mb: null      # null = 90% of the largest discrete GPU; unified memory = unbudgeted
   runtimes_dir: ~/.wrenote/runtimes
+  # Index of published packs; set to a mirror if GitHub is unreachable, or "" to disable installs.
+  runtimes_index_url: https://github.com/Andision/wrenote/releases/download/runtimes/runtimes.json
 
 server:
   host: 127.0.0.1           # default localhost-only; do not change unless you accept LAN exposure

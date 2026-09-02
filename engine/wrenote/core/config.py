@@ -54,6 +54,11 @@ class ComputeConfig(BaseModel):
     # None = 90% of the largest discrete GPU; unified memory = unbudgeted.
     vram_budget_mb: int | None = None
     runtimes_dir: str = "~/.wrenote/runtimes"
+    # Where published runtime packs are listed (see packaging/runtimes/ and
+    # .github/workflows/build-runtimes.yml). Empty = installs disabled.
+    runtimes_index_url: str = (
+        "https://github.com/Andision/wrenote/releases/download/runtimes/runtimes.json"
+    )
 
 
 class Config(BaseSettings):
@@ -165,3 +170,32 @@ def load_config(
 def get_env_overrides_summary() -> dict[str, str]:
     """Return WRENOTE_*-prefixed env vars (for debug/logging)."""
     return {k: v for k, v in os.environ.items() if k.startswith("WRENOTE_")}
+
+
+def user_config_path() -> Path:
+    """The user override file (module global so tests can redirect it)."""
+    return USER_CONFIG
+
+
+def write_user_config(updates: dict[str, Any]) -> Path:
+    """Deep-merge ``updates`` into the user override YAML and write it back.
+
+    This is how the app persists settings that must survive a restart (e.g.
+    ``compute.accelerator``). Only the keys given are touched; everything else
+    the user wrote by hand is preserved. Always UTF-8 (see :func:`load_config`).
+    """
+    path = user_config_path()
+    current: dict[str, Any] = {}
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            loaded = yaml.safe_load(f) or {}
+        if not isinstance(loaded, dict):
+            raise ValueError(f"User config {path} did not parse to a mapping")
+        current = loaded
+    merged = _deep_merge(current, updates)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        yaml.safe_dump(merged, f, sort_keys=False, allow_unicode=True)
+    os.replace(tmp, path)
+    return path

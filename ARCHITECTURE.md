@@ -118,9 +118,26 @@ Windows, and Metal on macOS, without shipping one installer per accelerator.
 * `GET /v1/compute/status` returns hardware, candidate chain, active runtime
   and pack state for the settings UI.
 
-**Status:** selection, persistence and activation are implemented and tested;
-`ensure()` raises `RuntimeUnavailable` until CI publishes packs. VAD and the
-speaker model stay on CPU (ONNX Runtime) by design.
+* Packs are zips built by `packaging/runtimes/build_pack.py` (`MANIFEST.json`
+  + `site-packages/` with the bindings installed `--no-deps` + optional
+  `bin/` DLLs) and listed in a `runtimes.json` index
+  (`packaging/runtimes/make_index.py`). `.github/workflows/build-runtimes.yml`
+  builds `cpu` / `vulkan` / `cuda` for Windows and publishes them to the rolling
+  `runtimes` GitHub release that `compute.runtimes_index_url` points at.
+  `ensure()` downloads, verifies the sha256, checks the manifest (variant,
+  platform, Python minor) and unpacks atomically.
+* Activation routes only the pack's manifest-listed modules through a
+  `sys.meta_path` finder placed ahead of PyInstaller's frozen importer — a
+  plain `sys.path` entry would lose to the bundled copy.
+* `POST /v1/compute/install` runs an install as a job (progress over
+  `/v1/jobs/{id}/stream`); `POST /v1/compute/select` persists
+  `compute.accelerator` to `~/.wrenote/config.yaml` for the next launch;
+  Settings → Compute in the web client drives both.
+
+**Status:** everything above is implemented and tested against packs built
+locally; the CI workflow that compiles real CUDA/Vulkan packs on Windows
+runners is written but has not been executed yet. VAD and the speaker model
+stay on CPU (ONNX Runtime) by design.
 
 ## The contract (`engine/contract/`)
 
@@ -152,7 +169,10 @@ speaker model stay on CPU (ONNX Runtime) by design.
    (`getUserMedia` / AudioWorklet in WKWebView and WebView2, overlay
    transparency, signing). Fall back to engine-side mic capture via the
    platform adapter if a WebView can't. `shells/electron/` ships until then.
-3. CI builds and publishes runtime packs (`cpu`, `vulkan`, `cuda` for
-   Windows); wire `ensure()` downloads and the settings UI.
+3. 🔧 Runtime packs — engine install/activate, API, settings UI and the
+   pack build scripts are done; `build-runtimes.yml` needs its first manual
+   run (`workflow_dispatch`) to publish real Windows `cpu` / `vulkan` /
+   `cuda` packs, then a driver-matrix check (NVIDIA, AMD, Intel) on real
+   machines.
 4. Native clients only where native matters (macOS menu bar / overlay),
    starting with one platform against the contract.

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   BookMarked,
   Cpu,
+  Gauge,
   Monitor,
   Moon,
   Scissors,
@@ -14,13 +15,14 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
+import { ComputePanel } from "@/components/ComputePanel";
 import { GlossaryEditor } from "@/components/GlossaryEditor";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useSessionStore } from "@/store/sessionStore";
 
-type CategoryId = "general" | "segmentation" | "realtime" | "glossary" | "engines";
+type CategoryId = "general" | "segmentation" | "realtime" | "glossary" | "engines" | "compute";
 
 const CATEGORIES: { id: CategoryId; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
@@ -28,6 +30,7 @@ const CATEGORIES: { id: CategoryId; label: string; icon: LucideIcon }[] = [
   { id: "realtime", label: "Real-time", icon: Zap },
   { id: "glossary", label: "Glossary", icon: BookMarked },
   { id: "engines", label: "Engines", icon: Cpu },
+  { id: "compute", label: "Compute", icon: Gauge },
 ];
 
 /**
@@ -198,6 +201,8 @@ export function SettingsDrawer() {
                 )}
 
                 {cat === "glossary" && <GlossaryEditor />}
+
+                {cat === "compute" && <ComputePanel />}
 
                 {cat === "engines" && (
                   <div className="space-y-4">
