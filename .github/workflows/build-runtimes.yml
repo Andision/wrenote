@@ -39,18 +39,23 @@ env:
 jobs:
   pack:
     name: pack (${{ matrix.variant }})
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
           - variant: cpu
+            runner: windows-latest
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
           - variant: vulkan
+            runner: windows-latest
             cmake_args: -DGGML_VULKAN=on
             no_binary: --no-binary pywhispercpp
           - variant: cuda
+            # CUDA 12.4's Visual Studio integration (the "CUDA toolset" MSBuild
+            # needs) only installs into VS 2022; windows-latest ships VS 2026.
+            runner: windows-2022
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cu124
             cmake_args: -DGGML_CUDA=on
             no_binary: --no-binary pywhispercpp
@@ -91,6 +96,12 @@ jobs:
           method: network
           sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
 
+      # whisper.cpp's Vulkan shader generator is a nested CMake project that
+      # needs cl.exe on PATH (the VS generator alone doesn't provide it).
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       # --- build the pack ----------------------------------------------------
 
       - name: Build pack
@@ -103,6 +114,9 @@ jobs:
           GGML_VULKAN: ${{ matrix.variant == 'vulkan' && '1' || '' }}
           GGML_CUDA: ${{ matrix.variant == 'cuda' && '1' || '' }}
           CUDA_PATH: ${{ steps.cuda.outputs.CUDA_PATH }}
+          # No GPU on the runner, so CMake can't resolve "native"; build for
+          # every major architecture the toolkit knows (CMake reads CUDAARCHS).
+          CUDAARCHS: all-major
         run: |
           set -euo pipefail
           # pywhispercpp's source build nests deep under pip's temp dir; on
