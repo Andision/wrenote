@@ -51,7 +51,7 @@ jobs:
           - variant: vulkan
             runner: windows-latest
             cmake_args: -DGGML_VULKAN=on
-            no_binary: --no-binary pywhispercpp
+            no_binary: source  # build pywhispercpp from the sdist (see Build pack)
             # whisper.cpp's ggml builds its Vulkan shader generator as a nested
             # CMake project without forwarding the compiler; under the Visual
             # Studio generator that nested configure runs inside MSBuild and
@@ -63,7 +63,7 @@ jobs:
             runner: windows-2022
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cu124
             cmake_args: -DGGML_CUDA=on
-            no_binary: --no-binary pywhispercpp
+            no_binary: source  # build pywhispercpp from the sdist (see Build pack)
             # Ninja compiles the CUDA kernels in parallel (MSBuild serialises
             # nvcc per project) and drives nvcc directly, so the VS "CUDA
             # toolset" integration isn't even needed.
@@ -111,6 +111,15 @@ jobs:
         with:
           arch: x64
 
+      # The nested ggml build dirs exceed MAX_PATH even under D:\t. cl.exe,
+      # cmake and ninja are long-path aware once Windows allows it.
+      - name: Enable Windows long paths
+        shell: pwsh
+        run: |
+          New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
+            -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force | Out-Null
+          git config --system core.longpaths true
+
       # --- build the pack ----------------------------------------------------
 
       - name: Build pack
@@ -152,12 +161,23 @@ jobs:
               [ -n "$p" ] && bins+=(--bin "$p")
             done
           fi
+          # Accelerated variants compile pywhispercpp from source. Do it from a
+          # short in-tree checkout of the exact PyPI sdist rather than pip's
+          # deeply nested temp dir: the ggml sub-builds add ~150 chars of their
+          # own and MSVC has to be able to open every object path.
+          pw_spec="pywhispercpp==${PYWHISPERCPP}"
+          if [ -n "${{ matrix.no_binary }}" ]; then
+            python -m pip download --no-binary :all: --no-deps "pywhispercpp==${PYWHISPERCPP}" -d /d/t/src
+            mkdir -p /d/t/pw
+            tar -xzf /d/t/src/pywhispercpp-*.tar.gz -C /d/t/pw --strip-components=1
+            pw_spec="D:/t/pw"
+          fi
           python packaging/runtimes/build_pack.py \
             --variant "${{ matrix.variant }}" \
             --version "${{ steps.ver.outputs.version }}" \
             --spec "llama-cpp-python==${LLAMA_CPP_PYTHON}" \
-            --spec "pywhispercpp==${PYWHISPERCPP}" \
-            --out dist/runtimes "${extra[@]}" "${bins[@]}" ${{ matrix.no_binary }}
+            --spec "$pw_spec" \
+            --out dist/runtimes "${extra[@]}" "${bins[@]}"
 
       - name: Smoke-import the pack
         shell: bash
