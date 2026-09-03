@@ -52,6 +52,11 @@ jobs:
             runner: windows-latest
             cmake_args: -DGGML_VULKAN=on
             no_binary: --no-binary pywhispercpp
+            # whisper.cpp's ggml builds its Vulkan shader generator as a nested
+            # CMake project without forwarding the compiler; under the Visual
+            # Studio generator that nested configure runs inside MSBuild and
+            # can't identify cl.exe. Ninja finds it on PATH (msvc-dev-cmd).
+            cmake_generator: Ninja
           - variant: cuda
             # CUDA 12.4's Visual Studio integration (the "CUDA toolset" MSBuild
             # needs) only installs into VS 2022; windows-latest ships VS 2026.
@@ -124,6 +129,9 @@ jobs:
           # with FTK1011. Point every temp dir at a short root for this step.
           mkdir -p /d/t
           export TMP='D:\t' TEMP='D:\t' TMPDIR='D:\t'
+          if [ -n "${{ matrix.cmake_generator }}" ]; then
+            export CMAKE_GENERATOR="${{ matrix.cmake_generator }}"
+          fi
           python -m pip install --upgrade pip
           extra=()
           if [ -n "${{ matrix.llama_index }}" ]; then
