@@ -137,6 +137,11 @@ jobs:
           # GPUs (Blackwell) JIT it — "all-major" doubled the build time for
           # datacenter parts nobody runs this app on. (CMake reads CUDAARCHS.)
           CUDAARCHS: 61-real;75-real;86-real;89-real;89-virtual
+          # DLLs delvewheel must not vendor into pywhispercpp's wheel: the
+          # NVIDIA driver (absent on the runner, provided by the user's
+          # driver), the CUDA runtime (shipped once in the pack's bin/ for
+          # llama.cpp and whisper.cpp alike) and the Vulkan loader (driver).
+          WRENOTE_DELVEWHEEL_EXCLUDE: nvcuda.dll:cudart64_12.dll:cublas64_12.dll:cublasLt64_12.dll:vulkan-1.dll
         run: |
           set -euo pipefail
           # pywhispercpp's source build nests deep under pip's temp dir; on
@@ -170,6 +175,8 @@ jobs:
             python -m pip download --no-binary :all: --no-deps "pywhispercpp==${PYWHISPERCPP}" -d /d/t/src
             mkdir -p /d/t/pw
             tar -xzf /d/t/src/pywhispercpp-*.tar.gz -C /d/t/pw --strip-components=1
+            # Ninja output layout + skip vendoring driver/runtime DLLs (see script).
+            python packaging/runtimes/patch_pywhispercpp.py /d/t/pw
             pw_spec="D:/t/pw"
           fi
           python packaging/runtimes/build_pack.py \
