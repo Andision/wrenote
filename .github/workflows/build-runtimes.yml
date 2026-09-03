@@ -64,6 +64,10 @@ jobs:
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cu124
             cmake_args: -DGGML_CUDA=on
             no_binary: --no-binary pywhispercpp
+            # Ninja compiles the CUDA kernels in parallel (MSBuild serialises
+            # nvcc per project) and drives nvcc directly, so the VS "CUDA
+            # toolset" integration isn't even needed.
+            cmake_generator: Ninja
     steps:
       - uses: actions/checkout@v4
 
@@ -119,9 +123,11 @@ jobs:
           GGML_VULKAN: ${{ matrix.variant == 'vulkan' && '1' || '' }}
           GGML_CUDA: ${{ matrix.variant == 'cuda' && '1' || '' }}
           CUDA_PATH: ${{ steps.cuda.outputs.CUDA_PATH }}
-          # No GPU on the runner, so CMake can't resolve "native"; build for
-          # every major architecture the toolkit knows (CMake reads CUDAARCHS).
-          CUDAARCHS: all-major
+          # No GPU on the runner, so CMake can't resolve "native". Real code
+          # for Pascal (GTX 10xx), Turing, Ampere and Ada, plus Ada PTX so newer
+          # GPUs (Blackwell) JIT it — "all-major" doubled the build time for
+          # datacenter parts nobody runs this app on. (CMake reads CUDAARCHS.)
+          CUDAARCHS: 61-real;75-real;86-real;89-real;89-virtual
         run: |
           set -euo pipefail
           # pywhispercpp's source build nests deep under pip's temp dir; on
