@@ -3,8 +3,9 @@
 // Shows the detected hardware, the runtime the engine picked (and why), and
 // the runtime packs that can be installed for this machine. Installing is a
 // background job on the engine (progress over the shared jobs SSE); choosing
-// an accelerator is persisted to the user config and applies on next launch —
-// native bindings can't be swapped inside a running process.
+// an accelerator is persisted to the user config and applied immediately when
+// no backend has been loaded yet — once native bindings are imported they
+// can't be swapped, and the engine says so in restart_required.
 import { useCallback, useEffect, useState } from "react";
 import { Download, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ import {
   type Accelerator,
   type ComputeStatus,
   type PackInfo,
+  type RuntimeOption,
   type Variant,
   VARIANT_LABEL,
   formatMb,
@@ -87,7 +89,12 @@ export function ComputePanel() {
             });
             if (snap.status === "done") {
               toast.success(`${VARIANT_LABEL[variant]} runtime installed`);
-              setRestartNeeded(true);
+              // Re-apply the unchanged choice: with "auto" the new pack may now
+              // win, and the engine can route to it live before any backend
+              // loads. The response tells us whether that worked.
+              void selectAccelerator((status?.config.accelerator || "auto") as Accelerator)
+                .then((res) => setRestartNeeded(res.restart_required))
+                .catch(() => setRestartNeeded(true));
             } else {
               toast.error(snap.error ?? "runtime install failed");
             }
@@ -114,7 +121,7 @@ export function ComputePanel() {
       const res = await removeRuntime(variant);
       if (res.removed) {
         toast.success(`${VARIANT_LABEL[variant]} runtime removed`);
-        setRestartNeeded(true);
+        setRestartNeeded(res.restart_required);
       }
       void refresh();
     } catch (e) {
@@ -124,8 +131,8 @@ export function ComputePanel() {
 
   const choose = async (acc: Accelerator) => {
     try {
-      await selectAccelerator(acc);
-      setRestartNeeded(true);
+      const res = await selectAccelerator(acc);
+      setRestartNeeded(res.restart_required);
       void refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "could not save the accelerator");
@@ -154,6 +161,9 @@ export function ComputePanel() {
     ]),
   ) as Variant[];
   const chosen = (status.config.accelerator || "auto") as Accelerator;
+  const byVariant = new Map(status.options.map((o) => [o.variant, o]));
+  // Variants the hardware rules out: say why rather than just omitting them.
+  const blocked = status.options.filter((o) => !o.usable && o.detail);
 
   return (
     <div className="space-y-5">
@@ -245,6 +255,7 @@ export function ComputePanel() {
               <PackRow
                 key={p.variant}
                 pack={p}
+                option={byVariant.get(p.variant)}
                 active={status.active === p.variant}
                 progress={installing[p.variant]}
                 onInstall={() => void install(p.variant)}
@@ -252,6 +263,11 @@ export function ComputePanel() {
               />
             ))}
         </div>
+        {blocked.map((o) => (
+          <p key={o.variant} className="text-[11px] text-muted-foreground">
+            {VARIANT_LABEL[o.variant]} unavailable — {o.detail}
+          </p>
+        ))}
         {status.index.checked && status.index.reachable === false && (
           <p className="text-[11px] text-muted-foreground">
             Pack index unreachable — installs are unavailable offline.
@@ -279,12 +295,14 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function PackRow({
   pack,
+  option,
   active,
   progress,
   onInstall,
   onRemove,
 }: {
   pack: PackInfo;
+  option?: RuntimeOption;
   active: boolean;
   progress?: InstallProgress;
   onInstall: () => void;
@@ -307,6 +325,11 @@ function PackRow({
               active
             </span>
           )}
+          {option?.recommended && !active && (
+            <span className="rounded-full bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-600 dark:text-brand-400">
+              recommended
+            </span>
+          )}
         </div>
         {progress ? (
           <div className="mt-1">
@@ -321,7 +344,10 @@ function PackRow({
             </div>
           </div>
         ) : (
-          <div className="text-[11px] text-muted-foreground">{state}</div>
+          <div className="text-[11px] text-muted-foreground">
+            {state}
+            {option?.detail ? ` · ${option.detail}` : ""}
+          </div>
         )}
       </div>
       {!pack.builtin && !progress && (

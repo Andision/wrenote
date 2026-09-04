@@ -113,6 +113,24 @@ Windows, and Metal on macOS, without shipping one installer per accelerator.
   pick the first installed, put it on `sys.path` before any native import.
   A backend that fails on a variant calls `mark_bad()`; the next launch
   degrades one step down the chain instead of crash-looping.
+* Detection asks whether the *driver* can run a variant, not whether an SDK is
+  installed: a CUDA pack ships cudart and cuBLAS, so what it needs from the
+  machine is `nvcuda.dll` and a driver at least `MIN_NVIDIA_DRIVER` (R527, the
+  floor for CUDA 12 minor-version compatibility) plus enough VRAM. Every
+  platform reports an `AcceleratorNote` per variant — what was detected, or
+  what blocks it — so a missing accelerator can be explained rather than
+  silently absent.
+* `options()` is the **offer**, as opposed to the fallback chain `candidates()`
+  computes. It recommends the lightest accelerated variant the machine can run
+  (`ACCELERATED`): on Windows the CUDA pack is ~20x the Vulkan one — NVIDIA's
+  cuBLAS alone is ~550 MB — and for streaming whisper plus a small translation
+  model Vulkan already captures most of the GPU win, so CUDA is offered as an
+  explicit upgrade instead of a default.
+* Switching runtimes only needs a restart once a native binding is imported.
+  The backends import theirs lazily inside `load()`, so during first-run setup
+  nothing has, and `reactivate()` redoes the routing in place;
+  `can_reactivate()` reports which case applies and `POST /v1/compute/select`
+  answers `restart_required` accordingly.
 * `gpu_layers_for()` budgets VRAM on discrete GPUs (the three default models
   total ~4.2 GB) and leaves unified memory unbudgeted.
 * `GET /v1/compute/status` returns hardware, candidate chain, active runtime
@@ -131,13 +149,16 @@ Windows, and Metal on macOS, without shipping one installer per accelerator.
   plain `sys.path` entry would lose to the bundled copy.
 * `POST /v1/compute/install` runs an install as a job (progress over
   `/v1/jobs/{id}/stream`); `POST /v1/compute/select` persists
-  `compute.accelerator` to `~/.wrenote/config.yaml` for the next launch;
-  Settings → Compute in the web client drives both.
+  `compute.accelerator` to `~/.wrenote/config.yaml` and applies it live when it
+  still can. Two clients drive them: `SetupGate` (first run — pick a runtime,
+  then download the models; it only asks when an accelerator is genuinely
+  installable, so Macs and offline machines go straight to the models) and
+  Settings → Compute for everything after.
 
-**Status:** everything above is implemented and tested against packs built
-locally; the CI workflow that compiles real CUDA/Vulkan packs on Windows
-runners is written but has not been executed yet. VAD and the speaker model
-stay on CPU (ONNX Runtime) by design.
+**Status:** implemented and tested. `.github/workflows/build-runtimes.yml` has
+built and smoke-checked real `cpu`, `vulkan` and `cuda` packs on Windows
+runners (the CUDA pack is ~770 MB, almost all of it cuBLAS). VAD and the
+speaker model stay on CPU (ONNX Runtime) by design.
 
 ## The contract (`engine/contract/`)
 

@@ -3,7 +3,7 @@ import { AnimatePresence, LayoutGroup } from "motion/react";
 
 import { ChatPanel } from "@/components/ChatPanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { ModelGate } from "@/components/ModelGate";
+import { SetupGate } from "@/components/SetupGate";
 import { PreFlight } from "@/components/PreFlight";
 import { ProgressOverlay } from "@/components/ProgressOverlay";
 import { Sidebar } from "@/components/Sidebar";
@@ -146,7 +146,7 @@ export default function App() {
       </PlaybackProvider>
       <Toaster richColors closeButton />
       <ConfirmDialog />
-      <ModelGate />
+      <SetupGate />
       <TooltipLayer />
     </TooltipProvider>
   );

@@ -63,7 +63,9 @@ validation checklist is complete.
 Real models: install `pywhispercpp` and `llama-cpp-python` for your platform
 (CI pins the exact wheels in `.github/workflows/build.yml`), then set the
 backends in `~/.wrenote/config.yaml` (see `engine/profiles/mac-default.yaml`).
-Models are downloaded on first run into `~/.wrenote/models/`.
+First run walks through setup: pick the compute runtime for your hardware
+(recommended option pre-selected — see `ARCHITECTURE.md`), then download the
+models into `~/.wrenote/models/`. Both are changeable later in Settings.
 
 ## Package
 
