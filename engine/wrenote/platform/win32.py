@@ -26,6 +26,7 @@ import numpy as np
 
 from .base import (
     SAMPLE_RATE,
+    AcceleratorNote,
     Capabilities,
     CaptureTargets,
     GpuInfo,
@@ -183,18 +184,88 @@ def merge_gpu_lists(primary: list[GpuInfo], secondary: list[GpuInfo]) -> list[Gp
     return primary + [g for g in secondary if g.vendor not in covered]
 
 
-def accelerators_for(
-    gpus: tuple[GpuInfo, ...] | list[GpuInfo], *, vulkan_available: bool
-) -> tuple[str, ...]:
-    """Windows runtime-variant preference: CUDA for NVIDIA, Vulkan for any
-    GPU (NVIDIA included, as the fallback when CUDA can't load), CPU last."""
+#: Minimum NVIDIA driver for the CUDA runtime our pack ships. The pack carries
+#: cudart/cuBLAS 12.4, so the user needs no CUDA *Toolkit* — but the driver is
+#: theirs, and CUDA 12.x minor-version compatibility puts the floor at the
+#: R525 branch (527.41 on Windows). Below that ggml-cuda loads and fails.
+MIN_NVIDIA_DRIVER = 527
+
+#: Below this much VRAM, offloading to the GPU buys little and risks OOM on a
+#: model that would have fit in RAM; keep such machines on the CPU runtime.
+MIN_GPU_VRAM_MB = 2048
+
+
+def driver_major(version: str | None) -> int | None:
+    """Major component of an NVIDIA driver version ("566.36" -> 566)."""
+    if not version:
+        return None
+    head = version.strip().split(".", 1)[0]
+    try:
+        return int(head)
+    except ValueError:
+        return None
+
+
+def evaluate_accelerators(
+    gpus: tuple[GpuInfo, ...] | list[GpuInfo],
+    *,
+    vulkan_available: bool,
+    nvcuda_present: bool,
+) -> tuple[tuple[str, ...], list[AcceleratorNote]]:
+    """Windows runtime-variant ranking **and** the reason for each verdict.
+
+    CUDA needs the NVIDIA driver (``nvcuda.dll``), not the CUDA Toolkit — the
+    runtime pack ships cudart and cuBLAS itself — so the checks are: an NVIDIA
+    GPU, a driver new enough for CUDA 12, and enough VRAM to be worth it.
+    Vulkan covers any vendor's GPU (NVIDIA included, as the lighter option and
+    the fallback when CUDA can't load). CPU is last and always usable.
+    """
     out: list[str] = []
-    if any(g.vendor == "nvidia" for g in gpus):
-        out.append("cuda")
-    if vulkan_available and any(g.vendor in ("nvidia", "amd", "intel") for g in gpus):
-        out.append("vulkan")
+    notes: list[AcceleratorNote] = []
+
+    nvidia = [g for g in gpus if g.vendor == "nvidia"]
+    if nvidia:
+        gpu = nvidia[0]
+        major = driver_major(gpu.driver_version)
+        shown = f"{gpu.name} · driver {gpu.driver_version}" if gpu.driver_version else gpu.name
+        if not nvcuda_present and major is None:
+            notes.append(AcceleratorNote("cuda", False, f"{gpu.name} found, but no NVIDIA driver"))
+        elif major is not None and major < MIN_NVIDIA_DRIVER:
+            notes.append(AcceleratorNote(
+                "cuda", False,
+                f"{shown} is older than the {MIN_NVIDIA_DRIVER} CUDA 12 needs — update it to use CUDA",
+            ))
+        elif gpu.vram_mb is not None and gpu.vram_mb < MIN_GPU_VRAM_MB:
+            notes.append(AcceleratorNote(
+                "cuda", False, f"{gpu.name} has under {MIN_GPU_VRAM_MB // 1024} GB of VRAM"))
+        else:
+            out.append("cuda")
+            notes.append(AcceleratorNote("cuda", True, shown))
+
+    gpu_vendors = [g for g in gpus if g.vendor in ("nvidia", "amd", "intel")]
+    if gpu_vendors:
+        gpu = gpu_vendors[0]
+        if vulkan_available:
+            out.append("vulkan")
+            notes.append(AcceleratorNote("vulkan", True, gpu.name))
+        else:
+            notes.append(AcceleratorNote(
+                "vulkan", False, f"{gpu.name} found, but no Vulkan driver (vulkan-1.dll)"))
+
     out.append("cpu")
-    return tuple(out)
+    notes.append(AcceleratorNote(
+        "cpu", True, "always available" if gpu_vendors else "no usable GPU detected"))
+    return tuple(out), notes
+
+
+def accelerators_for(
+    gpus: tuple[GpuInfo, ...] | list[GpuInfo], *, vulkan_available: bool,
+    nvcuda_present: bool = True,
+) -> tuple[str, ...]:
+    """Just the ranking from :func:`evaluate_accelerators`."""
+    return evaluate_accelerators(
+        gpus, vulkan_available=vulkan_available, nvcuda_present=nvcuda_present
+    )[0]
 
 
 # ---------- Adapter ----------
@@ -304,12 +375,28 @@ class WindowsPlatform(PlatformAdapter):
         return super()._probe_ram_mb()
 
     def _accelerators(self, gpus: tuple[GpuInfo, ...], arch: str) -> tuple[str, ...]:
-        return accelerators_for(gpus, vulkan_available=self._vulkan_available())
+        return self._evaluate(gpus)[0]
+
+    def _accelerator_notes(
+        self, gpus: tuple[GpuInfo, ...], arch: str
+    ) -> list[AcceleratorNote]:
+        return self._evaluate(gpus)[1]
+
+    def _evaluate(
+        self, gpus: tuple[GpuInfo, ...]
+    ) -> tuple[tuple[str, ...], list[AcceleratorNote]]:
+        return evaluate_accelerators(
+            gpus,
+            vulkan_available=self._system32_has("vulkan-1.dll"),
+            nvcuda_present=self._system32_has("nvcuda.dll"),
+        )
 
     @staticmethod
-    def _vulkan_available() -> bool:
+    def _system32_has(dll: str) -> bool:
+        """Is a driver-installed library present? Drivers land in System32, so
+        this is how we tell "has an NVIDIA/Vulkan driver" from "has the SDK"."""
         system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
-        return (Path(system_root) / "System32" / "vulkan-1.dll").exists()
+        return (Path(system_root) / "System32" / dll).exists()
 
     # --- process ---
 

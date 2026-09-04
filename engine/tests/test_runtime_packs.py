@@ -13,7 +13,9 @@ import json
 import os
 import shutil
 import sys
+import types
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -27,7 +29,12 @@ from wrenote.core.runtimes import (
     RuntimeUnavailable,
     python_tag,
 )
-from wrenote.platform.base import GpuInfo, HardwareInfo, PlatformAdapter
+from wrenote.platform.base import (
+    AcceleratorNote,
+    GpuInfo,
+    HardwareInfo,
+    PlatformAdapter,
+)
 
 PACKAGING = Path(__file__).resolve().parents[2] / "packaging" / "runtimes"
 sys.path.insert(0, str(PACKAGING))
@@ -217,6 +224,94 @@ def test_ensure_rejects_bad_manifest_and_unsafe_paths(tmp_path):
     assert not [p for p in (tmp_path / "runtimes").iterdir() if p.name.startswith("vulkan.")]
 
 
+# ---------- options: what the first-run wizard offers ----------
+
+
+def test_options_recommend_the_lightest_accelerated_runtime(tmp_path, published):
+    """An NVIDIA machine can run both, and CUDA ranks first in the *fallback*
+    chain — but the recommendation is Vulkan, because it buys most of the GPU
+    win for a twentieth of the download."""
+    _, index_url = published
+    m = _mgr(tmp_path, index_url)
+    releases = {r.variant: r for r in m.index()}
+    releases["cuda"] = replace(releases["vulkan"], variant="cuda", size=736 << 20)
+    opts = {o.variant: o for o in m.options(releases=releases)}
+
+    assert m.candidates()[0] == "cuda"  # fallback order is unchanged
+    assert opts["vulkan"].recommended and not opts["cuda"].recommended
+    assert [o.variant for o in m.options(releases=releases)][:2] == ["vulkan", "cuda"]
+    assert opts["cuda"].download_mb == 736
+    assert "Faster on NVIDIA" in opts["cuda"].note  # why anyone would pick it
+    assert opts["cpu"].builtin and opts["cpu"].download_mb is None
+
+
+def test_options_fall_back_to_cpu_when_no_pack_is_published(tmp_path):
+    """Offline, or before any pack ships: recommend the thing that actually
+    runs rather than an accelerator the user cannot install."""
+    m = _mgr(tmp_path, "")
+    opts = {o.variant: o for o in m.options(releases={})}
+    assert opts["cpu"].recommended
+    assert not opts["vulkan"].recommended and opts["vulkan"].download_mb is None
+
+
+def test_options_keep_blocked_variants_visible_with_the_reason(tmp_path):
+    """A GPU the app can't use must be explained, not silently dropped."""
+    class OldDriver(HostPlatform):
+        def probe_hardware(self) -> HardwareInfo:
+            hw = super().probe_hardware()
+            return replace(
+                hw, accelerators=("vulkan", "cpu"),
+                notes=(AcceleratorNote("cuda", False, "driver 471.11 is too old"),),
+            )
+
+    m = RuntimeManager(ComputeConfig(runtimes_dir=str(tmp_path / "r")), OldDriver())
+    cuda = next(o for o in m.options(releases={}) if o.variant == "cuda")
+    assert not cuda.usable and not cuda.recommended
+    assert "too old" in cuda.detail
+
+
+# ---------- reactivate: switching without a restart ----------
+
+
+def test_reactivate_switches_while_no_backend_is_imported(tmp_path, published, clean_llama_cpp):
+    _, index_url = published
+    m = _mgr(tmp_path, index_url)
+    m.ensure("vulkan")
+    assert m.activate().variant == "vulkan"
+    m.set_accelerator("cpu")
+    assert m.can_reactivate()
+    assert m.reactivate().variant == "cpu"
+    assert m.active.variant == "cpu"
+
+
+def test_reactivate_refuses_once_a_backend_is_imported(tmp_path, published, clean_llama_cpp,
+                                                       monkeypatch):
+    _, index_url = published
+    m = _mgr(tmp_path, index_url)
+    m.ensure("vulkan")
+    m.activate()
+    monkeypatch.setitem(sys.modules, "pywhispercpp", types.ModuleType("pywhispercpp"))
+    assert not m.can_reactivate()
+    assert m.reactivate() is None
+    assert m.active.variant == "vulkan"  # unchanged
+
+
+def test_deactivate_removes_the_packs_dll_path_entry(tmp_path, published, clean_llama_cpp,
+                                                     monkeypatch):
+    """Stale accelerator DLLs must not linger on PATH after a switch."""
+    _, index_url = published
+    m = _mgr(tmp_path, index_url)
+    m.ensure("vulkan")
+    bin_dir = m.pack("vulkan").path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    monkeypatch.setattr(os, "add_dll_directory", lambda p: None, raising=False)
+    monkeypatch.setenv("PATH", "/somewhere")
+    m.activate()
+    assert str(bin_dir) in os.environ["PATH"]
+    m.deactivate()
+    assert os.environ["PATH"] == "/somewhere"
+
+
 # ---------- activate: the pack must win over a built-in copy ----------
 
 
@@ -322,14 +417,26 @@ def test_write_user_config_merges(tmp_path, monkeypatch):
 # ---------- HTTP ----------
 
 
-def test_compute_select_persists_and_reports_restart(client, tmp_path):
+def test_compute_select_persists_and_applies_live(client, tmp_path):
+    """No native backend has been imported in the test process, so the choice
+    applies immediately — the first-run case, where a restart would be absurd."""
     r = client.post("/v1/compute/select", json={"accelerator": "Vulkan"})
     assert r.status_code == 200
     body = r.json()
-    assert body["accelerator"] == "vulkan" and body["restart_required"] is True
+    assert body["accelerator"] == "vulkan" and body["restart_required"] is False
+    # Nothing is installed, so it falls through to the built-in runtime.
+    assert body["applied"]["chain"][0] == "vulkan"
     assert (tmp_path / "config.yaml").read_text().strip().endswith("accelerator: vulkan")
     assert client.post("/v1/compute/select", json={"accelerator": "npu"}).status_code == 400
     assert client.post("/v1/compute/select", json={"accelerator": "auto"}).json()["accelerator"] == "auto"
+
+
+def test_compute_select_asks_for_a_restart_once_a_backend_is_loaded(client, monkeypatch):
+    """Once llama_cpp is imported its DLLs are in the process for good; the
+    endpoint must say so instead of pretending the switch took effect."""
+    monkeypatch.setitem(sys.modules, "llama_cpp", types.ModuleType("llama_cpp"))
+    body = client.post("/v1/compute/select", json={"accelerator": "cpu"}).json()
+    assert body["restart_required"] is True and body["applied"] is None
 
 
 def test_compute_install_409_when_nothing_published(client):

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import (
+    AcceleratorNote,
     Capabilities,
     CaptureTargets,
     GpuInfo,
@@ -211,6 +212,18 @@ class DarwinPlatform(PlatformAdapter):
         if arch == "arm64":
             return ("metal", "cpu")
         return ("cpu",)
+
+    def _accelerator_notes(
+        self, gpus: tuple[GpuInfo, ...], arch: str
+    ) -> list[AcceleratorNote]:
+        name = gpus[0].name if gpus else "Apple Silicon"
+        if arch == "arm64":
+            # Metal is built into the app bundle, so there is nothing to fetch.
+            return [
+                AcceleratorNote("metal", True, f"{name} · Metal, built in"),
+                AcceleratorNote("cpu", True, "always available"),
+            ]
+        return [AcceleratorNote("cpu", True, "Intel Mac — no Metal build is shipped")]
 
 
 async def _avfoundation_screen_index() -> str | None:

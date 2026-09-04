@@ -10,7 +10,7 @@ import logging
 import shutil
 import subprocess
 
-from .base import GpuInfo, PlatformAdapter
+from .base import AcceleratorNote, GpuInfo, PlatformAdapter
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +24,8 @@ def probe_nvidia_smi(timeout_s: float = 5.0) -> list[GpuInfo]:
         return []
     try:
         out = subprocess.run(
-            [exe, "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            [exe, "--query-gpu=name,memory.total,driver_version",
+             "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=timeout_s, check=False,
         ).stdout
     except (OSError, subprocess.SubprocessError):
@@ -41,7 +42,8 @@ def probe_nvidia_smi(timeout_s: float = 5.0) -> list[GpuInfo]:
                 vram = int(float(parts[1]))
             except ValueError:
                 vram = None
-        gpus.append(GpuInfo(vendor="nvidia", name=parts[0], vram_mb=vram))
+        driver = parts[2] if len(parts) > 2 and parts[2] not in ("", "[N/A]") else None
+        gpus.append(GpuInfo(vendor="nvidia", name=parts[0], vram_mb=vram, driver_version=driver))
     return gpus
 
 
@@ -78,3 +80,10 @@ class GenericPlatform(PlatformAdapter):
         if any(g.vendor in ("amd", "intel") for g in gpus):
             return ("vulkan", "cpu")
         return ("cpu",)
+
+    def _accelerator_notes(
+        self, gpus: tuple[GpuInfo, ...], arch: str
+    ) -> list[AcceleratorNote]:
+        gpu = next((g for g in gpus if g.vendor in ("nvidia", "amd", "intel")), None)
+        detail = f"{gpu.vendor.upper()} {gpu.name}" if gpu else "no discrete GPU detected"
+        return [AcceleratorNote(variant="cpu", usable=True, detail=detail)]

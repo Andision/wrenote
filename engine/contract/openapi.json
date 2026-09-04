@@ -258,7 +258,7 @@
     },
     "/v1/compute/select": {
       "post": {
-        "description": "Pin (or ``auto``) the accelerator for the next launch.",
+        "description": "Pin (or ``auto``) the accelerator, applying it now if the process still can.",
         "operationId": "compute_select_v1_compute_select_post",
         "requestBody": {
           "content": {

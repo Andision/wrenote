@@ -21,6 +21,7 @@ import os
 import platform as _stdplatform
 import sys
 import threading
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import IO, Any
@@ -50,6 +51,25 @@ class GpuInfo:
     name: str
     vram_mb: int | None = None
     unified_memory: bool = False
+    # Vendor driver version, when the probe can see it ("566.36"). The compute
+    # selector needs it: a runtime pack ships the CUDA *runtime*, but the
+    # *driver* comes from the user's machine and can be too old for it.
+    driver_version: str | None = None
+
+
+@dataclass(frozen=True)
+class AcceleratorNote:
+    """Why a runtime variant is (or isn't) usable on this machine.
+
+    Written for a person to read in the setup wizard: an unexplained
+    recommendation is one nobody dares click, and an accelerator that is
+    silently missing looks like a bug. ``usable`` variants appear in
+    :attr:`HardwareInfo.accelerators`; the rest carry the blocker.
+    """
+
+    variant: str
+    usable: bool
+    detail: str  # one line, e.g. "NVIDIA GeForce RTX 4070 · driver 566.36"
 
 
 @dataclass(frozen=True)
@@ -70,11 +90,17 @@ class HardwareInfo:
     gpus: tuple[GpuInfo, ...]
     npu: str | None  # "intel" | "amd" | "qualcomm" | None — informational for now
     accelerators: tuple[str, ...]
+    #: Human-readable verdict per variant the platform considered, usable or not.
+    notes: tuple[AcceleratorNote, ...] = ()
+
+    def note_for(self, variant: str) -> AcceleratorNote | None:
+        return next((n for n in self.notes if n.variant == variant), None)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["gpus"] = [asdict(g) for g in self.gpus]
         d["accelerators"] = list(self.accelerators)
+        d["notes"] = [asdict(n) for n in self.notes]
         return d
 
 
@@ -202,6 +228,7 @@ class PlatformAdapter:
                 gpus=gpus,
                 npu=self._probe_npu(),
                 accelerators=self._accelerators(gpus, arch),
+                notes=tuple(self._accelerator_notes(gpus, arch)),
             )
         return self._hardware
 
@@ -217,6 +244,13 @@ class PlatformAdapter:
     def _accelerators(self, gpus: tuple[GpuInfo, ...], arch: str) -> tuple[str, ...]:
         """Candidate runtime variants for this hardware, best first, ending in ``cpu``."""
         return ("cpu",)
+
+    def _accelerator_notes(
+        self, gpus: tuple[GpuInfo, ...], arch: str
+    ) -> Sequence[AcceleratorNote]:
+        """One line per variant this platform considered — what was detected, or
+        what blocks it. Optional: a platform with nothing to explain returns ()."""
+        return ()
 
     # --- process ----------------------------------------------------------
 

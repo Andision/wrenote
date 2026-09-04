@@ -5,8 +5,10 @@
 * ``POST /compute/install`` — download + verify + unpack a runtime pack as a
   background job (progress over ``/jobs/{id}/stream``).
 * ``POST /compute/select``  — persist ``compute.accelerator`` to the user
-  config. Native bindings can't be re-imported in a running process, so the
-  change takes effect on the next launch; the response says so.
+  config and apply it now when that is still possible. Native bindings can't be
+  swapped once they are imported, but during first-run setup nothing has
+  imported them yet, so the routing is simply redone and no restart is needed;
+  ``restart_required`` in the response says which happened.
 * ``DELETE /compute/packs/{variant}`` — remove an installed pack.
 """
 from __future__ import annotations
@@ -101,7 +103,15 @@ async def compute_install(
     task = asyncio.create_task(runner())
     _background.add(task)
     task.add_done_callback(_background.discard)
-    return {"job_id": job.id, "installed": False, "variant": variant, "release": release.to_dict()}
+    return {
+        "job_id": job.id,
+        "installed": False,
+        "variant": variant,
+        "release": release.to_dict(),
+        # The client follows a finished install with POST /compute/select; this
+        # says up-front whether that will apply live or ask for a restart.
+        "can_apply_without_restart": runtimes.can_reactivate(),
+    }
 
 
 _background: set[asyncio.Task[None]] = set()
@@ -111,18 +121,23 @@ _background: set[asyncio.Task[None]] = set()
 async def compute_select(
     body: SelectRequest, runtimes: RuntimeManager = Depends(get_runtimes)
 ) -> dict[str, Any]:
-    """Pin (or ``auto``) the accelerator for the next launch."""
+    """Pin (or ``auto``) the accelerator, applying it now if the process still can."""
     acc = body.accelerator.strip().lower()
     if acc != "auto":
         acc = _check_variant(acc)
         # Choosing a variant explicitly is a request to try it again.
         runtimes.clear_bad(acc)
     path = await asyncio.to_thread(write_user_config, {"compute": {"accelerator": acc}})
+    runtimes.set_accelerator(acc)
+    # In first-run setup no backend has been loaded yet, so the choice can take
+    # effect immediately; after that the imported DLLs pin the process.
+    applied = await asyncio.to_thread(runtimes.reactivate)
     active = runtimes.active.variant if runtimes.active else None
     return {
         "accelerator": acc,
         "active": active,
-        "restart_required": True,
+        "applied": applied.to_dict() if applied else None,
+        "restart_required": applied is None,
         "config_path": str(path),
     }
 
@@ -135,4 +150,9 @@ async def compute_remove(
     if runtimes.pack(v).builtin:
         raise HTTPException(status_code=400, detail="the built-in runtime cannot be removed")
     removed = await asyncio.to_thread(runtimes.remove, v)
-    return {"variant": v, "removed": removed, "restart_required": removed}
+    applied = await asyncio.to_thread(runtimes.reactivate) if removed else None
+    return {
+        "variant": v,
+        "removed": removed,
+        "restart_required": removed and applied is None,
+    }

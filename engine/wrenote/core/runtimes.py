@@ -81,6 +81,8 @@ PACK_MANIFEST = "MANIFEST.json"
 PACK_SCHEMA = 1
 INDEX_SCHEMA = 1
 #: Top-level modules a pack provides when its manifest doesn't say.
+#: Top-level modules a pack provides. Also the modules whose import commits the
+#: process to one runtime — see :meth:`RuntimeManager.can_reactivate`.
 DEFAULT_PACK_MODULES: tuple[str, ...] = ("llama_cpp", "pywhispercpp", "_pywhispercpp")
 _CHUNK = 1 << 20
 _INDEX_TTL_S = 300.0
@@ -185,6 +187,42 @@ class PackRelease:
         return d
 
 
+#: Variants that use the GPU. Ordered lightest-download first: on Windows the
+#: CUDA pack is ~20x the size of the Vulkan one (NVIDIA's cuBLAS alone is
+#: ~550 MB), and for this workload — streaming whisper plus a small translation
+#: model — Vulkan already captures most of the GPU win. So Vulkan is what a
+#: first run recommends to an NVIDIA user, with CUDA offered as an upgrade.
+ACCELERATED = ("vulkan", "metal", "cuda")
+
+#: What picking a variant buys beyond its size — only where the choice is a
+#: real tradeoff. Without this, the CUDA option is just "the big one".
+TRADEOFF = {"cuda": "Faster on NVIDIA, much larger"}
+
+
+@dataclass(frozen=True)
+class RuntimeOption:
+    """One runtime a person could choose, with the reasoning shown to them.
+
+    This is what the first-run wizard renders as a card and what Settings →
+    Compute annotates its rows with. ``recommended`` marks exactly one option,
+    ``blocked_reason`` explains a variant the hardware rules out (an
+    accelerator that silently disappears reads as a bug).
+    """
+
+    variant: str
+    usable: bool
+    installed: bool
+    builtin: bool
+    recommended: bool
+    accelerated: bool
+    detail: str  # hardware verdict, e.g. "NVIDIA GeForce RTX 4070 · driver 566.36"
+    note: str  # what choosing this means, e.g. "Fastest on NVIDIA · 736 MB download"
+    download_mb: int | None  # None = nothing to fetch (built-in or already installed)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 def platform_tag(hw: HardwareInfo) -> str:
     return f"{hw.os}-{hw.arch}"
 
@@ -249,6 +287,7 @@ class RuntimeManager:
         self._dir = Path(config.runtimes_dir).expanduser()
         self._active: RuntimeSelection | None = None
         self._finder: PackFinder | None = None
+        self._path_entry: str | None = None
         self._bad: dict[str, str] = self._load_state().get("bad", {})
         self._index_cache: tuple[float, list[PackRelease]] | None = None
         self._index_error: str | None = None
@@ -335,6 +374,82 @@ class RuntimeManager:
             skipped.append(v)
         # Unreachable in practice: the built-in pack is always installed.
         return RuntimeSelection(self._builtin, "builtin", chain, tuple(skipped))
+
+    def options(self, *, releases: dict[str, PackRelease] | None = None) -> list[RuntimeOption]:
+        """Every runtime a person can choose here, best first, one recommended.
+
+        Ordering is *what to offer*, not the fallback chain :meth:`candidates`
+        computes: the recommendation is the lightest accelerated variant this
+        machine can actually run (see :data:`ACCELERATED`), because a first run
+        should not cost a 700 MB download to get most of the GPU win. Heavier
+        accelerated variants follow as upgrades, then the CPU fallback, then
+        anything the hardware rules out — carrying the reason, so the UI can
+        say *why* CUDA is missing instead of just not showing it.
+
+        ``releases`` (from :meth:`index`) adds download sizes; without it the
+        sizes are ``None`` and no network call happens.
+        """
+        usable = list(self._hardware.accelerators)
+        offered = [v for v in usable if v in ACCELERATED]
+        offered.sort(key=lambda v: ACCELERATED.index(v))
+        chosen = next(
+            (v for v in offered if self._available(v, releases)),
+            self._builtin,
+        )
+
+        rows: list[RuntimeOption] = []
+        for variant in [*offered, *(v for v in usable if v not in offered)]:
+            rows.append(self._option(variant, chosen, releases))
+        # Variants the hardware ruled out: keep them visible with the reason.
+        for note in self._hardware.notes:
+            if not note.usable and not any(r.variant == note.variant for r in rows):
+                rows.append(self._option(note.variant, chosen, releases, usable=False))
+        return rows
+
+    def _available(self, variant: str, releases: dict[str, PackRelease] | None) -> bool:
+        """Can this variant actually be used — installed, built in, or (when the
+        index was fetched) published for this machine?"""
+        pack = self.pack(variant)
+        if pack.installed:
+            return True
+        return releases is not None and variant in releases
+
+    def _option(
+        self,
+        variant: str,
+        chosen: str,
+        releases: dict[str, PackRelease] | None,
+        *,
+        usable: bool = True,
+    ) -> RuntimeOption:
+        pack = self.pack(variant)
+        note = self._hardware.note_for(variant)
+        release = (releases or {}).get(variant)
+        size_mb = None if (pack.installed or release is None) else max(1, release.size >> 20)
+        if not usable:
+            meaning = "Not available on this machine"
+        elif pack.builtin:
+            meaning = "Built into the app · nothing to download"
+        elif pack.installed:
+            meaning = "Installed"
+        elif size_mb is not None:
+            tradeoff = TRADEOFF.get(variant)
+            meaning = f"{tradeoff} · {size_mb} MB download" if tradeoff else f"{size_mb} MB download"
+        elif releases is not None:
+            meaning = "Not published for this machine yet"
+        else:
+            meaning = "Download size unknown until the pack index is checked"
+        return RuntimeOption(
+            variant=variant,
+            usable=usable,
+            installed=pack.installed,
+            builtin=pack.builtin,
+            recommended=usable and variant == chosen,
+            accelerated=variant in ACCELERATED,
+            detail=note.detail if note else "",
+            note=meaning,
+            download_mb=size_mb,
+        )
 
     # --- 3: ensure ----------------------------------------------------------
 
@@ -513,6 +628,7 @@ class RuntimeManager:
                 # directory on both paths or llama.dll won't resolve them.
                 path = os.environ.get("PATH", "")
                 os.environ["PATH"] = f"{dll_dir}{os.pathsep}{path}" if path else str(dll_dir)
+                self._path_entry = str(dll_dir)
         self._active = sel
         log.info(
             "compute runtime: %s (%s; chain=%s; builtin=%s)",
@@ -521,12 +637,40 @@ class RuntimeManager:
         return sel
 
     def deactivate(self) -> None:
-        """Undo :meth:`activate`'s import routing (tests; a running engine can't
-        re-import native modules anyway)."""
+        """Undo :meth:`activate`'s import routing and its DLL path entry."""
         if self._finder is not None and self._finder in sys.meta_path:
             sys.meta_path.remove(self._finder)
         self._finder = None
+        if self._path_entry:
+            parts = os.environ.get("PATH", "").split(os.pathsep)
+            kept = [p for p in parts if p != self._path_entry]
+            if len(kept) != len(parts):
+                os.environ["PATH"] = os.pathsep.join(kept)
+        self._path_entry = None
         self._active = None
+
+    def can_reactivate(self) -> bool:
+        """Is switching runtimes still free in this process?
+
+        Only until a native backend is imported. The bindings load lazily inside
+        each backend's ``load()``, so during first-run setup — models not
+        downloaded, nothing transcribed yet — nothing has touched them and the
+        routing can simply be redone. Once they are in ``sys.modules`` their
+        DLLs are mapped into the process for good and only a restart helps.
+        """
+        return not any(m in sys.modules for m in DEFAULT_PACK_MODULES)
+
+    def reactivate(self) -> RuntimeSelection | None:
+        """Re-run selection and routing in place; ``None`` if it's too late."""
+        if not self.can_reactivate():
+            return None
+        self.deactivate()
+        return self.activate()
+
+    def set_accelerator(self, accelerator: str) -> None:
+        """Point the in-memory config at a new choice (the caller persists it).
+        Without this, :meth:`reactivate` would just re-pick the old variant."""
+        self._config.accelerator = accelerator
 
     # --- failure feedback -----------------------------------------------------
 
@@ -596,6 +740,7 @@ class RuntimeManager:
         selection = self._active or self.select()
         packs = [self.pack(v).to_dict() for v in VARIANTS]
         index_info: dict[str, Any] = {"url": self._config.runtimes_index_url, "checked": False}
+        releases: dict[str, PackRelease] | None = None
         if include_index:
             index_info["checked"] = True
             try:
@@ -621,6 +766,8 @@ class RuntimeManager:
             "selection": selection.to_dict(),
             "active": self._active.variant if self._active else None,
             "packs": packs,
+            "options": [o.to_dict() for o in self.options(releases=releases)],
+            "can_switch_without_restart": self.can_reactivate(),
             "bad": self.bad,
             "vram_budget_mb": self.vram_budget_mb(),
             "index": index_info,
