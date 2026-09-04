@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import shutil
 import sys
 import zipfile
@@ -255,6 +256,24 @@ def test_activate_routes_pack_modules_ahead_of_builtin(tmp_path, published, clea
     assert sys.meta_path[0].find_spec("numpy") is None
     m.deactivate()
     assert not isinstance(sys.meta_path[0], PackFinder)
+
+
+def test_activate_puts_pack_bin_on_the_dll_search_paths(tmp_path, published, clean_llama_cpp,
+                                                        monkeypatch):
+    """A pack's bin/ must reach loaders that ignore add_dll_directory:
+    llama-cpp-python opens llama.dll with ctypes winmode=0, which searches PATH."""
+    _, index_url = published
+    m = _mgr(tmp_path, index_url)
+    m.ensure("vulkan")
+    bin_dir = m.pack("vulkan").path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    added: list[str] = []
+    monkeypatch.setattr(os, "add_dll_directory", added.append, raising=False)
+    monkeypatch.setenv("PATH", "/somewhere")
+    m.activate()
+    assert added == [str(bin_dir)]
+    assert os.environ["PATH"].split(os.pathsep)[0] == str(bin_dir)
+    m.deactivate()
 
 
 def test_activate_marks_pack_for_other_python_bad_and_falls_back(tmp_path, clean_llama_cpp):

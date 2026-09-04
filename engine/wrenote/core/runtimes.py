@@ -501,9 +501,18 @@ class RuntimeManager:
             self._finder = PackFinder(site, modules)
             sys.meta_path.insert(0, self._finder)
             dll_dir = pack.path / "bin"
-            add_dll = getattr(os, "add_dll_directory", None)
-            if add_dll is not None and dll_dir.exists():
-                add_dll(str(dll_dir))
+            if dll_dir.exists():
+                add_dll = getattr(os, "add_dll_directory", None)
+                if add_dll is not None:
+                    add_dll(str(dll_dir))
+                # add_dll_directory only affects loads that use the
+                # LOAD_LIBRARY_SEARCH_* flags. Extension modules (.pyd) do;
+                # llama-cpp-python does not — it loads llama.dll through
+                # ctypes with winmode=0, i.e. the standard search order, which
+                # reads PATH. A CUDA pack's cudart/cublas live here, so put the
+                # directory on both paths or llama.dll won't resolve them.
+                path = os.environ.get("PATH", "")
+                os.environ["PATH"] = f"{dll_dir}{os.pathsep}{path}" if path else str(dll_dir)
         self._active = sel
         log.info(
             "compute runtime: %s (%s; chain=%s; builtin=%s)",

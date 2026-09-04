@@ -193,25 +193,59 @@ jobs:
           set -euo pipefail
           # Packs are built --no-deps; the frozen engine ships these. Mirror
           # that here so the import check sees the same environment.
-          python -m pip install --quiet numpy typing_extensions diskcache jinja2
+          # delvewheel reads each binary's import table for the audit below.
+          python -m pip install --quiet numpy typing_extensions diskcache jinja2 delvewheel
           zip="$(ls dist/runtimes/wrenote-runtime-*.zip)"
           python - "$zip" <<'EOF'
-          import importlib, json, os, pathlib, sys, tempfile, zipfile
-          z = zipfile.ZipFile(sys.argv[1]); d = pathlib.Path(tempfile.mkdtemp()); z.extractall(d)
-          m = json.loads((d / "MANIFEST.json").read_text()); print(json.dumps(m, indent=1))
+          import importlib, json, os, pathlib, shutil, subprocess, sys, tempfile, zipfile
+
+          d = pathlib.Path(tempfile.mkdtemp())
+          zipfile.ZipFile(sys.argv[1]).extractall(d)
+          m = json.loads((d / "MANIFEST.json").read_text())
+          print(json.dumps(m, indent=1))
           sys.path.insert(0, str(d / "site-packages"))
-          if (d / "bin").is_dir() and hasattr(os, "add_dll_directory"):
-              os.add_dll_directory(str(d / "bin"))
-          bad = []
+          bin_dir = d / "bin"
+          if bin_dir.is_dir():
+              # Mirror RuntimeManager.activate(): add_dll_directory covers .pyd
+              # loads, PATH covers ctypes winmode=0 loads (llama-cpp-python).
+              os.add_dll_directory(str(bin_dir))
+              os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+
+          # A pack for an accelerator this runner has no driver for cannot be
+          # imported here at all: ggml-cuda.dll imports nvcuda.dll, which only
+          # an NVIDIA driver installs. So the gate is a static audit — every
+          # DLL the pack's binaries import must ship in the pack, exist on the
+          # system, or be one of those driver libraries — and the import is
+          # best-effort on top of it.
+          def needed(f):
+              r = subprocess.run([sys.executable, "-m", "delvewheel", "needed", str(f)],
+                                 capture_output=True, text=True)
+              if r.returncode != 0:
+                  print(f"::warning::delvewheel needed {f.name}: {r.stderr.strip()}")
+                  return []
+              return [line.strip() for line in r.stdout.splitlines() if line.strip()]
+
+          DRIVER = {"nvcuda.dll", "nvml.dll", "vulkan-1.dll", "opencl.dll"}
+          in_pack = {p.name.lower() for p in d.rglob("*.dll")}
+          unresolved: dict[str, list[str]] = {}
+          for f in sorted([*d.rglob("*.dll"), *d.rglob("*.pyd")]):
+              for dep in needed(f):
+                  low = dep.lower()
+                  if (low in in_pack or low in DRIVER or shutil.which(dep)
+                          or low.startswith(("api-ms-win-", "ext-ms-"))):
+                      continue
+                  unresolved.setdefault(dep, []).append(f.name)
+          for dep, users in sorted(unresolved.items()):
+              print(f"::error::{dep} is imported by {users} but ships nowhere")
+
+          bad = [f"unresolved DLL dependencies: {', '.join(sorted(unresolved))}"] if unresolved else []
           for mod in m["modules"]:
               try:
                   importlib.import_module(mod); print("import", mod, "OK")
               except ModuleNotFoundError as e:
                   bad.append(f"{mod}: {e}")  # packaging error: the pack is wrong
-              except (ImportError, OSError) as e:
-                  # DLL load failures are expected on a runner without a GPU
-                  # driver (nvcuda.dll / vulkan-1.dll); the module itself exists.
-                  print(f"::warning::import {mod} needs a driver on this runner: {e}")
+              except Exception as e:
+                  print(f"::warning::import {mod} needs a GPU driver on this runner: {e}")
           if bad:
               sys.exit("packaging errors: " + "; ".join(bad))
           EOF
