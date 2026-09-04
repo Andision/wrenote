@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys
 
 from .base import (
+    AcceleratorNote,
     Capabilities,
     CaptureTargets,
     GpuInfo,
@@ -18,6 +19,7 @@ from .base import (
 )
 
 __all__ = [
+    "AcceleratorNote",
     "Capabilities",
     "CaptureTargets",
     "GpuInfo",

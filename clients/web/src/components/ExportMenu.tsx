@@ -10,6 +10,7 @@ import {
   fetchExport,
 } from "@/lib/export";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n";
 
 interface ExportMenuProps {
   sessionId: string;
@@ -18,11 +19,12 @@ interface ExportMenuProps {
   hasTranslations: boolean;
 }
 
-const FORMATS: { fmt: ExportFormat; label: string }[] = [
-  { fmt: "md", label: "Markdown (.md)" },
-  { fmt: "txt", label: "Plain text (.txt)" },
-  { fmt: "srt", label: "Subtitles (.srt)" },
-  { fmt: "vtt", label: "Subtitles (.vtt)" },
+// Labels are keys; the file extensions inside them are not translated.
+const FORMATS: { fmt: ExportFormat; key: string }[] = [
+  { fmt: "md", key: "export.format.md" },
+  { fmt: "txt", key: "export.format.txt" },
+  { fmt: "srt", key: "export.format.srt" },
+  { fmt: "vtt", key: "export.format.vtt" },
 ];
 
 /**
@@ -31,6 +33,7 @@ const FORMATS: { fmt: ExportFormat; label: string }[] = [
  * The backend renders the text; we just copy/save it.
  */
 export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState<ExportContent>(hasTranslations ? "both" : "original");
   const [busy, setBusy] = useState(false);
@@ -57,7 +60,7 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
     try {
       await action();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Export failed");
+      toast.error(e instanceof Error ? e.message : t("export.failed"));
     } finally {
       setBusy(false);
     }
@@ -69,7 +72,7 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-      toast.success("Transcript copied");
+      toast.success(t("export.copied"));
     });
 
   const onDownload = (fmt: ExportFormat) =>
@@ -80,9 +83,9 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
     });
 
   const CONTENTS: { value: ExportContent; label: string; disabled?: boolean }[] = [
-    { value: "original", label: "Original" },
-    { value: "translation", label: "Translation", disabled: !hasTranslations },
-    { value: "both", label: "Both", disabled: !hasTranslations },
+    { value: "original", label: t("export.original") },
+    { value: "translation", label: t("export.translation"), disabled: !hasTranslations },
+    { value: "both", label: t("export.both"), disabled: !hasTranslations },
   ];
 
   return (
@@ -91,7 +94,7 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
         variant="ghost"
         size="icon"
         onClick={() => setOpen((v) => !v)}
-        data-tip="Export transcript"
+        data-tip={t("export.tooltip")}
         aria-haspopup="menu"
         aria-expanded={open}
         className={open ? "size-9 bg-accent text-foreground" : "size-9"}
@@ -153,7 +156,7 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-accent disabled:opacity-50"
             >
               <Download className="size-4 text-muted-foreground" />
-              {f.label}
+              {t(f.key)}
             </button>
           ))}
         </div>

@@ -23,6 +23,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { cn } from "@/lib/utils";
 import { useJobsStore } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
+import { useT } from "@/i18n";
 
 interface TopBarProps {
   onStop: () => void;
@@ -32,6 +33,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) {
+  const t = useT();
   const connection = useSessionStore((s) => s.connection);
   const title = useSessionStore((s) => s.sessionTitle);
   const renameSession = useSessionStore((s) => s.renameSession);
@@ -117,17 +119,16 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
     if (!sessionId || activeDiarizeForThis || activeTranslateForThis) return;
     if (hasCustomSpeakerLabel) {
       const ok = await confirmDialog({
-        title: "Re-run speaker identification?",
-        description:
-          "This will reset any speaker renames (e.g. Alice → Speaker 1).",
-        confirmLabel: "Re-run",
+        title: t("topbar.diarize.confirmTitle"),
+        description: t("topbar.diarize.confirmRenames"),
+        confirmLabel: t("topbar.diarize.confirmRerun"),
       });
       if (!ok) return;
     } else if (hasAnySpeakerLabel) {
       const ok = await confirmDialog({
-        title: "Re-run speaker identification?",
-        description: "This session already has speaker labels.",
-        confirmLabel: "Re-run anyway",
+        title: t("topbar.diarize.confirmTitle"),
+        description: t("topbar.diarize.confirmExisting"),
+        confirmLabel: t("topbar.diarize.confirmAnyway"),
       });
       if (!ok) return;
     }
@@ -139,7 +140,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
         jobId,
         // Session title in the label so the overlay tells you *which*
         // session is being processed when you have multiple in flight.
-        label: `Identify speakers: ${title || "New session"}`,
+        label: t("topbar.diarize.jobLabel", { title: title || t("session.new") }),
         kind: "diarize",
         sessionId,
       });
@@ -154,10 +155,9 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
     let retranslate = false;
     if (!hasUntranslated) {
       const ok = await confirmDialog({
-        title: "Re-translate all segments?",
-        description:
-          "Every segment already has a translation — this will replace them all.",
-        confirmLabel: "Re-translate",
+        title: t("topbar.translate.confirmTitle"),
+        description: t("topbar.translate.confirmAll"),
+        confirmLabel: t("topbar.translate.confirmRetranslate"),
       });
       if (!ok) return;
       retranslate = true;
@@ -166,7 +166,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
       const { jobId } = await startTranslate(sessionId, undefined, retranslate);
       trackJob({
         jobId,
-        label: `Translate: ${title || "New session"}`,
+        label: t("topbar.translate.jobLabel", { title: title || t("session.new") }),
         kind: "translate",
         sessionId,
       });
@@ -220,7 +220,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
           <button
             onDoubleClick={startEditing}
             className="group flex min-w-0 items-center gap-1.5 self-start rounded text-[14px] font-medium text-foreground hover:text-foreground/80"
-            data-tip="Double-click to rename"
+            data-tip={t("topbar.rename")}
           >
             <span className="truncate">{title}</span>
             <Pencil className="size-3 opacity-0 transition-opacity group-hover:opacity-40" />
@@ -243,7 +243,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
           variant="ghost"
           size="icon"
           onClick={() => void window.wrenoteDesktop?.toggleOverlay()}
-          data-tip="Floating subtitles (always-on-top live transcript)"
+          data-tip={t("topbar.overlay")}
           className="size-9"
         >
           <PictureInPicture2 className="size-4" />
@@ -265,7 +265,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
                 variant="ghost"
                 size="icon"
                 onClick={isPaused ? onResume : onPause}
-                data-tip={isPaused ? "Resume" : "Pause"}
+                data-tip={isPaused ? t("common.resume") : t("common.pause")}
                 className="size-9 rounded-full text-foreground/70 hover:bg-accent hover:text-foreground"
               >
                 {isPaused ? (
@@ -300,7 +300,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
             <Button
               size="icon"
               disabled
-              aria-label="Connecting"
+              aria-label={t("topbar.connecting")}
               className="size-9 bg-brand-600/60 text-white shadow-sm dark:bg-brand-500/60"
             >
               <motion.span
@@ -323,12 +323,12 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
           disabled={activeTranslateForThis || activeDiarizeForThis}
           data-tip={
             activeTranslateForThis
-              ? "Translating… (see the progress bar)"
+              ? t("topbar.translate.running")
               : activeDiarizeForThis
-                ? "Speaker identification is running — wait for it to finish"
+                ? t("topbar.diarize.blocking")
                 : hasUntranslated
-                  ? "Translate untranslated segments (runs in background)"
-                  : "Re-translate all segments (runs in background)"
+                  ? t("topbar.translate.tooltip")
+                  : t("topbar.translate.tooltipAll")
           }
           className="size-9"
         >
@@ -348,10 +348,10 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
           disabled={activeDiarizeForThis || activeTranslateForThis}
           data-tip={
             activeDiarizeForThis
-              ? "Identifying speakers… (see the progress bar)"
+              ? t("topbar.diarize.running")
               : activeTranslateForThis
-                ? "Translation is running — wait for it to finish"
-                : "Identify speakers (runs in background)"
+                ? t("topbar.translate.blocking")
+                : t("topbar.diarize.tooltip")
           }
           className="size-9"
         >
@@ -367,7 +367,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
         <a
           href={recordingUrl(sessionId)}
           download={`${title || sessionId}.wav`}
-          data-tip="Download the full recording (.wav)"
+          data-tip={t("topbar.download")}
           className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-9")}
         >
           <Download className="size-4" />
@@ -382,7 +382,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
         variant="ghost"
         size="icon"
         onClick={() => toggleChat()}
-        data-tip="Chat about this session"
+        data-tip={t("topbar.chat")}
         aria-pressed={chatOpen}
         className={
           chatOpen

@@ -17,10 +17,16 @@ export interface GpuInfo {
   driver_version: string | null;
 }
 
-/** Why a variant is (or isn't) usable here — the engine's words, shown as-is. */
+/**
+ * Why a variant is (or isn't) usable here. A code plus facts, not a sentence:
+ * `lib/computeText.ts` turns it into words in the user's language. `detail` is
+ * the engine's English rendering, kept as a fallback.
+ */
 export interface AcceleratorNote {
   variant: string;
   usable: boolean;
+  code: string;
+  params: Record<string, string>;
   detail: string;
 }
 
@@ -32,9 +38,10 @@ export interface RuntimeOption {
   builtin: boolean;
   recommended: boolean;
   accelerated: boolean;
-  detail: string; // hardware verdict, e.g. "NVIDIA GeForce RTX 4070 · driver 566.36"
-  note: string; // what picking it means, e.g. "36 MB download"
+  note_code: string; // "download" | "builtin" | "installed" | …
+  note: string; // the engine's English rendering of note_code, as a fallback
   download_mb: number | null;
+  hardware: AcceleratorNote | null; // the hardware verdict for this variant
 }
 
 export interface HardwareInfo {

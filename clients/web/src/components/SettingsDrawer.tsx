@@ -21,16 +21,18 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useSessionStore } from "@/store/sessionStore";
+import { LOCALE_LIST, useI18n, useT } from "@/i18n";
 
 type CategoryId = "general" | "segmentation" | "realtime" | "glossary" | "engines" | "compute";
 
-const CATEGORIES: { id: CategoryId; label: string; icon: LucideIcon }[] = [
-  { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "segmentation", label: "Segmentation", icon: Scissors },
-  { id: "realtime", label: "Real-time", icon: Zap },
-  { id: "glossary", label: "Glossary", icon: BookMarked },
-  { id: "engines", label: "Engines", icon: Cpu },
-  { id: "compute", label: "Compute", icon: Gauge },
+// Labels are message keys; the rail resolves them at render.
+const CATEGORIES: { id: CategoryId; icon: LucideIcon }[] = [
+  { id: "general", icon: SlidersHorizontal },
+  { id: "segmentation", icon: Scissors },
+  { id: "realtime", icon: Zap },
+  { id: "glossary", icon: BookMarked },
+  { id: "engines", icon: Cpu },
+  { id: "compute", icon: Gauge },
 ];
 
 /**
@@ -39,6 +41,7 @@ const CATEGORIES: { id: CategoryId; label: string; icon: LucideIcon }[] = [
  * Esc or a backdrop click closes it.
  */
 export function SettingsDrawer() {
+  const t = useT();
   const open = useSessionStore((s) => s.settingsOpen);
   const settings = useSessionStore((s) => s.settings);
   const updateSettings = useSessionStore((s) => s.updateSettings);
@@ -59,7 +62,7 @@ export function SettingsDrawer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const activeLabel = CATEGORIES.find((c) => c.id === cat)?.label;
+  const activeLabel = t(`settings.cat.${cat}`);
 
   return (
     <AnimatePresence>
@@ -85,7 +88,7 @@ export function SettingsDrawer() {
             {/* Category rail */}
             <nav className="flex w-48 shrink-0 flex-col border-r border-border bg-muted/30 p-3">
               <div className="px-2 pb-3 text-[15px] font-semibold tracking-tight text-foreground">
-                Settings
+                {t("settings.title")}
               </div>
               <div className="flex flex-col gap-0.5">
                 {CATEGORIES.map((c) => {
@@ -102,7 +105,7 @@ export function SettingsDrawer() {
                       }`}
                     >
                       <Icon className="size-4 shrink-0" />
-                      {c.label}
+                      {t(`settings.cat.${c.id}`)}
                     </button>
                   );
                 })}
@@ -115,7 +118,7 @@ export function SettingsDrawer() {
                 <h2 className="text-sm font-semibold text-foreground">{activeLabel}</h2>
                 <button
                   onClick={close}
-                  data-tip="Close (Esc)"
+                  data-tip={t("common.closeEsc")}
                   className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 >
                   <X className="size-4" />
@@ -125,28 +128,29 @@ export function SettingsDrawer() {
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                 {cat === "general" && (
                   <div className="space-y-5">
+                    <LanguageField />
                     <ThemeField />
                     {/* Mic device, Record system audio, and Record screen moved
                         to the PreFlight "Capture sources" row — they're
                         per-recording input choices, not global preferences. */}
                     <ToggleField
-                      label="Speaker identification (live)"
+                      label={t("settings.speakerLive")}
                       checked={settings.speakerEnabled}
-                      hint="Experimental — unreliable mid-call. The post-process Identify speakers button is much better."
+                      hint={t("settings.speakerLiveHint")}
                       onChange={(v) => updateSettings({ speakerEnabled: v })}
                     />
                     <ToggleField
-                      label="Continuous playback"
+                      label={t("settings.continuousPlayback")}
                       checked={settings.playbackMode === "continuous"}
-                      hint="When you hit play on a segment, keep playing past its boundary. Off = pause when the segment ends."
+                      hint={t("settings.continuousPlaybackHint")}
                       onChange={(v) =>
                         updateSettings({ playbackMode: v ? "continuous" : "single" })
                       }
                     />
                     <ToggleField
-                      label="Show level meters"
+                      label={t("settings.levelMeters")}
                       checked={settings.showLevelMeters}
-                      hint="Tiny mic + speaker volume bars in the bottom status bar. Turn off if you find them distracting."
+                      hint={t("settings.levelMetersHint")}
                       onChange={(v) => updateSettings({ showLevelMeters: v })}
                     />
                   </div>
@@ -156,23 +160,23 @@ export function SettingsDrawer() {
                   <div className="space-y-5">
                     {sessionInProgress && <NextSessionNote />}
                     <RangeField
-                      label="Min silence"
+                      label={t("settings.minSilence")}
                       value={settings.minSilenceMs}
                       min={200}
                       max={2000}
                       step={50}
                       unit="ms"
-                      hint="How long the speaker must pause before closing a segment. ~800ms suits conversation."
+                      hint={t("settings.minSilenceHint")}
                       onChange={(v) => updateSettings({ minSilenceMs: v })}
                     />
                     <RangeField
-                      label="Max segment"
+                      label={t("settings.maxSegment")}
                       value={settings.maxSegmentMs}
                       min={5000}
                       max={29000}
                       step={1000}
                       unit="ms"
-                      hint="Hard cap. Whisper's context limit is 30s; leave a buffer."
+                      hint={t("settings.maxSegmentHint")}
                       onChange={(v) => updateSettings({ maxSegmentMs: v })}
                     />
                   </div>
@@ -182,19 +186,19 @@ export function SettingsDrawer() {
                   <div className="space-y-5">
                     {sessionInProgress && <NextSessionNote />}
                     <RangeField
-                      label="Partial interval"
+                      label={t("settings.partialInterval")}
                       value={settings.partialIntervalMs}
                       min={300}
                       max={2000}
                       step={100}
                       unit="ms"
-                      hint="How often partial transcripts are emitted. Lower = snappier but more GPU."
+                      hint={t("settings.partialIntervalHint")}
                       onChange={(v) => updateSettings({ partialIntervalMs: v })}
                     />
                     <ToggleField
-                      label="Translate partials"
+                      label={t("settings.translatePartials")}
                       checked={settings.translatePartials}
-                      hint="Stream translations of partial transcripts (a beat after the text)."
+                      hint={t("settings.translatePartialsHint")}
                       onChange={(v) => updateSettings({ translatePartials: v })}
                     />
                   </div>
@@ -217,7 +221,7 @@ export function SettingsDrawer() {
                       </div>
                     ) : (
                       <p className="rounded-lg border border-dashed border-border/60 px-3 py-8 text-center text-[12px] text-muted-foreground">
-                        Start a session to see the active backends.
+                        {t("settings.enginesEmpty")}
                       </p>
                     )}
                   </div>
@@ -232,10 +236,41 @@ export function SettingsDrawer() {
 }
 
 const THEME_OPTIONS = [
-  { id: "light", label: "Light", icon: Sun },
-  { id: "dark", label: "Dark", icon: Moon },
-  { id: "system", label: "System", icon: Monitor },
+  { id: "light", icon: Sun },
+  { id: "dark", icon: Moon },
+  { id: "system", icon: Monitor },
 ] as const;
+
+/**
+ * UI language. "Auto" follows the OS; the rest come from whatever locale files
+ * shipped, named by their own `$meta.name`, so a new language needs no code.
+ */
+function LanguageField() {
+  const t = useT();
+  const { preference, setPreference } = useI18n();
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="space-y-0.5">
+        <Label className="text-xs text-foreground">{t("settings.language")}</Label>
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          {t("settings.languageHint")}
+        </p>
+      </div>
+      <select
+        value={preference}
+        onChange={(e) => setPreference(e.target.value)}
+        className="h-8 shrink-0 rounded-lg border border-border bg-card px-2 text-[12px] text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+      >
+        <option value="auto">{t("settings.languageAuto")}</option>
+        {LOCALE_LIST.map((l) => (
+          <option key={l.tag} value={l.tag}>
+            {l.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 /**
  * Appearance picker — Light / Dark / Follow system. Lives in Settings now
@@ -243,6 +278,7 @@ const THEME_OPTIONS = [
  * after mount, so we default the highlight to "system" until then.
  */
 function ThemeField() {
+  const t = useT();
   const { theme, setTheme } = useTheme();
   // Hydration-safe "are we on the client yet" flag — next-themes only knows the
   // resolved theme after mount. useSyncExternalStore avoids a setState-in-effect.
@@ -259,9 +295,9 @@ function ThemeField() {
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="space-y-0.5">
-        <Label className="text-xs text-foreground">Appearance</Label>
+        <Label className="text-xs text-foreground">{t("settings.appearance")}</Label>
         <p className="text-[11px] leading-snug text-muted-foreground">
-          Light, dark, or follow your system.
+          {t("settings.appearanceHint")}
         </p>
       </div>
       <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5">
@@ -272,7 +308,7 @@ function ThemeField() {
             <button
               key={o.id}
               onClick={() => setTheme(o.id)}
-              data-tip={o.label}
+              data-tip={t(`theme.${o.id}`)}
               className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
                 active
                   ? "bg-card text-foreground shadow-sm"
@@ -280,7 +316,7 @@ function ThemeField() {
               }`}
             >
               <Icon className="size-3.5" />
-              {o.label}
+              {t(`theme.${o.id}`)}
             </button>
           );
         })}
@@ -290,9 +326,10 @@ function ThemeField() {
 }
 
 function NextSessionNote() {
+  const t = useT();
   return (
     <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
-      Some changes only take effect on the next session.
+      {t("settings.nextSessionNote")}
     </p>
   );
 }

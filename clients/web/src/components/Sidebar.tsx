@@ -18,6 +18,7 @@ import { formatRelativeTime } from "@/lib/colors";
 import { recordingUrl } from "@/lib/recording";
 import { confirmDialog } from "@/lib/confirm";
 import { useSessionStore } from "@/store/sessionStore";
+import { useT } from "@/i18n";
 import type { SessionMeta } from "@/types";
 
 const UNGROUPED = "__ungrouped__";
@@ -29,6 +30,7 @@ const UNGROUPED = "__ungrouped__";
  * "Recent" to take it back out.
  */
 export function Sidebar() {
+  const t = useT();
   const open = useSessionStore((s) => s.sidebarOpen);
   const pastSessions = useSessionStore((s) => s.pastSessions);
   const groups = useSessionStore((s) => s.groups);
@@ -122,7 +124,7 @@ export function Sidebar() {
         }}
         data-tip={
           locked && !isActive
-            ? "Stop the current session before loading another"
+            ? t("sidebar.lockedLoad")
             : undefined
         }
         className={`group flex w-full items-start gap-2 rounded-md px-2 py-2 text-left transition-colors ${
@@ -147,7 +149,7 @@ export function Sidebar() {
             href={recordingUrl(s.id)}
             onClick={(e) => e.stopPropagation()}
             download={`${s.title || s.id}.wav`}
-            data-tip="Download recording"
+            data-tip={t("sidebar.downloadRecording")}
             className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Download className="size-3.5" />
@@ -155,13 +157,13 @@ export function Sidebar() {
           <span
             role="button"
             tabIndex={0}
-            aria-label="Delete session"
+            aria-label={t("sidebar.deleteSession")}
             onClick={(e) => {
               e.stopPropagation();
               void confirmDialog({
-                title: "Delete session?",
-                description: `"${s.title}" and its recording will be permanently deleted.`,
-                confirmLabel: "Delete",
+                title: t("sidebar.deleteSessionTitle"),
+                description: t("sidebar.deleteSessionBody", { title: s.title }),
+                confirmLabel: t("common.delete"),
                 destructive: true,
               }).then((ok) => {
                 if (ok) void deletePast(s.id);
@@ -217,7 +219,7 @@ export function Sidebar() {
                 setGroupDraft(g.name);
               }}
               className="min-w-0 flex-1 truncate text-[12px] font-semibold text-foreground"
-              data-tip="Double-click to rename"
+              data-tip={t("sidebar.renameGroup")}
             >
               {g.name}
             </span>
@@ -228,12 +230,12 @@ export function Sidebar() {
           <span
             role="button"
             tabIndex={0}
-            aria-label="Delete group"
+            aria-label={t("sidebar.deleteGroup")}
             onClick={() => {
               void confirmDialog({
-                title: "Delete group?",
-                description: `"${g.name}" will be removed. Its sessions are kept and moved out of the group.`,
-                confirmLabel: "Delete",
+                title: t("sidebar.deleteGroupTitle"),
+                description: t("sidebar.deleteGroupBody", { name: g.name }),
+                confirmLabel: t("common.delete"),
                 destructive: true,
               }).then((ok) => {
                 if (ok) void deleteGroup(g.id);
@@ -278,7 +280,7 @@ export function Sidebar() {
               size="icon"
               className="size-7"
               onClick={() => toggleSidebar(false)}
-              data-tip="Collapse sidebar"
+              data-tip={t("sidebar.collapse")}
             >
               <PanelLeftClose className="size-4" />
             </Button>
@@ -289,11 +291,11 @@ export function Sidebar() {
             <button
               onClick={newSession}
               disabled={locked}
-              data-tip={locked ? "Stop the current session first" : "New session"}
+              data-tip={locked ? t("sidebar.lockedNew") : t("session.new")}
               className="flex w-full items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Plus className="size-4" />
-              New session
+              {t("session.new")}
             </button>
           </div>
 
@@ -327,16 +329,15 @@ export function Sidebar() {
                 }`}
               >
                 <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Recent
+                  {t("sidebar.recent")}
                 </div>
                 {pastSessions.length === 0 ? (
                   <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-                    No sessions yet. Hit{" "}
-                    <span className="font-medium">New session</span> to start.
+                    {t("sidebar.empty", { action: t("session.new") })}
                   </p>
                 ) : ungrouped.length === 0 ? (
                   <p className="px-2 py-2 text-[11px] text-muted-foreground">
-                    Everything's filed into groups.
+                    {t("sidebar.allGrouped")}
                   </p>
                 ) : (
                   ungrouped.map(renderSession)
@@ -369,7 +370,7 @@ export function Sidebar() {
               size="icon"
               className="size-9"
               onClick={() => toggleSidebar(true)}
-              data-tip="Expand sidebar"
+              data-tip={t("sidebar.expand")}
               data-tip-side="right"
             >
               <PanelLeftOpen className="size-4" />
@@ -380,7 +381,7 @@ export function Sidebar() {
               className="size-9"
               onClick={newSession}
               disabled={locked}
-              data-tip={locked ? "Stop the current session first" : "New session"}
+              data-tip={locked ? t("sidebar.lockedNew") : t("session.new")}
               data-tip-side="right"
             >
               <Plus className="size-4" />
@@ -395,7 +396,7 @@ export function Sidebar() {
               size="icon"
               className="size-9"
               onClick={() => toggleSettings()}
-              data-tip="Settings"
+              data-tip={t("settings.title")}
               data-tip-side="right"
             >
               <Settings className="size-4" />

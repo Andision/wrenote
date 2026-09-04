@@ -34,6 +34,10 @@ runs:
       working-directory: clients/web
       run: |
         npm install --no-audit --no-fund
+        # A locale missing a key renders that key to the user, and nothing else
+        # catches it — the app builds and runs fine in whichever language the
+        # author speaks. Cheap gate, so it runs before the build.
+        npm run check:locales
         npm run build
 
     - name: Install engine + packaging deps

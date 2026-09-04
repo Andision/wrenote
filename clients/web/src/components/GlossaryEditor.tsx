@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { type GlossaryEntry, getGlossary, saveGlossary } from "@/lib/glossary";
+import { useT } from "@/i18n";
 
 const EMPTY: GlossaryEntry = { term: "", translation: "", note: "" };
 
@@ -12,6 +13,7 @@ const EMPTY: GlossaryEntry = { term: "", translation: "", note: "" };
  */
 export function GlossaryEditor() {
   const [rows, setRows] = useState<GlossaryEntry[]>([]);
+  const t = useT();
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
@@ -42,7 +44,7 @@ export function GlossaryEditor() {
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h3 className="text-xs font-semibold text-foreground">Glossary · custom vocabulary</h3>
+        <h3 className="text-xs font-semibold text-foreground">{t("glossary.title")}</h3>
         <p className="text-[12px] leading-relaxed text-muted-foreground">
           Names, jargon, and proper nouns. The term biases speech recognition toward that
           spelling; the optional translation keeps it consistent across the transcript.
@@ -54,7 +56,7 @@ export function GlossaryEditor() {
           <div key={row.id ?? `row-${i}`} className="flex items-center gap-2">
             <input
               value={row.term}
-              placeholder="Term (e.g. Kubernetes, 张伟)"
+              placeholder={t("glossary.termPlaceholder")}
               onChange={(e) => update(i, { term: e.target.value })}
               onBlur={() => persist(rowsRef.current)}
               className={inputCls}
@@ -62,7 +64,7 @@ export function GlossaryEditor() {
             <span className="text-muted-foreground/50">→</span>
             <input
               value={row.translation}
-              placeholder="Translation (optional)"
+              placeholder={t("glossary.translationPlaceholder")}
               onChange={(e) => update(i, { translation: e.target.value })}
               onBlur={() => persist(rowsRef.current)}
               className={inputCls}
@@ -70,8 +72,8 @@ export function GlossaryEditor() {
             <button
               type="button"
               onClick={() => removeRow(i)}
-              data-tip="Remove"
-              aria-label="Remove term"
+              data-tip={t("common.remove")}
+              aria-label={t("glossary.removeTerm")}
               className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
             >
               <Trash2 className="size-3.5" />

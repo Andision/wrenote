@@ -56,8 +56,14 @@ class HostPlatform(PlatformAdapter):
         os_, arch = TAG.split("-", 1)
         return HardwareInfo(
             os=os_, arch=arch, cpu_count=4, ram_mb=16384,
-            gpus=(GpuInfo(vendor="nvidia", name="fake", vram_mb=8192),),
+            gpus=(GpuInfo(vendor="nvidia", name="fake", vram_mb=8192, driver_version="566.36"),),
             npu=None, accelerators=("cuda", "vulkan", "cpu"),
+            notes=(
+                AcceleratorNote("cuda", True, "gpu_ready_driver",
+                                {"gpu": "fake", "driver": "566.36"}),
+                AcceleratorNote("vulkan", True, "gpu_ready", {"gpu": "fake"}),
+                AcceleratorNote("cpu", True, "cpu_always"),
+            ),
         )
 
 
@@ -240,9 +246,11 @@ def test_options_recommend_the_lightest_accelerated_runtime(tmp_path, published)
     assert m.candidates()[0] == "cuda"  # fallback order is unchanged
     assert opts["vulkan"].recommended and not opts["cuda"].recommended
     assert [o.variant for o in m.options(releases=releases)][:2] == ["vulkan", "cuda"]
-    assert opts["cuda"].download_mb == 736
-    assert "Faster on NVIDIA" in opts["cuda"].note  # why anyone would pick it
+    assert opts["cuda"].download_mb == 736 and opts["cuda"].note_code == "download"
     assert opts["cpu"].builtin and opts["cpu"].download_mb is None
+    # Reasons travel as codes + params; the client renders the sentence.
+    assert opts["cuda"].hardware.code == "gpu_ready_driver"
+    assert opts["cuda"].hardware.params["driver"] == "566.36"
 
 
 def test_options_fall_back_to_cpu_when_no_pack_is_published(tmp_path):
@@ -261,13 +269,15 @@ def test_options_keep_blocked_variants_visible_with_the_reason(tmp_path):
             hw = super().probe_hardware()
             return replace(
                 hw, accelerators=("vulkan", "cpu"),
-                notes=(AcceleratorNote("cuda", False, "driver 471.11 is too old"),),
+                notes=(AcceleratorNote("cuda", False, "driver_too_old",
+                                       {"gpu": "fake", "driver": "471.11", "min": "527"}),),
             )
 
     m = RuntimeManager(ComputeConfig(runtimes_dir=str(tmp_path / "r")), OldDriver())
     cuda = next(o for o in m.options(releases={}) if o.variant == "cuda")
     assert not cuda.usable and not cuda.recommended
-    assert "too old" in cuda.detail
+    assert cuda.hardware.code == "driver_too_old"
+    assert "471.11 is older than the 527" in cuda.hardware.detail  # English fallback
 
 
 # ---------- reactivate: switching without a restart ----------

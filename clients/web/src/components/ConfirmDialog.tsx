@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { useConfirmStore } from "@/lib/confirm";
+import { useT } from "@/i18n";
 
 /**
  * App-wide confirm modal driven by the confirm store. Renders a blurred
@@ -13,6 +14,7 @@ export function ConfirmDialog() {
   const open = useConfirmStore((s) => s.open);
   const options = useConfirmStore((s) => s.options);
   const respond = useConfirmStore((s) => s.respond);
+  const t = useT();
 
   useEffect(() => {
     if (!open) return;
@@ -55,7 +57,7 @@ export function ConfirmDialog() {
             )}
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => respond(false)}>
-                {options.cancelLabel ?? "Cancel"}
+                {options.cancelLabel ?? t("common.cancel")}
               </Button>
               <Button
                 size="sm"

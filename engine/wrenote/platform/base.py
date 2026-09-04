@@ -22,7 +22,7 @@ import platform as _stdplatform
 import sys
 import threading
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import IO, Any
 
@@ -57,19 +57,49 @@ class GpuInfo:
     driver_version: str | None = None
 
 
+#: English rendering of every :class:`AcceleratorNote` code. The *client* owns
+#: the text a user reads (see ``clients/web/src/i18n/``) — this table exists so
+#: logs and any non-localized API consumer still get a sentence, and so the
+#: codes have one obvious place to be read off.
+NOTE_TEXT: dict[str, str] = {
+    "gpu_ready": "{gpu}",
+    "gpu_ready_driver": "{gpu} · driver {driver}",
+    "no_driver": "{gpu} found, but no driver",
+    "driver_too_old": "{gpu} · driver {driver} is older than the {min} CUDA 12 needs",
+    "low_vram": "{gpu} has under {gb} GB of VRAM",
+    "no_vulkan_loader": "{gpu} found, but no Vulkan driver (vulkan-1.dll)",
+    "metal_builtin": "{gpu} · Metal, built in",
+    "intel_mac": "Intel Mac — no Metal build is shipped",
+    "cpu_always": "Always available",
+    "cpu_no_gpu": "No usable GPU detected",
+}
+
+
 @dataclass(frozen=True)
 class AcceleratorNote:
     """Why a runtime variant is (or isn't) usable on this machine.
 
-    Written for a person to read in the setup wizard: an unexplained
-    recommendation is one nobody dares click, and an accelerator that is
-    silently missing looks like a bug. ``usable`` variants appear in
-    :attr:`HardwareInfo.accelerators`; the rest carry the blocker.
+    Carried as a ``code`` plus ``params`` rather than a sentence: the setup
+    wizard shows this to a person, and human-facing text belongs to the client,
+    which knows their language. :attr:`detail` is the English rendering, for
+    logs and for clients that don't localize.
+
+    An unexplained recommendation is one nobody dares click, and an accelerator
+    that is silently missing looks like a bug — so ``usable`` variants appear in
+    :attr:`HardwareInfo.accelerators` and the rest carry their blocker here.
     """
 
     variant: str
     usable: bool
-    detail: str  # one line, e.g. "NVIDIA GeForce RTX 4070 · driver 566.36"
+    code: str  # key into NOTE_TEXT, e.g. "driver_too_old"
+    params: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def detail(self) -> str:
+        return NOTE_TEXT.get(self.code, self.code).format(**self.params)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "detail": self.detail}
 
 
 @dataclass(frozen=True)
@@ -100,7 +130,7 @@ class HardwareInfo:
         d = asdict(self)
         d["gpus"] = [asdict(g) for g in self.gpus]
         d["accelerators"] = list(self.accelerators)
-        d["notes"] = [asdict(n) for n in self.notes]
+        d["notes"] = [n.to_dict() for n in self.notes]
         return d
 
 

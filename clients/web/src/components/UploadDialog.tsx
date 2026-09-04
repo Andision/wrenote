@@ -17,6 +17,7 @@ import {
 } from "@/components/LanguageSelect";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { useT, type TFunction } from "@/i18n";
 import { startUpload } from "@/lib/upload";
 import { useJobsStore } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
@@ -39,6 +40,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
 
   const [files, setFiles] = useState<File[]>([]);
   const [title, setTitle] = useState("");
+  const t = useT();
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -82,7 +84,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
     if (!canStart) return;
     setSubmitting(true);
     setErr(null);
-    const finalTitle = title.trim() || defaultTitleFromFiles(files);
+    const finalTitle = title.trim() || defaultTitleFromFiles(files, t);
     try {
       const { jobId, sessionId } = await startUpload({
         files,
@@ -95,7 +97,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
       // onDone lives inside jobsStore so a refresh can reconstruct it.
       trackJob({
         jobId,
-        label: `Transcribe: ${finalTitle}`,
+        label: t("upload.jobLabel", { title: finalTitle }),
         kind: "upload",
         sessionId,
       });
@@ -132,7 +134,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
             <header className="flex items-center justify-between border-b px-5 py-3">
               <div className="flex items-center gap-2">
                 <UploadCloud className="size-4 text-brand-600 dark:text-brand-400" />
-                <h2 className="text-sm font-semibold">Transcribe from file</h2>
+                <h2 className="text-sm font-semibold">{t("upload.title")}</h2>
               </div>
               <Button
                 variant="ghost"
@@ -140,7 +142,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                 className="size-7"
                 onClick={onClose}
                 disabled={submitting}
-                data-tip="Close"
+                data-tip={t("common.close")}
               >
                 <X className="size-3.5" />
               </Button>
@@ -156,11 +158,10 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
               >
                 <UploadCloud className="size-7 text-muted-foreground" />
                 <div className="text-sm font-medium text-foreground">
-                  Drop files or click to choose
+                  {t("upload.drop")}
                 </div>
                 <div className="text-[12px] text-muted-foreground">
-                  Audio or video · any format ffmpeg supports · multiple files
-                  will be concatenated in the listed order
+                  {t("upload.dropHint")}
                 </div>
                 <input
                   ref={inputRef}
@@ -201,7 +202,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                         onClick={() => move(i, -1)}
                         disabled={i === 0 || submitting}
                         className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-30"
-                        data-tip="Move up"
+                        data-tip={t("upload.moveUp")}
                       >
                         <ArrowUp className="size-3" />
                       </button>
@@ -209,7 +210,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                         onClick={() => move(i, 1)}
                         disabled={i === files.length - 1 || submitting}
                         className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-30"
-                        data-tip="Move down"
+                        data-tip={t("upload.moveDown")}
                       >
                         <ArrowDown className="size-3" />
                       </button>
@@ -217,7 +218,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                         onClick={() => remove(i)}
                         disabled={submitting}
                         className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
-                        data-tip="Remove"
+                        data-tip={t("common.remove")}
                       >
                         <X className="size-3" />
                       </button>
@@ -229,12 +230,12 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
               {/* Title */}
               <div className="space-y-1.5">
                 <label className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Title (optional)
+                  {t("upload.titleField")}
                 </label>
                 <input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder={defaultTitleFromFiles(files)}
+                  placeholder={defaultTitleFromFiles(files, t)}
                   disabled={submitting}
                   className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
                 />
@@ -243,27 +244,27 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
               {/* Lang strip + translate toggle (mirrors PreFlight) */}
               <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card/40 p-3">
                 <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  {settings.translateEnabled ? "From" : "Language"}
+                  {settings.translateEnabled ? t("lang.from") : t("lang.language")}
                 </span>
                 <LanguageSelect
                   value={settings.srcLang}
                   options={SOURCE_LANGUAGES}
                   onChange={(v) => updateSettings({ srcLang: v })}
                   disabled={submitting}
-                  ariaLabel="Source language"
+                  ariaLabel={t("lang.source")}
                 />
                 {settings.translateEnabled && (
                   <>
                     <ArrowRight className="size-4 text-muted-foreground/60" />
                     <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                      to
+                      {t("lang.to")}
                     </span>
                     <LanguageSelect
                       value={settings.tgtLang}
                       options={TARGET_LANGUAGES}
                       onChange={(v) => updateSettings({ tgtLang: v })}
                       disabled={submitting}
-                      ariaLabel="Target language"
+                      ariaLabel={t("lang.target")}
                     />
                   </>
                 )}
@@ -275,7 +276,7 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
                     }
                     disabled={submitting}
                   />
-                  <span>Translate</span>
+                  <span>{t("upload.translate")}</span>
                 </div>
               </div>
 
@@ -286,18 +287,20 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
 
             <footer className="flex items-center justify-between gap-2 border-t bg-background/40 px-5 py-3">
               <span className="text-[11px] text-muted-foreground">
-                Processing continues in the background — you can close this.
+                {t("upload.background")}
               </span>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" onClick={onClose} disabled={submitting}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   onClick={() => void start()}
                   disabled={!canStart}
                   className="gap-1.5 bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
                 >
-                  Transcribe{files.length > 0 ? ` (${files.length})` : ""}
+                  {files.length > 0
+                    ? t("upload.startN", { count: files.length })
+                    : t("upload.start")}
                 </Button>
               </div>
             </footer>
@@ -308,10 +311,10 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
   );
 }
 
-function defaultTitleFromFiles(files: File[]): string {
-  if (files.length === 0) return "Upload";
+function defaultTitleFromFiles(files: File[], t: TFunction): string {
+  if (files.length === 0) return t("upload.untitled");
   const base = files[0].name.replace(/\.[^.]+$/, "");
-  return files.length === 1 ? base : `${base} + ${files.length - 1} more`;
+  return files.length === 1 ? base : t("upload.titleMore", { base, count: files.length - 1 });
 }
 
 function formatSize(bytes: number): string {

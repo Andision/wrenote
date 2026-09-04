@@ -14,6 +14,7 @@ import { type CaptureTargets, listCaptureTargets } from "@/lib/capture";
 import { useMicPreview } from "@/hooks/useMicPreview";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
+import { useT } from "@/i18n";
 
 interface PreFlightProps {
   onStart: () => void;
@@ -74,6 +75,7 @@ function SourceToggle({
  * primary Record CTA.
  */
 export function PreFlight({ onStart }: PreFlightProps) {
+  const t = useT();
   const settings = useSessionStore((s) => s.settings);
   const updateSettings = useSessionStore((s) => s.updateSettings);
   const connection = useSessionStore((s) => s.connection);
@@ -184,27 +186,27 @@ export function PreFlight({ onStart }: PreFlightProps) {
         className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 shadow-sm backdrop-blur-sm"
       >
         <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          {settings.translateEnabled ? "From" : "Language"}
+          {settings.translateEnabled ? t("lang.from") : t("lang.language")}
         </span>
         <LanguageSelect
           value={settings.srcLang}
           options={SOURCE_LANGUAGES}
           onChange={(v) => updateSettings({ srcLang: v })}
           disabled={isRecording || isBusy}
-          ariaLabel="Source language"
+          ariaLabel={t("lang.source")}
         />
         {settings.translateEnabled && (
           <>
             <ArrowRight className="size-4 text-muted-foreground/60" />
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              to
+              {t("lang.to")}
             </span>
             <LanguageSelect
               value={settings.tgtLang}
               options={TARGET_LANGUAGES}
               onChange={(v) => updateSettings({ tgtLang: v })}
               disabled={isRecording || isBusy}
-              ariaLabel="Target language"
+              ariaLabel={t("lang.target")}
             />
           </>
         )}
@@ -220,9 +222,7 @@ export function PreFlight({ onStart }: PreFlightProps) {
           disabled={isRecording || isBusy}
         />
         <label htmlFor="translate-toggle" className="cursor-pointer">
-          {settings.translateEnabled
-            ? "Translate as I speak"
-            : "Transcribe only · no translation"}
+          {settings.translateEnabled ? t("preflight.translateOn") : t("preflight.translateOff")}
         </label>
       </div>
 
@@ -238,19 +238,19 @@ export function PreFlight({ onStart }: PreFlightProps) {
             value={settings.micDeviceId}
             onChange={(e) => updateSettings({ micDeviceId: e.target.value })}
             disabled={isRecording || isBusy}
-            aria-label="Microphone"
+            aria-label={t("preflight.microphone")}
             className="min-w-0 flex-1 truncate rounded-md border border-border bg-card px-2 py-1.5 text-[13px] text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50"
           >
-            <option value="">System default microphone</option>
+            <option value="">{t("preflight.defaultMic")}</option>
             {micDevices.map((d) => (
               <option key={d.deviceId} value={d.deviceId}>
-                {d.label || `Microphone (${d.deviceId.slice(0, 6)}…)`}
+                {d.label || t("preflight.unnamedMic", { id: d.deviceId.slice(0, 6) })}
               </option>
             ))}
           </select>
           <SourceToggle
             icon={Activity}
-            label="Test"
+            label={t("preflight.test")}
             active={micTest}
             disabled={isRecording || isBusy}
             onClick={() => setMicTest((v) => !v)}
@@ -263,14 +263,14 @@ export function PreFlight({ onStart }: PreFlightProps) {
         <div className="flex flex-wrap items-center gap-2">
           <SourceToggle
             icon={Volume2}
-            label="System audio"
+            label={t("preflight.systemAudio")}
             active={settings.captureSystemAudio}
             disabled={isRecording || isBusy}
             onClick={() => updateSettings({ captureSystemAudio: !settings.captureSystemAudio })}
           />
           <SourceToggle
             icon={Monitor}
-            label="Screen"
+            label={t("preflight.screen")}
             active={settings.captureScreen}
             disabled={isRecording || isBusy}
             onClick={() => updateSettings({ captureScreen: !settings.captureScreen })}
@@ -281,12 +281,12 @@ export function PreFlight({ onStart }: PreFlightProps) {
                 value={targetValue}
                 onChange={(e) => onPickTarget(e.target.value)}
                 disabled={isRecording || isBusy}
-                aria-label="Screen or window to record"
+                aria-label={t("preflight.captureTarget")}
                 className="min-w-0 flex-1 truncate rounded-md border border-border bg-card px-2 py-1 text-[12.5px] text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50"
               >
-                <option value="">Full screen</option>
+                <option value="">{t("preflight.fullScreen")}</option>
                 {targets.displays.length > 0 && (
-                  <optgroup label="Displays">
+                  <optgroup label={t("preflight.displays")}>
                     {targets.displays.map((d) => (
                       <option key={`display:${d.id}`} value={`display:${d.id}`}>
                         {d.title}
@@ -295,7 +295,7 @@ export function PreFlight({ onStart }: PreFlightProps) {
                   </optgroup>
                 )}
                 {targets.windows.length > 0 && (
-                  <optgroup label="Windows">
+                  <optgroup label={t("preflight.windows")}>
                     {targets.windows.map((w) => (
                       <option key={`window:${w.id}`} value={`window:${w.id}`}>
                         {w.app ? `${w.app} — ${w.title}` : w.title}
@@ -308,9 +308,9 @@ export function PreFlight({ onStart }: PreFlightProps) {
                 type="button"
                 onClick={refreshTargets}
                 disabled={loadingTargets || isRecording || isBusy}
-                data-tip="Refresh the window list (grant Screen Recording first)"
+                data-tip={t("preflight.refreshHint")}
                 className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                aria-label="Refresh capture targets"
+                aria-label={t("preflight.refresh")}
               >
                 <RefreshCw className={`size-3.5 ${loadingTargets ? "animate-spin" : ""}`} />
               </button>
@@ -343,7 +343,7 @@ export function PreFlight({ onStart }: PreFlightProps) {
             ) : (
               <Mic className="size-5" />
             )}
-            {isBusy ? "Starting" : "Start recording"}
+            {isBusy ? t("preflight.starting") : t("preflight.start")}
           </Button>
         </motion.div>
 
@@ -371,7 +371,7 @@ export function PreFlight({ onStart }: PreFlightProps) {
 
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <ShieldCheck className="size-3.5" />
-        <span>Running locally · no audio leaves your device</span>
+        <span>{t("preflight.privacy")}</span>
       </div>
     </motion.div>
   );

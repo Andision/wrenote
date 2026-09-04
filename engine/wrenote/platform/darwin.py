@@ -220,10 +220,10 @@ class DarwinPlatform(PlatformAdapter):
         if arch == "arm64":
             # Metal is built into the app bundle, so there is nothing to fetch.
             return [
-                AcceleratorNote("metal", True, f"{name} · Metal, built in"),
-                AcceleratorNote("cpu", True, "always available"),
+                AcceleratorNote("metal", True, "metal_builtin", {"gpu": name}),
+                AcceleratorNote("cpu", True, "cpu_always"),
             ]
-        return [AcceleratorNote("cpu", True, "Intel Mac — no Metal build is shipped")]
+        return [AcceleratorNote("cpu", True, "intel_mac")]
 
 
 async def _avfoundation_screen_index() -> str | None:

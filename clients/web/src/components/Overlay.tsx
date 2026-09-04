@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { Minimize2, Maximize2, X } from "lucide-react";
 
 import { startWindowDrag } from "@/lib/desktop";
+import { useT } from "@/i18n";
 import {
   connectOverlayListener,
   type OverlayStateMsg,
@@ -46,6 +47,7 @@ function loadMode(): OverlayMode {
 export function Overlay() {
   const [state, setState] = useState<OverlayStateMsg | null>(null);
   const [mode, setMode] = useState<OverlayMode>(loadMode);
+  const t = useT();
 
   // The SPA's stylesheet paints html/body with the theme background; the
   // overlay window must stay transparent so only the pill is visible.
@@ -80,7 +82,7 @@ export function Overlay() {
     <div className="flex shrink-0 items-center gap-1 opacity-70" style={NO_DRAG}>
       <button
         onClick={() => setMode((m) => (m === "full" ? "compact" : "full"))}
-        aria-label={mode === "full" ? "Compact bar" : "Expand subtitles"}
+        aria-label={mode === "full" ? t("overlay.compact") : t("overlay.expand")}
         className="flex size-5 items-center justify-center rounded-full bg-white/15 text-white/80 hover:bg-white/30 hover:text-white"
       >
         {mode === "full" ? (
@@ -91,7 +93,7 @@ export function Overlay() {
       </button>
       <button
         onClick={close}
-        aria-label="Close overlay"
+        aria-label={t("overlay.close")}
         className="flex size-5 items-center justify-center rounded-full bg-white/15 text-white/80 hover:bg-white/30 hover:text-white"
       >
         <X className="size-3" />

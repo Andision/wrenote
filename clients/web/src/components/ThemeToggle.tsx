@@ -4,14 +4,10 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";
+import { useT } from "@/i18n";
 
 const ORDER = ["light", "dark", "system"] as const;
 type Mode = (typeof ORDER)[number];
-const LABEL: Record<Mode, string> = {
-  light: "Light",
-  dark: "Dark",
-  system: "System",
-};
 
 /**
  * Cycles Light → Dark → System (follow OS). Renders nothing on first paint
@@ -20,6 +16,7 @@ const LABEL: Record<Mode, string> = {
  */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
+  const t = useT();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -38,7 +35,10 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       className="size-9"
-      title={`Theme: ${LABEL[current]} — switch to ${LABEL[next]}`}
+      title={t("theme.toggle", {
+        current: t(`theme.${current}`),
+        next: t(`theme.${next}`),
+      })}
       onClick={() => setTheme(next)}
     >
       <AnimatePresence mode="wait" initial={false}>

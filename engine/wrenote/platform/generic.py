@@ -85,5 +85,6 @@ class GenericPlatform(PlatformAdapter):
         self, gpus: tuple[GpuInfo, ...], arch: str
     ) -> list[AcceleratorNote]:
         gpu = next((g for g in gpus if g.vendor in ("nvidia", "amd", "intel")), None)
-        detail = f"{gpu.vendor.upper()} {gpu.name}" if gpu else "no discrete GPU detected"
-        return [AcceleratorNote(variant="cpu", usable=True, detail=detail)]
+        if gpu:
+            return [AcceleratorNote("cpu", True, "gpu_ready", {"gpu": gpu.name})]
+        return [AcceleratorNote("cpu", True, "cpu_no_gpu")]

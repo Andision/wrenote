@@ -15,6 +15,8 @@ import { Check, Cpu, Download, Loader2, ShieldCheck, Sparkles, TriangleAlert } f
 
 import { Button } from "@/components/ui/button";
 import { formatEta, subscribeJob } from "@/lib/jobs";
+import { hardwareText, optionText } from "@/lib/computeText";
+import { useT } from "@/i18n";
 import { getModelStatus, startModelDownload, type ModelStatusItem } from "@/lib/models";
 import {
   type ComputeStatus,
@@ -39,6 +41,7 @@ interface Progress {
 }
 
 export function SetupGate() {
+  const t = useT();
   const [step, setStep] = useState<Step>("checking");
   const [done, setDone] = useState(false);
 
@@ -109,7 +112,7 @@ export function SetupGate() {
       if (option && !option.installed) {
         const res = await installRuntime(chosen);
         if (res.job_id) {
-          setProgress({ fraction: 0, eta: null, label: "starting…" });
+          setProgress({ fraction: 0, eta: null, label: t("progress.starting") });
           await new Promise<void>((resolve, reject) => {
             subscribeJob(res.job_id!, {
               onSnapshot: (snap) => {
@@ -119,9 +122,9 @@ export function SetupGate() {
                   label: snap.log[snap.log.length - 1] ?? snap.phase,
                 });
                 if (snap.status === "done") resolve();
-                if (snap.status === "error") reject(new Error(snap.error ?? "install failed"));
+                if (snap.status === "error") reject(new Error(snap.error ?? t("compute.installFailed")));
               },
-              onError: () => reject(new Error("lost the install progress stream")),
+              onError: () => reject(new Error(t("compute.streamLost"))),
             });
           });
         }
@@ -138,11 +141,11 @@ export function SetupGate() {
     } finally {
       setRuntimeBusy(false);
     }
-  }, [chosen, compute]);
+  }, [chosen, compute, t]);
 
   const beginModelDownload = useCallback(() => {
     setError("");
-    setProgress({ fraction: 0, eta: null, label: "starting…" });
+    setProgress({ fraction: 0, eta: null, label: t("progress.starting") });
     startModelDownload()
       .then((res) => {
         if (res.all_present || !res.job_id) {
@@ -159,12 +162,12 @@ export function SetupGate() {
             if (snap.status === "done") setDone(true);
             if (snap.status === "error") {
               setProgress(null);
-              setError(snap.error ?? "download failed");
+              setError(snap.error ?? t("setup.downloadFailed"));
             }
           },
           onError: () => {
             setProgress(null);
-            setError("connection to download stream lost");
+            setError(t("compute.streamLost"));
           },
         });
       })
@@ -172,7 +175,7 @@ export function SetupGate() {
         setProgress(null);
         setError(e instanceof Error ? e.message : String(e));
       });
-  }, []);
+  }, [t]);
 
   if (done || step === "checking") return null;
 
@@ -201,19 +204,17 @@ export function SetupGate() {
           </div>
           {twoStep && (
             <span className="mt-1 text-[11px] tabular-nums text-muted-foreground/70">
-              Step {onCompute ? 1 : 2} of 2
+              {t("setup.step", { current: onCompute ? 1 : 2, total: 2 })}
             </span>
           )}
         </div>
 
         <h1 className="mt-5 text-xl font-semibold tracking-tight text-foreground">
-          {onCompute ? "Choose how Wrenote runs" : "Set up Wrenote"}
+          {onCompute ? t("setup.computeTitle") : t("setup.modelsTitle")}
         </h1>
         <p className="mt-2 flex items-start gap-1.5 text-[13px] leading-relaxed text-muted-foreground">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-brand-500" />
-          {onCompute
-            ? "Everything runs on your device. Pick the build that matches your hardware — you can change this later in Settings."
-            : "Runs fully on your device. One-time download of the speech & translation models."}
+          {onCompute ? t("setup.computeBlurb") : t("setup.modelsBlurb")}
         </p>
 
         {onCompute && compute && (
@@ -265,7 +266,7 @@ export function SetupGate() {
             <div className="flex items-center justify-between text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <Loader2 className="size-3 animate-spin" />
-                {progress.label || "Starting…"}
+                {progress.label || t("progress.starting")}
               </span>
               <span className="tabular-nums">
                 {Math.round(progress.fraction * 100)}% · {formatEta(progress.eta)}
@@ -289,7 +290,7 @@ export function SetupGate() {
               size="lg"
               disabled={runtimeBusy || !chosen}
             >
-              {runtimeBusy ? "Installing…" : "Continue"}
+              {runtimeBusy ? t("setup.installing") : t("common.continue")}
             </Button>
             <button
               type="button"
@@ -297,17 +298,17 @@ export function SetupGate() {
               disabled={runtimeBusy}
               className="mt-3 w-full text-center text-[11px] text-muted-foreground/70 underline-offset-2 hover:underline disabled:opacity-50"
             >
-              Skip — use the built-in CPU build
+              {t("setup.skip")}
             </button>
           </>
         ) : (
           !progress && (
             <>
               <Button onClick={beginModelDownload} className="mt-6 w-full" size="lg">
-                {error ? "Retry download" : `Download ${gb(totalModelSize)}`}
+                {error ? t("setup.retry") : t("setup.download", { size: gb(totalModelSize) })}
               </Button>
               <p className="mt-3 text-center text-[11px] text-muted-foreground/60">
-                Saved to ~/.wrenote/models · resumes if interrupted
+                {t("setup.modelsHint")}
               </p>
             </>
           )
@@ -315,7 +316,7 @@ export function SetupGate() {
 
         {restartNeeded && !onCompute && (
           <p className="mt-3 text-center text-[11px] text-amber-600 dark:text-amber-400">
-            Restart Wrenote afterwards to use the new runtime.
+            {t("setup.restart")}
           </p>
         )}
       </motion.div>
@@ -334,6 +335,7 @@ function OptionRow({
   disabled: boolean;
   onSelect: () => void;
 }) {
+  const t = useT();
   const unusable = !option.usable;
   return (
     <button
@@ -355,18 +357,20 @@ function OptionRow({
         <span className="text-[13px] font-medium">{VARIANT_LABEL[option.variant]}</span>
         {option.recommended && (
           <span className="rounded-full bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-600 dark:text-brand-400">
-            recommended
+            {t("setup.recommended")}
           </span>
         )}
         <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
           {option.download_mb != null ? `${option.download_mb} MB` : ""}
         </span>
       </div>
-      {/* The engine's own words: what it detected, or what rules this out. */}
-      {option.detail && (
-        <div className="mt-0.5 pl-5.5 text-[11px] text-muted-foreground">{option.detail}</div>
+      {/* What the engine detected, or what rules this out — its codes, our words. */}
+      {option.hardware && (
+        <div className="mt-0.5 pl-5.5 text-[11px] text-muted-foreground">
+          {hardwareText(t, option.hardware)}
+        </div>
       )}
-      <div className="pl-5.5 text-[11px] text-muted-foreground/70">{option.note}</div>
+      <div className="pl-5.5 text-[11px] text-muted-foreground/70">{optionText(t, option)}</div>
     </button>
   );
 }

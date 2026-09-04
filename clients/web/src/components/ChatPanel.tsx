@@ -31,6 +31,7 @@ import {
   type Conversation,
 } from "@/lib/chat";
 import { useSessionStore } from "@/store/sessionStore";
+import { useI18n, useT } from "@/i18n";
 
 /**
  * Right-side, push-in chat panel. The transcript stays visible to the left.
@@ -67,6 +68,7 @@ function ChatBody({
   sessionId: string | null;
   segmentCount: number;
 }) {
+  const t = useT();
   const toggleChat = useSessionStore((s) => s.toggleChat);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -167,7 +169,7 @@ function ChatBody({
     if (!convId) {
       const conv = await createConversation(sessionId);
       if (!conv) {
-        useSessionStore.getState().setError("Couldn't start a conversation.");
+        useSessionStore.getState().setError(t("chat.startFailed"));
         return;
       }
       convId = conv.id;
@@ -230,7 +232,7 @@ function ChatBody({
         });
       },
     });
-  }, [draft, sessionId, currentId, messages.length, refreshConversations]);
+  }, [draft, sessionId, currentId, messages.length, refreshConversations, t]);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -252,9 +254,9 @@ function ChatBody({
       if (!sessionId) return;
       const conv = conversations.find((c) => c.id === id);
       const ok = await confirmDialog({
-        title: "Delete this conversation?",
-        description: `"${conv?.title || "New chat"}" and all its messages will be removed.`,
-        confirmLabel: "Delete",
+        title: t("chat.deleteTitle"),
+        description: t("chat.deleteBody", { title: conv?.title || t("chat.newChat") }),
+        confirmLabel: t("common.delete"),
         destructive: true,
       });
       if (!ok) return;
@@ -269,15 +271,15 @@ function ChatBody({
         else setMessages([]);
       }
     },
-    [sessionId, conversations, currentId, loadMessages],
+    [sessionId, conversations, currentId, loadMessages, t],
   );
 
   const clearCurrent = useCallback(async () => {
     if (!sessionId || !currentId) return;
     const ok = await confirmDialog({
-      title: "Clear this conversation?",
-      description: "All messages in this conversation will be removed.",
-      confirmLabel: "Clear",
+      title: t("chat.clearTitle"),
+      description: t("chat.clearBody"),
+      confirmLabel: t("chat.clear"),
       destructive: true,
     });
     if (!ok) return;
@@ -285,7 +287,7 @@ function ChatBody({
     await clearChatRemote(sessionId, currentId);
     setMessages([]);
     void refreshConversations();
-  }, [sessionId, currentId, refreshConversations]);
+  }, [sessionId, currentId, refreshConversations, t]);
 
   const currentTitle =
     conversations.find((c) => c.id === currentId)?.title || "";
@@ -296,7 +298,7 @@ function ChatBody({
         <button
           onClick={() => sessionId && setShowList((v) => !v)}
           disabled={!sessionId}
-          data-tip="Switch conversation"
+          data-tip={t("chat.switch")}
           aria-expanded={showList}
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-50"
         >
@@ -315,7 +317,7 @@ function ChatBody({
           onClick={() => sessionId && setShowList((v) => !v)}
           disabled={!sessionId}
           aria-pressed={showList}
-          data-tip="Conversation history"
+          data-tip={t("chat.history")}
         >
           <History className="size-4" />
         </Button>
@@ -325,7 +327,7 @@ function ChatBody({
           className="size-7 shrink-0"
           onClick={newConversation}
           disabled={!sessionId}
-          data-tip="New conversation"
+          data-tip={t("chat.newConversation")}
         >
           <Plus className="size-4" />
         </Button>
@@ -335,7 +337,7 @@ function ChatBody({
             size="icon"
             className="size-7 shrink-0"
             onClick={() => void clearCurrent()}
-            data-tip="Clear this conversation"
+            data-tip={t("chat.clearTip")}
           >
             <Trash2 className="size-3.5" />
           </Button>
@@ -345,7 +347,7 @@ function ChatBody({
           size="icon"
           className="size-7 shrink-0"
           onClick={() => toggleChat(false)}
-          data-tip="Close"
+          data-tip={t("common.close")}
         >
           <X className="size-3.5" />
         </Button>
@@ -359,22 +361,22 @@ function ChatBody({
           {!sessionId ? (
             <EmptyState
               icon={<MessageSquare className="size-7 text-muted-foreground" />}
-              title="Start a session first"
-              hint="Chat is anchored to the active recording. Hit Record to begin."
+              title={t("chat.noSessionTitle")}
+              hint={t("chat.noSessionHint")}
             />
           ) : loadingHistory && messages.length === 0 ? (
             <div className="flex h-full min-h-[40vh] items-center justify-center text-[12px] text-muted-foreground">
               <Loader2 className="mr-2 size-3.5 animate-spin" />
-              Loading chat…
+              {t("chat.loading")}
             </div>
           ) : messages.length === 0 ? (
             <EmptyState
               icon={<Sparkles className="size-7 text-brand-500/80" />}
-              title={segmentCount === 0 ? "Ready when you are" : "Ask anything"}
+              title={segmentCount === 0 ? t("chat.readyTitle") : t("chat.askTitle")}
               hint={
                 segmentCount === 0
-                  ? "Start talking — your questions can reference whatever gets captured."
-                  : "Summaries, action items, decisions, who-said-what — try it."
+                  ? t("chat.readyHint")
+                  : t("chat.askHint")
               }
             />
           ) : (
@@ -443,7 +445,7 @@ function ChatBody({
                 if (canSend) void send();
               }
             }}
-            placeholder={sessionId ? "Ask about this session…" : "Start a session to chat"}
+            placeholder={sessionId ? t("chat.placeholder") : t("chat.placeholderNoSession")}
             disabled={!sessionId}
             rows={2}
             className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[13.5px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-ring focus:ring-2 focus:ring-ring/40 disabled:opacity-50"
@@ -454,7 +456,7 @@ function ChatBody({
               size="icon"
               className="size-9"
               onClick={cancel}
-              data-tip="Stop"
+              data-tip={t("common.stop")}
             >
               <X className="size-4" />
             </Button>
@@ -464,7 +466,7 @@ function ChatBody({
               className="size-9 bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
               onClick={() => void send()}
               disabled={!canSend}
-              data-tip="Send (Enter)"
+              data-tip={t("chat.send")}
             >
               <Send className="size-4" />
             </Button>
@@ -492,6 +494,8 @@ function ConversationList({
   onDelete: (id: string) => void;
   onClose: () => void;
 }) {
+  const { locale } = useI18n();
+  const t = useT();
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -558,7 +562,7 @@ function ConversationList({
                       <button
                         onClick={commitRename}
                         className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                        data-tip="Save"
+                        data-tip={t("common.save")}
                       >
                         <Check className="size-3.5" />
                       </button>
@@ -576,17 +580,17 @@ function ConversationList({
                   >
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-medium text-foreground">
-                        {c.title || "New chat"}
+                        {c.title || t("chat.newChat")}
                       </div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
-                        {whenLabel(c.updatedAt)} · {c.messageCount} msg
+                        {whenLabel(c.updatedAt, locale)} · {c.messageCount} msg
                       </div>
                     </div>
                     <span className="invisible flex shrink-0 items-center gap-0.5 group-hover:visible">
                       <span
                         role="button"
                         tabIndex={0}
-                        aria-label="Rename"
+                        aria-label={t("common.rename")}
                         onClick={(e) => {
                           e.stopPropagation();
                           startRename(c);
@@ -598,7 +602,7 @@ function ConversationList({
                       <span
                         role="button"
                         tabIndex={0}
-                        aria-label="Delete"
+                        aria-label={t("common.delete")}
                         onClick={(e) => {
                           e.stopPropagation();
                           onDelete(c.id);
@@ -626,15 +630,17 @@ function ConversationList({
   );
 }
 
-function whenLabel(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (!isFinite(t)) return "";
-  const s = Math.max(0, (Date.now() - t) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  if (s < 604800) return `${Math.floor(s / 86400)}d ago`;
-  return new Date(iso).toLocaleDateString();
+function whenLabel(iso: string, locale: string): string {
+  const ms = new Date(iso).getTime();
+  if (!isFinite(ms)) return "";
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  // Intl knows every language's phrasing for "3 minutes ago"; no keys needed.
+  const rel = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  if (s < 60) return rel.format(0, "second");
+  if (s < 3600) return rel.format(-Math.floor(s / 60), "minute");
+  if (s < 86400) return rel.format(-Math.floor(s / 3600), "hour");
+  if (s < 604800) return rel.format(-Math.floor(s / 86400), "day");
+  return new Date(iso).toLocaleDateString(locale);
 }
 
 function EmptyState({

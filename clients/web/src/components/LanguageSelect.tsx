@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useT, type TFunction } from "@/i18n";
 
 export interface LanguageOption {
   value: string;
@@ -26,8 +27,12 @@ export const TARGET_LANGUAGES: LanguageOption[] = [
   { value: "ru", label: "Русский" },
 ];
 
+// Spoken-language names stay in their own script — an endonym is right in any
+// UI language. Only "auto" is our word for something, so it carries a key.
+export const AUTO_LANGUAGE_KEY = "lang.auto";
+
 export const SOURCE_LANGUAGES: LanguageOption[] = [
-  { value: "auto", label: "Auto detect" },
+  { value: "auto", label: AUTO_LANGUAGE_KEY },
   ...TARGET_LANGUAGES,
 ];
 
@@ -35,9 +40,10 @@ const LABEL_BY_VALUE = new Map<string, string>(
   SOURCE_LANGUAGES.map((l) => [l.value, l.label]),
 );
 
-function lookupLabel(value: string | null | undefined): string {
+function lookupLabel(value: string | null | undefined, t: TFunction): string {
   if (!value) return "";
-  return LABEL_BY_VALUE.get(value) ?? value;
+  const label = LABEL_BY_VALUE.get(value) ?? value;
+  return label.startsWith("lang.") ? t(label) : label;
 }
 
 interface LanguageSelectProps {
@@ -63,6 +69,7 @@ export function LanguageSelect({
   className,
   ariaLabel,
 }: LanguageSelectProps) {
+  const t = useT();
   const triggerSize =
     size === "compact" ? "h-7 px-2 text-[12px]" : "h-9 px-3 text-sm";
   return (
@@ -90,7 +97,7 @@ export function LanguageSelect({
               transition={{ duration: 0.14 }}
               className="font-medium"
             >
-              {lookupLabel(v)}
+              {lookupLabel(v, t)}
             </motion.span>
           )}
         </SelectValue>
@@ -106,7 +113,7 @@ export function LanguageSelect({
       >
         {options.map((l) => (
           <SelectItem key={l.value} value={l.value}>
-            {l.label}
+            {l.label.startsWith("lang.") ? t(l.label) : l.label}
           </SelectItem>
         ))}
       </SelectContent>

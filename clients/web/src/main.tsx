@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 
 import App from "./App.tsx";
 import { Overlay } from "./components/Overlay.tsx";
+import { I18nProvider } from "./i18n/provider";
 import { installDesktopBridge } from "./lib/desktop.ts";
 import { isOverlayWindow } from "./lib/overlayBridge.ts";
 import "./index.css";
@@ -17,12 +18,14 @@ installDesktopBridge();
 // always dark-on-translucent regardless of the app theme.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {isOverlayWindow() ? (
-      <Overlay />
-    ) : (
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-        <App />
-      </ThemeProvider>
-    )}
+    <I18nProvider>
+      {isOverlayWindow() ? (
+        <Overlay />
+      ) : (
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <App />
+        </ThemeProvider>
+      )}
+    </I18nProvider>
   </StrictMode>,
 );

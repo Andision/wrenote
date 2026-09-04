@@ -59,7 +59,7 @@ from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import Any
 
-from ..platform import HardwareInfo, PlatformAdapter
+from ..platform import AcceleratorNote, HardwareInfo, PlatformAdapter
 from .config import ComputeConfig
 from .models import _ssl_context
 
@@ -194,9 +194,18 @@ class PackRelease:
 #: first run recommends to an NVIDIA user, with CUDA offered as an upgrade.
 ACCELERATED = ("vulkan", "metal", "cuda")
 
-#: What picking a variant buys beyond its size — only where the choice is a
-#: real tradeoff. Without this, the CUDA option is just "the big one".
-TRADEOFF = {"cuda": "Faster on NVIDIA, much larger"}
+#: English rendering of a :class:`RuntimeOption` note code. As with
+#: :data:`wrenote.platform.base.NOTE_TEXT`, the client owns what a user reads —
+#: including *why* anyone would take the bigger CUDA build over Vulkan, which is
+#: a sentence, not a fact this module knows.
+OPTION_NOTE_TEXT: dict[str, str] = {
+    "builtin": "Built into the app · nothing to download",
+    "installed": "Installed",
+    "download": "{mb} MB download",
+    "unavailable": "Not available on this machine",
+    "unpublished": "Not published for this machine yet",
+    "size_unknown": "Download size unknown until the pack index is checked",
+}
 
 
 @dataclass(frozen=True)
@@ -215,12 +224,23 @@ class RuntimeOption:
     builtin: bool
     recommended: bool
     accelerated: bool
-    detail: str  # hardware verdict, e.g. "NVIDIA GeForce RTX 4070 · driver 566.36"
-    note: str  # what choosing this means, e.g. "Fastest on NVIDIA · 736 MB download"
+    note_code: str  # key into OPTION_NOTE_TEXT — the client renders it
     download_mb: int | None  # None = nothing to fetch (built-in or already installed)
+    #: The hardware verdict for this variant, or ``None`` when the platform had
+    #: nothing to say. Same code+params shape as the note.
+    hardware: AcceleratorNote | None = None
+
+    @property
+    def note(self) -> str:
+        """English rendering, for logs and clients that don't localize."""
+        mb = "" if self.download_mb is None else str(self.download_mb)
+        return OPTION_NOTE_TEXT.get(self.note_code, self.note_code).format(mb=mb)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["note"] = self.note
+        d["hardware"] = self.hardware.to_dict() if self.hardware else None
+        return d
 
 
 def platform_tag(hw: HardwareInfo) -> str:
@@ -427,18 +447,17 @@ class RuntimeManager:
         release = (releases or {}).get(variant)
         size_mb = None if (pack.installed or release is None) else max(1, release.size >> 20)
         if not usable:
-            meaning = "Not available on this machine"
+            code = "unavailable"
         elif pack.builtin:
-            meaning = "Built into the app · nothing to download"
+            code = "builtin"
         elif pack.installed:
-            meaning = "Installed"
+            code = "installed"
         elif size_mb is not None:
-            tradeoff = TRADEOFF.get(variant)
-            meaning = f"{tradeoff} · {size_mb} MB download" if tradeoff else f"{size_mb} MB download"
+            code = "download"
         elif releases is not None:
-            meaning = "Not published for this machine yet"
+            code = "unpublished"
         else:
-            meaning = "Download size unknown until the pack index is checked"
+            code = "size_unknown"
         return RuntimeOption(
             variant=variant,
             usable=usable,
@@ -446,9 +465,9 @@ class RuntimeManager:
             builtin=pack.builtin,
             recommended=usable and variant == chosen,
             accelerated=variant in ACCELERATED,
-            detail=note.detail if note else "",
-            note=meaning,
+            note_code=code,
             download_mb=size_mb,
+            hardware=note,
         )
 
     # --- 3: ensure ----------------------------------------------------------

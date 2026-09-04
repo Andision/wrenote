@@ -4,6 +4,7 @@ import { CheckCircle2, ChevronDown, ChevronUp, X, XCircle } from "lucide-react";
 
 import { formatEta } from "@/lib/jobs";
 import { useJobsStore, type TrackedJob } from "@/store/jobsStore";
+import { useT } from "@/i18n";
 
 /**
  * Floating popover (bottom-right) listing every backend job we're
@@ -30,6 +31,7 @@ export function ProgressOverlay() {
 function JobCard({ tracked }: { tracked: TrackedJob }) {
   const dismiss = useJobsStore((s) => s.dismiss);
   const [expanded, setExpanded] = useState(false);
+  const t = useT();
   const snap = tracked.snapshot;
   const status = snap?.status ?? "running";
   const pct = Math.round(((snap?.fraction ?? 0) * 100) || 0);
@@ -57,15 +59,15 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
           </div>
           <div className="truncate text-[11px] text-muted-foreground">
             {status === "error"
-              ? snap?.error || "Failed"
+              ? snap?.error || t("progress.failed")
               : status === "done"
-                ? "Complete"
-                : snap?.phase || "Starting…"}
+                ? t("progress.complete")
+                : snap?.phase || t("progress.starting")}
           </div>
         </div>
         <button
           onClick={() => setExpanded((x) => !x)}
-          data-tip={expanded ? "Hide log" : "Show log"}
+          data-tip={expanded ? t("progress.hideLog") : t("progress.showLog")}
           className="rounded p-1 text-muted-foreground hover:bg-accent"
         >
           {expanded ? (
@@ -76,7 +78,7 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
         </button>
         <button
           onClick={() => dismiss(tracked.id)}
-          data-tip="Dismiss"
+          data-tip={t("common.dismiss")}
           className="rounded p-1 text-muted-foreground hover:bg-accent"
         >
           <X className="size-3.5" />

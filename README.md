@@ -63,6 +63,10 @@ validation checklist is complete.
 Real models: install `pywhispercpp` and `llama-cpp-python` for your platform
 (CI pins the exact wheels in `.github/workflows/build.yml`), then set the
 backends in `~/.wrenote/config.yaml` (see `engine/profiles/mac-default.yaml`).
+The interface ships in English and 简体中文, following your system by default
+(Settings → General to change it). Adding a language means adding one JSON file
+under `clients/web/src/i18n/locales/` — see `ARCHITECTURE.md`.
+
 First run walks through setup: pick the compute runtime for your hardware
 (recommended option pre-selected — see `ARCHITECTURE.md`), then download the
 models into `~/.wrenote/models/`. Both are changeable later in Settings.

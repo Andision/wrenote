@@ -25,6 +25,8 @@ import {
   selectAccelerator,
 } from "@/lib/compute";
 import { formatEta, subscribeJob } from "@/lib/jobs";
+import { hardwareText } from "@/lib/computeText";
+import { useT } from "@/i18n";
 
 interface InstallProgress {
   fraction: number;
@@ -33,6 +35,7 @@ interface InstallProgress {
 }
 
 export function ComputePanel() {
+  const t = useT();
   const [status, setStatus] = useState<ComputeStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState<Record<string, InstallProgress>>({});
@@ -43,9 +46,9 @@ export function ComputePanel() {
       setStatus(await getComputeStatus());
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "could not load compute status");
+      setError(e instanceof Error ? e.message : t("compute.statusFailed"));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,12 +59,12 @@ export function ComputePanel() {
         setError(null);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "could not load compute status");
+        if (!cancelled) setError(e instanceof Error ? e.message : t("compute.statusFailed"));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const install = async (variant: Variant) => {
     try {
@@ -88,7 +91,7 @@ export function ComputePanel() {
               return next;
             });
             if (snap.status === "done") {
-              toast.success(`${VARIANT_LABEL[variant]} runtime installed`);
+              toast.success(t("compute.installed", { name: VARIANT_LABEL[variant] }));
               // Re-apply the unchanged choice: with "auto" the new pack may now
               // win, and the engine can route to it live before any backend
               // loads. The response tells us whether that worked.
@@ -96,7 +99,7 @@ export function ComputePanel() {
                 .then((res) => setRestartNeeded(res.restart_required))
                 .catch(() => setRestartNeeded(true));
             } else {
-              toast.error(snap.error ?? "runtime install failed");
+              toast.error(snap.error ?? t("compute.installFailed"));
             }
             void refresh();
           }
@@ -107,12 +110,12 @@ export function ComputePanel() {
             delete next[variant];
             return next;
           });
-          toast.error("lost the install progress stream");
+          toast.error(t("compute.streamLost"));
           void refresh();
         },
       });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "runtime install failed");
+      toast.error(e instanceof Error ? e.message : t("compute.installFailed"));
     }
   };
 
@@ -120,12 +123,12 @@ export function ComputePanel() {
     try {
       const res = await removeRuntime(variant);
       if (res.removed) {
-        toast.success(`${VARIANT_LABEL[variant]} runtime removed`);
+        toast.success(t("compute.removed", { name: VARIANT_LABEL[variant] }));
         setRestartNeeded(res.restart_required);
       }
       void refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "runtime remove failed");
+      toast.error(e instanceof Error ? e.message : t("compute.removeFailed"));
     }
   };
 
@@ -135,7 +138,7 @@ export function ComputePanel() {
       setRestartNeeded(res.restart_required);
       void refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "could not save the accelerator");
+      toast.error(e instanceof Error ? e.message : t("compute.selectFailed"));
     }
   };
 
@@ -147,7 +150,7 @@ export function ComputePanel() {
     );
   }
   if (!status) {
-    return <p className="px-1 py-6 text-[12px] text-muted-foreground">Detecting hardware…</p>;
+    return <p className="px-1 py-6 text-[12px] text-muted-foreground">{t("compute.detecting")}</p>;
   }
 
   const hw = status.hardware;
@@ -163,29 +166,36 @@ export function ComputePanel() {
   const chosen = (status.config.accelerator || "auto") as Accelerator;
   const byVariant = new Map(status.options.map((o) => [o.variant, o]));
   // Variants the hardware rules out: say why rather than just omitting them.
-  const blocked = status.options.filter((o) => !o.usable && o.detail);
+  const blocked = status.options.filter((o) => !o.usable && o.hardware);
 
   return (
     <div className="space-y-5">
       {/* Hardware */}
       <section className="space-y-2">
         <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Hardware
+          {t("compute.hardware")}
         </h3>
         <div className="space-y-1 rounded-lg border border-border/60 bg-muted/30 p-3 text-[12px]">
-          <Row label="Platform" value={`${status.platform_tag} · ${hw.cpu_count} CPU threads · ${formatMb(hw.ram_mb)} RAM`} />
+          <Row
+            label={t("compute.platform")}
+            value={t("compute.platformValue", {
+              tag: status.platform_tag,
+              threads: hw.cpu_count,
+              ram: formatMb(hw.ram_mb),
+            })}
+          />
           {hw.gpus.length === 0 ? (
-            <Row label="GPU" value="none detected" />
+            <Row label={t("compute.gpu")} value={t("compute.noGpu")} />
           ) : (
             hw.gpus.map((g, i) => (
               <Row
                 key={i}
-                label={i === 0 ? "GPU" : ""}
+                label={i === 0 ? t("compute.gpu") : ""}
                 value={`${g.name}${g.vram_mb ? ` · ${formatMb(g.vram_mb)}${g.unified_memory ? " shared" : " VRAM"}` : g.unified_memory ? " · unified memory" : ""}`}
               />
             ))
           )}
-          {hw.npu && <Row label="NPU" value={`${hw.npu} (detected; not used for inference yet)`} />}
+          {hw.npu && <Row label={t("compute.npu")} value={t("compute.npuValue", { npu: hw.npu })} />}
         </div>
       </section>
 
@@ -193,21 +203,24 @@ export function ComputePanel() {
       <section className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Runtime
+            {t("compute.runtime")}
           </h3>
-          <Button variant="ghost" size="icon" className="size-7" onClick={() => void refresh()} data-tip="Refresh">
+          <Button variant="ghost" size="icon" className="size-7" onClick={() => void refresh()} data-tip={t("common.refresh")}>
             <RefreshCw className="size-3.5" />
           </Button>
         </div>
         <div className="space-y-1 rounded-lg border border-border/60 bg-muted/30 p-3 text-[12px]">
-          <Row label="Active" value={`${activeLabel} (${status.selection.reason})`} />
-          <Row label="Preference" value={status.selection.chain.map((v) => VARIANT_LABEL[v as Variant] ?? v).join(" → ")} />
+          <Row
+            label={t("compute.active")}
+            value={`${activeLabel} (${t(`compute.selection.${status.selection.reason}`)})`}
+          />
+          <Row label={t("compute.preference")} value={status.selection.chain.map((v) => VARIANT_LABEL[v as Variant] ?? v).join(" → ")} />
           {status.vram_budget_mb != null && (
-            <Row label="VRAM budget" value={formatMb(status.vram_budget_mb)} />
+            <Row label={t("compute.vramBudget")} value={formatMb(status.vram_budget_mb)} />
           )}
           {Object.keys(status.bad).length > 0 && (
             <Row
-              label="Skipped"
+              label={t("compute.skipped")}
               value={Object.entries(status.bad)
                 .map(([v, why]) => `${VARIANT_LABEL[v as Variant] ?? v}: ${why}`)
                 .join("; ")}
@@ -219,7 +232,7 @@ export function ComputePanel() {
       {/* Accelerator choice */}
       <section className="space-y-2">
         <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Accelerator
+          {t("compute.accelerator")}
         </h3>
         <div className="flex flex-wrap gap-1.5">
           {(["auto", ...offered] as Accelerator[]).map((acc) => (
@@ -233,20 +246,19 @@ export function ComputePanel() {
                   : "border-border/60 text-muted-foreground hover:bg-muted"
               }`}
             >
-              {acc === "auto" ? "Auto" : VARIANT_LABEL[acc as Variant]}
+              {acc === "auto" ? t("compute.auto") : VARIANT_LABEL[acc as Variant]}
             </button>
           ))}
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Auto ranks by detected hardware and falls back to the built-in runtime. A pinned
-          accelerator must be installed below.
+          {t("compute.autoHint")}
         </p>
       </section>
 
       {/* Packs */}
       <section className="space-y-2">
         <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Runtime packs
+          {t("compute.packs")}
         </h3>
         <div className="divide-y divide-border/60 rounded-lg border border-border/60 bg-muted/30">
           {status.packs
@@ -265,19 +277,22 @@ export function ComputePanel() {
         </div>
         {blocked.map((o) => (
           <p key={o.variant} className="text-[11px] text-muted-foreground">
-            {VARIANT_LABEL[o.variant]} unavailable — {o.detail}
+            {t("compute.blocked", {
+              name: VARIANT_LABEL[o.variant],
+              reason: hardwareText(t, o.hardware),
+            })}
           </p>
         ))}
         {status.index.checked && status.index.reachable === false && (
           <p className="text-[11px] text-muted-foreground">
-            Pack index unreachable — installs are unavailable offline.
+            {t("compute.indexUnreachable")}
           </p>
         )}
       </section>
 
       {restartNeeded && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
-          Restart Wrenote to apply the new compute runtime.
+          {t("compute.restart")}
         </p>
       )}
     </div>
@@ -308,13 +323,15 @@ function PackRow({
   onInstall: () => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   const state = pack.builtin
-    ? "Built in"
+    ? t("compute.state.builtin")
     : pack.installed
-      ? `Installed${pack.version ? ` · ${pack.version}` : ""}`
+      ? t("compute.state.installed") + (pack.version ? ` · ${pack.version}` : "")
       : pack.available
-        ? `Available${pack.release?.size ? ` · ${formatMb(Math.round(pack.release.size / 1048576))}` : ""}`
-        : "Not published for this machine";
+        ? t("compute.state.available") +
+          (pack.release?.size ? ` · ${formatMb(Math.round(pack.release.size / 1048576))}` : "")
+        : t("compute.state.unpublished");
   return (
     <div className="flex items-center gap-3 px-3 py-2 text-[12px]">
       <div className="min-w-0 flex-1">
@@ -346,13 +363,13 @@ function PackRow({
         ) : (
           <div className="text-[11px] text-muted-foreground">
             {state}
-            {option?.detail ? ` · ${option.detail}` : ""}
+            {option?.hardware ? ` · ${hardwareText(t, option.hardware)}` : ""}
           </div>
         )}
       </div>
       {!pack.builtin && !progress && (
         pack.installed ? (
-          <Button variant="ghost" size="icon" className="size-7" onClick={onRemove} data-tip="Remove pack">
+          <Button variant="ghost" size="icon" className="size-7" onClick={onRemove} data-tip={t("compute.remove")}>
             <Trash2 className="size-3.5" />
           </Button>
         ) : (
@@ -362,7 +379,7 @@ function PackRow({
             className="size-7"
             onClick={onInstall}
             disabled={!pack.available}
-            data-tip={pack.available ? "Install pack" : "Not available"}
+            data-tip={pack.available ? t("compute.install") : t("compute.unavailable")}
           >
             <Download className="size-3.5" />
           </Button>

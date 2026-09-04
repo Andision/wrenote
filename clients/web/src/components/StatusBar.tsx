@@ -15,6 +15,7 @@ import {
 
 import { usePlaybackControls } from "@/hooks/playbackContext";
 import { useSessionStore } from "@/store/sessionStore";
+import { useT } from "@/i18n";
 
 export function StatusBar() {
   const micLevel = useSessionStore((s) => s.micLevel);
@@ -62,6 +63,7 @@ export function StatusBar() {
 }
 
 function PlaybackControls() {
+  const t = useT();
   const playingId = useSessionStore((s) => s.playingSegmentId);
   const isPlaying = useSessionStore((s) => s.isPlaying);
   const current = useSessionStore((s) => s.playbackCurrentTime);
@@ -144,7 +146,9 @@ function PlaybackControls() {
 
       <button
         onClick={onTogglePlay}
-        data-tip={isPlaying ? "Pause" : playingId ? "Resume" : "Play from start"}
+        data-tip={
+          isPlaying ? t("player.pause") : playingId ? t("player.resume") : t("player.play")
+        }
         className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
       >
         {isPlaying ? (
@@ -222,7 +226,7 @@ function PlaybackControls() {
         {seg?.origText && (
           <button
             onClick={onJumpToCard}
-            data-tip="Scroll to this segment in the transcript"
+            data-tip={t("player.scrollTo")}
             className="flex w-full min-w-0 items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
           >
             <ChevronUp className="size-3 shrink-0" />
@@ -240,6 +244,7 @@ function PlaybackControls() {
  * current playhead. The actual looping is enforced in usePlayback.
  */
 function LoopControls({ current }: { current: number }) {
+  const t = useT();
   const loopMode = useSessionStore((s) => s.loopMode);
   const loopA = useSessionStore((s) => s.loopA);
   const loopB = useSessionStore((s) => s.loopB);
@@ -280,7 +285,7 @@ function LoopControls({ current }: { current: number }) {
       <button
         onClick={toggleSegment}
         aria-pressed={segmentOn}
-        data-tip="Loop the current segment"
+        data-tip={t("player.loopSegment")}
         className={`inline-flex size-6 items-center justify-center rounded-md transition-colors ${
           segmentOn
             ? "bg-brand-500/15 text-brand-600 dark:text-brand-400"
@@ -294,10 +299,10 @@ function LoopControls({ current }: { current: number }) {
         aria-pressed={abActive}
         data-tip={
           abActive
-            ? "A–B loop on — click to clear"
+            ? t("player.abOn")
             : abAwaiting
-              ? "Click to set point B"
-              : "A–B loop — click to set point A"
+              ? t("player.abSetB")
+              : t("player.abSetA")
         }
         className={`inline-flex h-6 w-[2.5rem] items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors ${
           abActive || abAwaiting
@@ -319,6 +324,7 @@ const SPEEDS = [2, 1.5, 1, 0.75, 0.5] as const;
  * element by usePlayback, so it sticks across segment changes.
  */
 function SpeedControl() {
+  const t = useT();
   const rate = useSessionStore((s) => s.playbackRate);
   const setRate = useSessionStore((s) => s.setPlaybackRate);
   const [open, setOpen] = useState(false);
@@ -327,7 +333,7 @@ function SpeedControl() {
     <div className="relative shrink-0">
       <button
         onClick={() => setOpen((o) => !o)}
-        data-tip="Playback speed"
+        data-tip={t("player.speed")}
         aria-haspopup="menu"
         aria-expanded={open}
         className={`inline-flex h-6 w-[3.25rem] shrink-0 items-center justify-center gap-1 rounded-md px-1 font-mono text-[10px] font-semibold tabular-nums transition-colors ${

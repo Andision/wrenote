@@ -12,6 +12,7 @@ import {
 } from "@/lib/colors";
 import { assignSpeaker, renameSpeaker } from "@/lib/diarize";
 import { useSessionStore } from "@/store/sessionStore";
+import { useT } from "@/i18n";
 import type { Segment } from "@/types";
 
 /**
@@ -138,6 +139,7 @@ export function Transcript() {
  * Cold-start UX lives in `<PreFlight/>`.
  */
 function ListeningState() {
+  const t = useT();
   const connection = useSessionStore((s) => s.connection);
   // Both "connecting" (opening the socket) and "connected" (socket open, but
   // still waiting for the backend's `ready` while it loads models) are pre-roll:
@@ -168,12 +170,12 @@ function ListeningState() {
         )}
       </div>
       <h2 className="mt-6 text-xl font-semibold tracking-tight text-foreground">
-        {isPreparing ? "Preparing…" : "Listening…"}
+        {isPreparing ? t("transcript.preparing") : t("transcript.listening")}
       </h2>
       <p className="mt-2 max-w-md text-[14px] leading-relaxed text-muted-foreground">
         {isPreparing
-          ? "First start takes a moment while Whisper and the translator load."
-          : "Start speaking. Words will appear here as they're recognised."}
+          ? t("transcript.preparingHint")
+          : t("transcript.listeningHint")}
       </p>
     </motion.div>
   );
@@ -201,6 +203,7 @@ function SegmentCard({
   color = null,
   diarized = false,
 }: SegmentCardProps) {
+  const t = useT();
   const { play, pause } = usePlaybackControls();
   const timestamp = formatRelativeTime(seg.startedAt);
   const isPartial = seg.origStatus === "partial";
@@ -264,7 +267,7 @@ function SegmentCard({
             onClick={() =>
               isPlayingThis ? pause() : play(seg.segmentId)
             }
-            data-tip={isPlayingThis ? "Pause" : "Play this segment"}
+            data-tip={isPlayingThis ? t("common.pause") : t("transcript.playSegment")}
             className="inline-flex size-5 items-center justify-center rounded-full bg-muted/60 text-muted-foreground transition-colors hover:bg-brand-500/20 hover:text-brand-600 dark:hover:text-brand-400"
           >
             {isPlayingThis ? (
@@ -305,9 +308,9 @@ function SegmentCard({
           <button
             type="button"
             onClick={() => mergeWithNext(seg.segmentId)}
-            data-tip="Merge with the next segment"
+            data-tip={t("transcript.merge")}
             className="ml-auto inline-flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-            aria-label="Merge with next segment"
+            aria-label={t("transcript.merge")}
           >
             <Merge className="size-3.5" />
           </button>
@@ -377,6 +380,7 @@ function Row({
   /** If set, show a "Split here" action while editing (splits at the caret). */
   onSplit?: (offset: number) => void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -447,7 +451,7 @@ function Row({
             } leading-[1.55] text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500/30`}
           />
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-            <span>Enter to save · Esc to cancel</span>
+            <span>{t("transcript.editHint")}</span>
             {onSplit && (
               <button
                 type="button"
@@ -477,7 +481,7 @@ function Row({
       {chip}
       <p
         onDoubleClick={begin}
-        title={editable ? "Double-click to edit" : undefined}
+        title={editable ? t("transcript.editHintShort") : undefined}
         className={`${textClass}${editable ? " cursor-text rounded hover:bg-accent/30" : ""}`}
       >
         {text || placeholder}
@@ -508,6 +512,7 @@ function SpeakerChip({
   segmentIds: string[];
   color: string | null;
 }) {
+  const t = useT();
   const sessionId = useSessionStore((s) => s.sessionId);
   const applySpeakerRename = useSessionStore((s) => s.applySpeakerRename);
   const applySpeakerLabels = useSessionStore((s) => s.applySpeakerLabels);
@@ -557,7 +562,7 @@ function SpeakerChip({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
-          placeholder={isUnknown ? "Name this speaker" : undefined}
+          placeholder={isUnknown ? t("transcript.nameSpeaker") : undefined}
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
             if (e.key === "Escape") setEditing(false);
@@ -572,7 +577,7 @@ function SpeakerChip({
             e.preventDefault();
             void commit();
           }}
-          data-tip="Save (or press Enter)"
+          data-tip={t("transcript.save")}
           className="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition-colors hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
         >
           <Check className="size-3" />
@@ -610,8 +615,8 @@ function SpeakerChip({
       onClick={() => setEditing(true)}
       data-tip={
         isUnknown
-          ? "Unidentified — click to name this speaker (this segment only)"
-          : "Click to rename — applies to all segments by this speaker"
+          ? t("transcript.speakerUnknown")
+          : t("transcript.speakerRename")
       }
       className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide transition-colors ${
         isUnknown

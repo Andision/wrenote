@@ -227,34 +227,37 @@ def evaluate_accelerators(
     if nvidia:
         gpu = nvidia[0]
         major = driver_major(gpu.driver_version)
-        shown = f"{gpu.name} · driver {gpu.driver_version}" if gpu.driver_version else gpu.name
         if not nvcuda_present and major is None:
-            notes.append(AcceleratorNote("cuda", False, f"{gpu.name} found, but no NVIDIA driver"))
+            notes.append(AcceleratorNote("cuda", False, "no_driver", {"gpu": gpu.name}))
         elif major is not None and major < MIN_NVIDIA_DRIVER:
-            notes.append(AcceleratorNote(
-                "cuda", False,
-                f"{shown} is older than the {MIN_NVIDIA_DRIVER} CUDA 12 needs — update it to use CUDA",
-            ))
+            notes.append(AcceleratorNote("cuda", False, "driver_too_old", {
+                "gpu": gpu.name,
+                "driver": gpu.driver_version or "",
+                "min": str(MIN_NVIDIA_DRIVER),
+            }))
         elif gpu.vram_mb is not None and gpu.vram_mb < MIN_GPU_VRAM_MB:
-            notes.append(AcceleratorNote(
-                "cuda", False, f"{gpu.name} has under {MIN_GPU_VRAM_MB // 1024} GB of VRAM"))
+            notes.append(AcceleratorNote("cuda", False, "low_vram", {
+                "gpu": gpu.name, "gb": str(MIN_GPU_VRAM_MB // 1024)}))
         else:
             out.append("cuda")
-            notes.append(AcceleratorNote("cuda", True, shown))
+            notes.append(
+                AcceleratorNote("cuda", True, "gpu_ready_driver",
+                                {"gpu": gpu.name, "driver": gpu.driver_version})
+                if gpu.driver_version
+                else AcceleratorNote("cuda", True, "gpu_ready", {"gpu": gpu.name})
+            )
 
     gpu_vendors = [g for g in gpus if g.vendor in ("nvidia", "amd", "intel")]
     if gpu_vendors:
         gpu = gpu_vendors[0]
         if vulkan_available:
             out.append("vulkan")
-            notes.append(AcceleratorNote("vulkan", True, gpu.name))
+            notes.append(AcceleratorNote("vulkan", True, "gpu_ready", {"gpu": gpu.name}))
         else:
-            notes.append(AcceleratorNote(
-                "vulkan", False, f"{gpu.name} found, but no Vulkan driver (vulkan-1.dll)"))
+            notes.append(AcceleratorNote("vulkan", False, "no_vulkan_loader", {"gpu": gpu.name}))
 
     out.append("cpu")
-    notes.append(AcceleratorNote(
-        "cpu", True, "always available" if gpu_vendors else "no usable GPU detected"))
+    notes.append(AcceleratorNote("cpu", True, "cpu_always" if gpu_vendors else "cpu_no_gpu"))
     return tuple(out), notes
 
 
