@@ -137,7 +137,8 @@ jobs:
           # GPUs (Blackwell) JIT it — "all-major" doubled the build time for
           # datacenter parts nobody runs this app on. (CMake reads CUDAARCHS.)
           CUDAARCHS: 61-real;75-real;86-real;89-real;89-virtual
-          # DLLs delvewheel must not vendor into pywhispercpp's wheel: the
+          # DLLs delvewheel must not vendor into pywhispercpp's wheel (see
+          # packaging/runtimes/patch_pywhispercpp.py; ':'-delimited): the
           # NVIDIA driver (absent on the runner, provided by the user's
           # driver), the CUDA runtime (shipped once in the pack's bin/ for
           # llama.cpp and whisper.cpp alike) and the Vulkan loader (driver).

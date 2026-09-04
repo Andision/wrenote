@@ -45,9 +45,12 @@ def patch(setup_py: Path) -> None:
     new_repair = (
         "            cmd = [sys.executable, '-m', 'delvewheel', 'repair', str(wheel_path),\n"
         "                   '-w', str(tmp_dir), '--add-path', dll_folder]\n"
-        "            excl = os.environ.get('WRENOTE_DELVEWHEEL_EXCLUDE', '').strip(':')\n"
-        "            if excl:\n"
-        "                cmd += ['--exclude', excl]\n"
+        "            # delvewheel validates each --exclude value and accepts the flag\n"
+        "            # repeatedly, so pass one name per flag rather than joining them\n"
+        "            # (its own delimiter is os.pathsep, ';' on Windows).\n"
+        "            for name in os.environ.get('WRENOTE_DELVEWHEEL_EXCLUDE', '').split(':'):\n"
+        "                if name.strip():\n"
+        "                    cmd += ['--exclude', name.strip()]\n"
         "            print('wrenote: repairing with', ' '.join(cmd))\n"
         "            subprocess.check_call(cmd)\n"
     )
