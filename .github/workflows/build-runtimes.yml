@@ -197,13 +197,24 @@ jobs:
           python -m pip install --quiet numpy typing_extensions diskcache jinja2 delvewheel
           zip="$(ls dist/runtimes/wrenote-runtime-*.zip)"
           python - "$zip" <<'EOF'
-          import importlib, json, os, pathlib, shutil, subprocess, sys, tempfile, zipfile
+          import importlib, json, os, pathlib, subprocess, sys, tempfile, zipfile
 
           d = pathlib.Path(tempfile.mkdtemp())
           zipfile.ZipFile(sys.argv[1]).extractall(d)
           m = json.loads((d / "MANIFEST.json").read_text())
           print(json.dumps(m, indent=1))
           sys.path.insert(0, str(d / "site-packages"))
+
+          # Where a DLL may come from other than the pack. Taken before the pack's
+          # own bin/ goes on PATH, and with the accelerator SDKs left out: those
+          # are installed on this runner but not on a user's machine, so a pack
+          # that forgot to ship cudart must still fail the audit below.
+          _win = pathlib.Path(os.environ.get("SystemRoot") or "C:/Windows")
+          system_dirs = [_win / "System32", _win / "SysWOW64", pathlib.Path(sys.base_prefix)]
+          system_dirs += [pathlib.Path(e) for e in os.environ.get("PATH", "").split(os.pathsep)
+                          if e.strip() and not any(
+                              t in e.lower() for t in ("cuda", "vulkan"))]
+
           bin_dir = d / "bin"
           if bin_dir.is_dir():
               # Mirror RuntimeManager.activate(): add_dll_directory covers .pyd
@@ -231,8 +242,12 @@ jobs:
           for f in sorted([*d.rglob("*.dll"), *d.rglob("*.pyd")]):
               for dep in needed(f):
                   low = dep.lower()
-                  if (low in in_pack or low in DRIVER or shutil.which(dep)
-                          or low.startswith(("api-ms-win-", "ext-ms-"))):
+                  # shutil.which is no help here: on Windows it appends PATHEXT
+                  # to any name whose extension isn't in it, so it never finds a
+                  # .dll. Look the name up in the directories directly.
+                  if (low in in_pack or low in DRIVER
+                          or low.startswith(("api-ms-win-", "ext-ms-"))
+                          or any((sd / dep).is_file() for sd in system_dirs)):
                       continue
                   unresolved.setdefault(dep, []).append(f.name)
           for dep, users in sorted(unresolved.items()):
