@@ -21,10 +21,18 @@ server:
   port: 8000
   log_level: info
 
+models:
+  dir: ~/.wrenote/models    # where weights are downloaded to
+  catalogue_url: ""         # reserved: a published catalogue, so new models need no app release
+
+# Each backend picks its weights by catalogue id (see engine/models.yaml and
+# `GET /v1/models/status`). Setting params.model_path instead pins an explicit
+# file — the escape hatch for a model we don't ship an entry for; nothing can be
+# downloaded for it.
 stt:
   backend: whisper_cpp
+  model: whisper-large-v3-turbo-q5
   params:
-    model_path: ~/.wrenote/models/ggml-large-v3-turbo-q5_0.bin
     device: auto              # Metal on Mac, CUDA on Win, CPU fallback — whisper.cpp auto-detects
     language: null            # null = per-segment auto-detect (recommended). Pin to "en"/"zh"/… to force.
 
@@ -35,8 +43,8 @@ vad:
 
 translator:
   backend: llama_cpp
+  model: hy-mt2-1.8b-q4
   params:
-    model_path: ~/.wrenote/models/Hy-MT2-1.8B-Q4_K_M.gguf
     n_ctx: 4096
     n_gpu_layers: -1          # offload all layers to Metal/CUDA; set 0 to force CPU
     temperature: 0.0
@@ -45,8 +53,8 @@ speaker:
   # ECAPA-TDNN, exported from SpeechBrain to a torch-free ONNX (downloaded from
   # HuggingFace on first run, like the other models). Offline diarization only.
   backend: ecapa
-  params:
-    model_path: ~/.wrenote/models/spkrec-ecapa-voxceleb.onnx
+  model: ecapa-voxceleb
+  params: {}
 
 chat:
   # Qwen3-4B-Instruct-2507 (July 2025) — pure transformer, fully supported by
@@ -55,8 +63,8 @@ chat:
   # binding catches up. Model is lazy-loaded on first chat request.
   # Swap backend: mock for frontend dev without paying the model cost.
   backend: llama_cpp
+  model: qwen3-4b-instruct-q4
   params:
-    model_path: ~/.wrenote/models/Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf
     # 32K covers ~30-min meetings comfortably. Model was trained at 262K
     # native, so raising this further is safe — KV cache grows linearly
     # (~50 MB / 8K at this model size).

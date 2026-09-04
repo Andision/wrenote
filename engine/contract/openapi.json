@@ -600,7 +600,7 @@
     },
     "/v1/models/status": {
       "get": {
-        "description": "Which required models are present in ~/.wrenote/models/, and their sizes.",
+        "description": "Which required model files are present locally, and their sizes.",
         "operationId": "models_status_v1_models_status_get",
         "responses": {
           "200": {

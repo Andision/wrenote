@@ -94,6 +94,32 @@ is a method on it, and every method has a safe "unsupported" default:
 `class X(PlatformAdapter): name = "x"`), a `packaging/<x>/` recipe, and a CI
 matrix row. Nothing in `core/`, `api/` or any client changes.
 
+## Models (`engine/models.yaml`, `core/catalogue.py`)
+
+Three separate concerns used to be one tangle: *what models exist* was a dict
+keyed by filename in `core/models.py`, *which one to use* was a path in the
+config that had to spell that same filename, and *how to run one* is the
+backend. Only the third was ever in the right place.
+
+* **What exists is data.** `engine/models.yaml` lists each model with an id,
+  kind, backend, tier, size and sha256. `~/.wrenote/models.yaml` merges over it
+  by id, so a user adds or replaces entries without touching code.
+* **`size` and `sha256` are generated, not typed.**
+  `packaging/models/refresh_catalogue.py` asks HuggingFace and rewrites those
+  lines in place (an LFS object id is the file's sha256); `--check` fails on
+  drift. It edits lines rather than re-dumping the YAML, because a round-trip
+  would delete every comment in the file.
+* **Config picks by id**: `stt.model: whisper-large-v3-turbo-q5`. Resolution is
+  `params.model_path` (explicit path wins — the escape hatch, and what keeps
+  every pre-catalogue `~/.wrenote/config.yaml` working) → `model:` id →
+  the catalogue's default for that kind, if its backend matches.
+* **Downloads verify the hash** before the atomic rename, and delete the partial
+  on mismatch — `present` is a size check, so a wrong file of the right length
+  would otherwise be trusted forever. Re-hashing gigabytes on every status poll
+  is not an option, which is why the check lives at the end of the download.
+* Adding a *backend* needs no new machinery: `core/registry.py` is already a
+  factory, and a remote provider registers into it like a local one.
+
 ## Compute runtimes (`engine/wrenote/core/runtimes.py`)
 
 Local inference has to cope with NVIDIA, AMD and Intel GPUs (and NPUs) on

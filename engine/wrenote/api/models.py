@@ -1,4 +1,8 @@
-"""First-run model download (status + background download job)."""
+"""First-run model download (status + background download job).
+
+Which files are needed comes from :mod:`wrenote.core.catalogue` — the config
+names a model id, the catalogue says which files that is and where they live.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -7,19 +11,23 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
+from ..core.catalogue import ModelCatalogue
 from ..core.config import Config
 from ..core.jobs import JobRegistry, Phase
 from ..core.models import download_model, required_models
-from ..deps import get_config, get_jobs
+from ..deps import get_catalogue, get_config, get_jobs
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.get("/models/status")
-async def models_status(cfg: Config = Depends(get_config)) -> dict[str, Any]:
-    """Which required models are present in ~/.wrenote/models/, and their sizes."""
-    entries = required_models(cfg)
+async def models_status(
+    cfg: Config = Depends(get_config),
+    catalogue: ModelCatalogue = Depends(get_catalogue),
+) -> dict[str, Any]:
+    """Which required model files are present locally, and their sizes."""
+    entries = required_models(cfg, catalogue)
     return {
         "models": [e.status_dict() for e in entries],
         "all_present": all(e.present for e in entries),
@@ -30,10 +38,11 @@ async def models_status(cfg: Config = Depends(get_config)) -> dict[str, Any]:
 async def models_download(
     cfg: Config = Depends(get_config),
     jobs: JobRegistry = Depends(get_jobs),
+    catalogue: ModelCatalogue = Depends(get_catalogue),
 ) -> dict[str, Any]:
     """Start downloading any missing models as a background job. Progress streams
     over ``/v1/jobs/{job_id}/stream`` (one weighted phase per model)."""
-    missing = [e for e in required_models(cfg) if not e.present]
+    missing = [e for e in required_models(cfg, catalogue) if not e.present]
     if not missing:
         return {"job_id": None, "all_present": True}
 

@@ -1,14 +1,17 @@
-"""Model manifest + first-run downloader.
+"""First-run model downloader.
 
-Heavy model weights are NOT bundled with the app; they live in
-``~/.wrenote/models/`` and are fetched on first run. The set of required models
-is derived from the active config (whichever STT / translator / chat backends
-need a local file), so a ``mock`` backend requires nothing.
+Heavy model weights are NOT bundled with the app; they live in the models
+directory (``~/.wrenote/models/`` by default) and are fetched on first run.
+*Which* models is decided by :mod:`wrenote.core.catalogue` from the active
+config, so a ``mock`` backend requires nothing.
 
 Downloads stream to a ``.partial`` file with HTTP ``Range`` resume and an atomic
 rename on completion, so a killed download resumes instead of leaving a corrupt
-model that only fails later at load time. Set ``HF_ENDPOINT`` (e.g.
-``https://hf-mirror.com``) to use a HuggingFace mirror.
+model that only fails later at load time. When the catalogue knows the file's
+sha256 it is verified before that rename: a truncated download, a corrupted
+transfer or a file swapped upstream should fail here, loudly, rather than at
+inference time as gibberish. Set ``HF_ENDPOINT`` (e.g. ``https://hf-mirror.com``)
+to use a HuggingFace mirror.
 """
 from __future__ import annotations
 
@@ -23,6 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .catalogue import ModelCatalogue, resolve_all
+
 if TYPE_CHECKING:
     from .config import Config
 
@@ -31,50 +36,21 @@ log = logging.getLogger(__name__)
 CHUNK = 1 << 20  # 1 MiB streaming chunk
 
 
-def _hf_base() -> str:
-    """HuggingFace base URL; override with HF_ENDPOINT for a mirror."""
-    return os.environ.get("HF_ENDPOINT", "https://huggingface.co").rstrip("/")
-
-
-# filename -> (HF repo path after /<base>/, approx size in bytes for weighting).
-# Approx sizes come from the published files; the real total is taken from the
-# server's Content-Length at download time.
-_KNOWN: dict[str, tuple[str, int]] = {
-    "ggml-large-v3-turbo-q5_0.bin": (
-        "ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
-        574_041_195,
-    ),
-    "Hy-MT2-1.8B-Q4_K_M.gguf": (
-        "tencent/Hy-MT2-1.8B-GGUF/resolve/main/Hy-MT2-1.8B-Q4_K_M.gguf",
-        1_133_080_448,
-    ),
-    "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf": (
-        "bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/resolve/main/"
-        "Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-        2_497_280_736,
-    ),
-    # ECAPA-TDNN speaker embedding, exported from speechbrain to ONNX (torch-free).
-    "spkrec-ecapa-voxceleb.onnx": (
-        "Andision/wrenote-models/resolve/main/spkrec-ecapa-voxceleb.onnx",
-        84_083_886,
-    ),
-}
-
-
 @dataclass(frozen=True)
 class ModelEntry:
-    key: str  # "stt" | "translator" | "chat"
-    path: Path  # where it must live (from config)
-    repo_path: str  # HF path after the base
+    """One file to fetch, tied back to the catalogue entry that named it."""
+
+    key: str  # the kind that needs it: "stt" | "translator" | "chat" | "speaker"
+    path: Path  # where it must live
+    url: str
     approx_size: int
+    sha256: str = ""  # "" when upstream exposes no content hash
+    model_id: str = ""
+    model_name: str = ""
 
     @property
     def filename(self) -> str:
         return self.path.name
-
-    @property
-    def url(self) -> str:
-        return f"{_hf_base()}/{self.repo_path}"
 
     @property
     def partial(self) -> Path:
@@ -82,8 +58,9 @@ class ModelEntry:
 
     @property
     def present(self) -> bool:
-        # "Present" = full file exists and is at least ~99% of the expected size
-        # (guards against a truncated/partial left behind as the final name).
+        # Size, not hash: this is called on every status poll, and re-hashing
+        # several GB to answer "is it there" would be absurd. The hash is
+        # checked once, at the end of the download that produced the file.
         return self.path.exists() and self.path.stat().st_size >= int(self.approx_size * 0.99)
 
     def status_dict(self) -> dict[str, object]:
@@ -98,34 +75,35 @@ class ModelEntry:
             "present": self.present,
             "size": self.approx_size,
             "downloaded": downloaded,
+            "model_id": self.model_id,
+            "model_name": self.model_name,
         }
 
 
-def _entry_for(key: str, model_path: str | None) -> ModelEntry | None:
-    if not model_path:
-        return None
-    path = Path(model_path).expanduser()
-    known = _KNOWN.get(path.name)
-    if known is None:
-        # A custom / unknown model the user pointed at; we can't auto-download it.
-        log.warning("No download source known for %s (%s); skipping", key, path.name)
-        return None
-    repo_path, size = known
-    return ModelEntry(key=key, path=path, repo_path=repo_path, approx_size=size)
+def required_models(cfg: Config, catalogue: ModelCatalogue | None = None) -> list[ModelEntry]:
+    """Files the active config needs locally, in download order.
 
-
-def required_models(cfg: Config) -> list[ModelEntry]:
-    """Models the active config needs as local files (mock backends need none)."""
+    A kind resolved to an explicit ``model_path`` contributes nothing: we don't
+    know where a user's own file came from, so we can't fetch it.
+    """
+    cat = catalogue or ModelCatalogue.load()
+    models_dir = Path(cfg.models.dir).expanduser()
     entries: list[ModelEntry] = []
-    if cfg.stt.backend == "whisper_cpp":
-        entries.append(_entry_for("stt", cfg.stt.params.get("model_path")))
-    if cfg.translator.backend == "llama_cpp":
-        entries.append(_entry_for("translator", cfg.translator.params.get("model_path")))
-    if cfg.chat.backend == "llama_cpp":
-        entries.append(_entry_for("chat", cfg.chat.params.get("model_path")))
-    if cfg.speaker.backend == "ecapa":
-        entries.append(_entry_for("speaker", cfg.speaker.params.get("model_path")))
-    return [e for e in entries if e is not None]
+    for kind, resolved in resolve_all(cfg, cat).items():
+        spec = resolved.spec
+        if spec is None:
+            continue
+        for f in spec.files:
+            entries.append(ModelEntry(
+                key=kind,
+                path=f.local_path(models_dir),
+                url=f.url,
+                approx_size=f.size,
+                sha256=f.sha256,
+                model_id=spec.id,
+                model_name=spec.name,
+            ))
+    return entries
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -192,6 +170,18 @@ async def download_model(
         raise RuntimeError(
             f"{entry.filename}: download truncated ({done}/{total} bytes)"
         )
+    if entry.sha256:
+        on_progress(0.999, f"Verifying {entry.filename}")
+        actual = await asyncio.to_thread(sha256_of, partial)
+        if actual != entry.sha256:
+            # Keep nothing: a file that hashes wrong is worse than no file,
+            # because `present` (a size check) would accept it forever after.
+            partial.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"{entry.filename}: checksum mismatch "
+                f"(expected {entry.sha256[:12]}…, got {actual[:12]}…). "
+                "The download was corrupted, or the file changed upstream."
+            )
     os.replace(partial, entry.path)  # atomic
     on_progress(1.0, f"{entry.filename} ready")
 

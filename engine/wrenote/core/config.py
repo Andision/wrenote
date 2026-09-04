@@ -32,13 +32,30 @@ class ServerConfig(BaseModel):
 
 
 class BackendConfig(BaseModel):
+    """One pluggable backend: which implementation, which model, what tuning.
+
+    ``model`` names an entry in the catalogue (``engine/models.yaml``); the file
+    paths it implies are merged into ``params`` at resolution time. An explicit
+    ``params.model_path`` overrides it — see :mod:`wrenote.core.catalogue`.
+    """
+
     backend: str
+    model: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
 
 
 class SessionConfig(BaseModel):
     default_src_lang: str = "en"
     default_tgt_lang: str = "zh"
+
+
+class ModelsConfig(BaseModel):
+    """Where model weights live, and where the catalogue can be extended."""
+
+    dir: str = "~/.wrenote/models"
+    # Reserved: a published catalogue index, so new models need no app release.
+    # Empty = the bundled catalogue plus ~/.wrenote/models.yaml only.
+    catalogue_url: str = ""
 
 
 class ComputeConfig(BaseModel):
@@ -78,6 +95,7 @@ class Config(BaseSettings):
     speaker: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="ecapa"))
     chat: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="mock"))
     session: SessionConfig = Field(default_factory=SessionConfig)
+    models: ModelsConfig = Field(default_factory=ModelsConfig)
     compute: ComputeConfig = Field(default_factory=ComputeConfig)
 
     @classmethod

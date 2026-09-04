@@ -70,6 +70,7 @@ if IS_MAC:
 datas = [
     (os.path.join(ENGINE, "static", "app"), "static/app"),
     (os.path.join(ENGINE, "config.yaml"), "."),
+    (os.path.join(ENGINE, "models.yaml"), "."),  # the model catalogue
     (os.path.join(ENGINE, "wrenote", "vad", "assets", "silero_vad.onnx"), "wrenote/vad/assets"),
 ]
 datas += collect_data_files("pywhispercpp")

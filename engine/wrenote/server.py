@@ -38,6 +38,7 @@ from .api import (
     upload,
 )
 from .auth import AUTH_TOKEN, install_loopback_auth
+from .core.catalogue import ModelCatalogue, resolve
 from .core.config import Config, load_config
 from .core.jobs import JobRegistry
 from .core.registry import make_chat, make_speaker
@@ -106,13 +107,19 @@ def _make_lifespan(config: Config | None):
         # their weights load lazily on first use — most sessions never invoke
         # chat (~3GB) or diarization, so paying the load cost at startup is
         # wasteful. ModelManager owns that lazy lifecycle.
+        # One catalogue per process: it reads two YAML files, and every backend
+        # construction asks it which model the config actually meant.
+        catalogue = ModelCatalogue.load()
+        app.state.catalogue = catalogue
+        log.info("model catalogue: %d entries", len(catalogue))
+
         diarize_speaker = (
-            make_speaker(cfg.speaker.backend, cfg.speaker.params)
+            make_speaker(cfg.speaker.backend, resolve(cfg, "speaker", catalogue).params)
             if cfg.speaker.backend not in (None, "", "disabled")
             else None
         )
         app.state.models = ModelManager(
-            chat_backend=make_chat(cfg.chat.backend, cfg.chat.params),
+            chat_backend=make_chat(cfg.chat.backend, resolve(cfg, "chat", catalogue).params),
             diarize_speaker=diarize_speaker,
         )
         # In-memory job registry for async upload + diarize.

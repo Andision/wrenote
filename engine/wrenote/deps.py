@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import Request
 
+from .core.catalogue import ModelCatalogue
 from .core.config import Config
 from .core.jobs import JobRegistry
 from .core.runtimes import RuntimeManager
@@ -34,3 +35,7 @@ def get_models(request: Request) -> ModelManager:
 
 def get_runtimes(request: Request) -> RuntimeManager:
     return request.app.state.runtimes
+
+
+def get_catalogue(request: Request) -> ModelCatalogue:
+    return request.app.state.catalogue

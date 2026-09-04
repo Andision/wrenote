@@ -23,6 +23,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from .api._common import SAFE_SESSION_ID
 from .auth import AUTH_COOKIE, AUTH_TOKEN, origin_allowed
 from .core import glossary, screenrec
+from .core.catalogue import resolve
 from .core.config import Config
 from .core.events import (
     ErrorEvent,
@@ -131,12 +132,15 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
         # Build backends per connection (P1-a; share via app.state in a later pass)
         try:
-            stt = make_stt(cfg.stt.backend, cfg.stt.params)
-            vad = make_vad(cfg.vad.backend, cfg.vad.params)
-            translator = make_translator(cfg.translator.backend, cfg.translator.params)
+            catalogue = ws.app.state.catalogue
+            stt = make_stt(cfg.stt.backend, resolve(cfg, "stt", catalogue).params)
+            vad = make_vad(cfg.vad.backend, cfg.vad.params)  # no model file
+            translator = make_translator(
+                cfg.translator.backend, resolve(cfg, "translator", catalogue).params
+            )
             speaker = None
             if speaker_enabled and cfg.speaker.backend not in (None, "", "disabled"):
-                speaker = make_speaker(cfg.speaker.backend, cfg.speaker.params)
+                speaker = make_speaker(cfg.speaker.backend, resolve(cfg, "speaker", catalogue).params)
         except ValueError as e:
             await _send_error(ws, "BAD_CONFIG", str(e), recoverable=False)
             return

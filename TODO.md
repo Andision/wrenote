@@ -29,10 +29,11 @@ machine has no way to run something better. The first-run wizard already
 probes the hardware for the runtime pick — the model tier is the other half of
 that same question.
 
-- [ ] Model catalogue in config/data, not a dict in the module
-- [ ] Backend factory so a new model or provider is registration, not surgery
-      (the STT/translator/chat registries already do this for *backends*;
-      extend it to model entries)
+- [x] Model catalogue in data (`engine/models.yaml`), not a dict in the module,
+      with `size`/`sha256` generated from upstream and verified on download
+- [x] Config picks a model by id; `params.model_path` stays as the escape hatch
+- [ ] `models.dir` is configurable now — do the same for recordings and the DB
+      (see "Data directory" below)
 - [ ] Tiers (small / medium / large) recommended from the probed hardware,
       offered in `SetupGate` beside the runtime choice
 - [ ] Adapters for common third-party APIs (OpenAI-compatible chat/completions,
