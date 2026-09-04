@@ -35,7 +35,10 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-timeout>=2.3",
-    "ruff>=0.7",
+    # Pinned, not floating: a lint gate whose rule set changes under you is
+    # worse than none. The first checks.yml run failed on a rule that only
+    # exists in a newer ruff than the one on the developer's PATH.
+    "ruff==0.16.5",
     "mypy>=1.13",
     "websockets>=13.0",
 ]

@@ -400,7 +400,7 @@ class Pipeline:
 
     # ---------- Loops ----------
 
-    async def _wait_audio_or_stop(self) -> AudioChunk | None | str:
+    async def _wait_audio_or_stop(self) -> AudioChunk | str | None:
         """Wait for the next chunk, the stopping signal, or a force-close signal.
 
         Returns:
