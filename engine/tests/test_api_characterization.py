@@ -53,6 +53,7 @@ EXPECTED_ROUTES = {
     ("PATCH", "/v1/sessions/{session_id}/group"),
     ("PATCH", "/v1/sessions/{session_id}/speakers"),
     ("POST", "/v1/models/download"),
+    ("POST", "/v1/models/select"),
     ("POST", "/v1/groups"),
     ("POST", "/v1/sessions/upload"),
     ("POST", "/v1/sessions/{session_id}/conversations"),

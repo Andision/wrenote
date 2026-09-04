@@ -1,6 +1,7 @@
 {
-  "$meta": { "name": "English" },
-
+  "$meta": {
+    "name": "English"
+  },
   "common": {
     "cancel": "Cancel",
     "close": "Close",
@@ -16,11 +17,9 @@
     "save": "Save",
     "stop": "Stop"
   },
-
   "session": {
     "new": "New session"
   },
-
   "lang": {
     "auto": "Auto detect",
     "from": "From",
@@ -29,14 +28,12 @@
     "target": "Target language",
     "to": "to"
   },
-
   "theme": {
     "light": "Light",
     "dark": "Dark",
     "system": "System",
     "toggle": "Theme: {current} — switch to {next}"
   },
-
   "sidebar": {
     "recent": "Recent",
     "empty": "No sessions yet. Hit {action} to start.",
@@ -54,7 +51,6 @@
     "deleteGroupTitle": "Delete group?",
     "deleteGroupBody": "\"{name}\" will be removed. Its sessions are kept and moved out of the group."
   },
-
   "topbar": {
     "rename": "Double-click to rename",
     "overlay": "Floating subtitles (always-on-top live transcript)",
@@ -83,7 +79,6 @@
       "jobLabel": "Translate: {title}"
     }
   },
-
   "preflight": {
     "translateOn": "Translate as I speak",
     "translateOff": "Transcribe only · no translation",
@@ -103,7 +98,6 @@
     "starting": "Starting",
     "privacy": "Running locally · no audio leaves your device"
   },
-
   "transcript": {
     "preparing": "Preparing…",
     "preparingHint": "First start takes a moment while Whisper and the translator load.",
@@ -118,7 +112,6 @@
     "speakerUnknown": "Unidentified — click to name this speaker (this segment only)",
     "speakerRename": "Click to rename — applies to all segments by this speaker"
   },
-
   "player": {
     "play": "Play from start",
     "pause": "Pause",
@@ -130,7 +123,6 @@
     "abSetB": "Click to set point B",
     "speed": "Playback speed"
   },
-
   "chat": {
     "switch": "Switch conversation",
     "history": "Conversation history",
@@ -154,7 +146,6 @@
     "placeholderNoSession": "Start a session to chat",
     "send": "Send (Enter)"
   },
-
   "export": {
     "tooltip": "Export transcript",
     "format": {
@@ -169,7 +160,6 @@
     "copied": "Transcript copied",
     "failed": "Export failed"
   },
-
   "upload": {
     "title": "Transcribe from file",
     "drop": "Drop files or click to choose",
@@ -185,14 +175,12 @@
     "startN": "Transcribe ({count})",
     "jobLabel": "Transcribe: {title}"
   },
-
   "glossary": {
     "title": "Glossary · custom vocabulary",
     "termPlaceholder": "Term (e.g. Kubernetes, 张伟)",
     "translationPlaceholder": "Translation (optional)",
     "removeTerm": "Remove term"
   },
-
   "progress": {
     "starting": "Starting…",
     "complete": "Complete",
@@ -200,13 +188,11 @@
     "showLog": "Show log",
     "hideLog": "Hide log"
   },
-
   "overlay": {
     "compact": "Compact bar",
     "expand": "Expand subtitles",
     "close": "Close overlay"
   },
-
   "settings": {
     "title": "Settings",
     "cat": {
@@ -239,7 +225,6 @@
     "nextSessionNote": "Some changes only take effect on the next session.",
     "enginesEmpty": "Start a session to see the active backends."
   },
-
   "setup": {
     "step": "Step {current} of {total}",
     "computeTitle": "Choose how Wrenote runs",
@@ -255,7 +240,41 @@
     "modelsHint": "Saved to ~/.wrenote/models · resumes if interrupted",
     "restart": "Restart Wrenote afterwards to use the new runtime."
   },
-
+  "models": {
+    "kind": {
+      "stt": "Speech recognition",
+      "translator": "Translation",
+      "chat": "Chat",
+      "speaker": "Speaker identification"
+    },
+    "onDisk": "on disk",
+    "sizeMb": "{mb} MB",
+    "loading": "Loading models…",
+    "missing_one": "1 file to download · {mb} MB",
+    "missing_other": "{count} files to download · {mb} MB",
+    "downloadMissing": "Download",
+    "nextSession": "The new model applies to your next session.",
+    "statusFailed": "could not load the model list",
+    "selectFailed": "could not save the model choice",
+    "reason": {
+      "ample_ram": "{ram} RAM — the best models fit",
+      "moderate_ram": "{ram} RAM",
+      "limited_ram": "{ram} RAM — keeping it light",
+      "gpu_headroom": "{gpu} — room for a bigger model"
+    },
+    "blocked": {
+      "needs_ram": "Needs about {need} of memory"
+    },
+    "note": {
+      "stt_fast_rough": "Fastest, least accurate — fine for clear speech in one language",
+      "stt_balanced": "A good balance for most machines",
+      "stt_best": "Most accurate, especially with accents and mixed languages",
+      "mt_default": "Translation-specific model",
+      "chat_light": "Lighter, for machines with less memory",
+      "chat_default": "Better answers over long transcripts",
+      "speaker_default": "Voice embeddings for telling speakers apart"
+    }
+  },
   "compute": {
     "hardware": "Hardware",
     "platform": "Platform",

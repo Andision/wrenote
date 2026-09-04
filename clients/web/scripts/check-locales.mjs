@@ -21,6 +21,10 @@ const FALLBACK = "en";
 /** Prefixes whose keys are composed at runtime; exempt from the unused check. */
 const DYNAMIC_PREFIXES = [
   "theme.", // theme.${mode}
+  "models.kind.", // models.kind.${kind}
+  "models.reason.", // models.reason.${code}, from the engine
+  "models.blocked.", // models.blocked.${code}, from the engine
+  "models.note.", // models.note.${note_code}, from the catalogue
   "settings.cat.", // settings.cat.${id}
   "compute.selection.", // compute.selection.${reason}, from the engine
   "compute.reason.", // compute.reason.${code}, from the engine
@@ -68,23 +72,43 @@ if (!base) {
   process.exit(1);
 }
 
+// `t("x", {count})` looks up x_one / x_other (Intl.PluralRules); the source
+// only ever mentions the base, so treat a base and its plural forms as one key.
+const PLURAL_FORMS = ["zero", "one", "two", "few", "many", "other"];
+const pluralBase = (k) => {
+  const cut = k.lastIndexOf("_");
+  return cut > 0 && PLURAL_FORMS.includes(k.slice(cut + 1)) ? k.slice(0, cut) : k;
+};
+const defined = (messages, key) =>
+  key in messages || PLURAL_FORMS.some((f) => `${key}_${f}` in messages);
+
 const problems = [];
 const isDynamic = (k) => DYNAMIC_PREFIXES.some((p) => k.startsWith(p));
 
 for (const key of [...used].sort()) {
-  if (!(key in base)) problems.push(`missing in ${FALLBACK}: ${key}`);
+  if (!defined(base, key)) problems.push(`missing in ${FALLBACK}: ${key}`);
 }
 for (const [tag, messages] of Object.entries(locales)) {
   if (tag === FALLBACK) continue;
   for (const key of Object.keys(base)) {
-    if (!(key in messages)) problems.push(`missing in ${tag}: ${key}`);
+    // Plural categories differ by language: zh has only "other", en needs
+    // "one" too. Requiring the same forms everywhere would be wrong, so the
+    // check is that the *key* is covered, in whatever forms that language uses.
+    if (!(key in messages) && !defined(messages, pluralBase(key))) {
+      problems.push(`missing in ${tag}: ${pluralBase(key)}`);
+    }
   }
   for (const key of Object.keys(messages)) {
-    if (!(key in base)) problems.push(`not in ${FALLBACK} (stale?): ${tag}: ${key}`);
+    if (!defined(base, pluralBase(key))) {
+      problems.push(`not in ${FALLBACK} (stale?): ${tag}: ${key}`);
+    }
   }
 }
 for (const key of Object.keys(base)) {
-  if (!used.has(key) && !isDynamic(key)) problems.push(`unused: ${key}`);
+  const base_ = pluralBase(key);
+  if (!used.has(key) && !used.has(base_) && !isDynamic(key)) {
+    problems.push(`unused: ${key}`);
+  }
 }
 
 const tags = Object.keys(locales).sort();

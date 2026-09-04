@@ -34,8 +34,8 @@ that same question.
 - [x] Config picks a model by id; `params.model_path` stays as the escape hatch
 - [ ] `models.dir` is configurable now — do the same for recordings and the DB
       (see "Data directory" below)
-- [ ] Tiers (small / medium / large) recommended from the probed hardware,
-      offered in `SetupGate` beside the runtime choice
+- [x] Tiers (small / medium / large) recommended from the probed hardware,
+      offered in `SetupGate` and in Settings → Models
 - [ ] Adapters for common third-party APIs (OpenAI-compatible chat/completions,
       whisper-style transcription) so a user can point at a remote model —
       strictly opt-in, and the privacy claim in the UI must change when it is on

@@ -117,6 +117,19 @@ backend. Only the third was ever in the right place.
   on mismatch — `present` is a size check, so a wrong file of the right length
   would otherwise be trusted forever. Re-hashing gigabytes on every status poll
   is not an option, which is why the check lives at the end of the download.
+* **Which model to offer is ranked against the machine.** `catalogue.options()`
+  returns the same shape as `RuntimeManager.options()` — ordered, one
+  recommended, reasons as codes — so the wizard and Settings render both the
+  same way. The target tier comes from RAM plus *discrete* VRAM (with
+  `n_gpu_layers=-1` the weights live on the GPU; an iGPU's VRAM is system RAM
+  and is not counted twice). A model that doesn't fit stays listed with its
+  blocker rather than disappearing.
+* **A change applies as soon as it can.** STT and the translator are built per
+  WebSocket session, so a new choice lands on the next session; chat and the
+  diarization speaker are held by `ModelManager` and are swapped in place, old
+  weights unloaded. `POST /v1/models/select` answers `applies: "now" |
+  "next_session"` and never asks for a restart — claiming one trains people to
+  restart for nothing.
 * Adding a *backend* needs no new machinery: `core/registry.py` is already a
   factory, and a remote provider registers into it like a local one.
 

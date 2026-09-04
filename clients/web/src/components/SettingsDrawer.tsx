@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   BookMarked,
+  Boxes,
   Cpu,
   Gauge,
   Monitor,
@@ -17,13 +18,21 @@ import { useTheme } from "next-themes";
 
 import { ComputePanel } from "@/components/ComputePanel";
 import { GlossaryEditor } from "@/components/GlossaryEditor";
+import { ModelsPanel } from "@/components/ModelsPanel";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useSessionStore } from "@/store/sessionStore";
 import { LOCALE_LIST, useI18n, useT } from "@/i18n";
 
-type CategoryId = "general" | "segmentation" | "realtime" | "glossary" | "engines" | "compute";
+type CategoryId =
+  | "general"
+  | "segmentation"
+  | "realtime"
+  | "glossary"
+  | "models"
+  | "engines"
+  | "compute";
 
 // Labels are message keys; the rail resolves them at render.
 const CATEGORIES: { id: CategoryId; icon: LucideIcon }[] = [
@@ -31,6 +40,7 @@ const CATEGORIES: { id: CategoryId; icon: LucideIcon }[] = [
   { id: "segmentation", icon: Scissors },
   { id: "realtime", icon: Zap },
   { id: "glossary", icon: BookMarked },
+  { id: "models", icon: Boxes },
   { id: "engines", icon: Cpu },
   { id: "compute", icon: Gauge },
 ];
@@ -205,6 +215,8 @@ export function SettingsDrawer() {
                 )}
 
                 {cat === "glossary" && <GlossaryEditor />}
+
+                {cat === "models" && <ModelsPanel />}
 
                 {cat === "compute" && <ComputePanel />}
 

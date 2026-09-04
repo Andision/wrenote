@@ -1,6 +1,7 @@
 {
-  "$meta": { "name": "简体中文" },
-
+  "$meta": {
+    "name": "简体中文"
+  },
   "common": {
     "cancel": "取消",
     "close": "关闭",
@@ -16,11 +17,9 @@
     "save": "保存",
     "stop": "停止"
   },
-
   "session": {
     "new": "新建会话"
   },
-
   "lang": {
     "auto": "自动检测",
     "from": "源语言",
@@ -29,14 +28,12 @@
     "target": "目标语言",
     "to": "译为"
   },
-
   "theme": {
     "light": "浅色",
     "dark": "深色",
     "system": "跟随系统",
     "toggle": "主题：{current} — 点击切换到{next}"
   },
-
   "sidebar": {
     "recent": "最近",
     "empty": "还没有会话。点击「{action}」开始。",
@@ -54,7 +51,6 @@
     "deleteGroupTitle": "删除这个分组？",
     "deleteGroupBody": "「{name}」将被删除。组内会话会保留，并移出该分组。"
   },
-
   "topbar": {
     "rename": "双击重命名",
     "overlay": "悬浮字幕（置顶显示实时转写）",
@@ -83,7 +79,6 @@
       "jobLabel": "翻译：{title}"
     }
   },
-
   "preflight": {
     "translateOn": "边说边译",
     "translateOff": "仅转写 · 不翻译",
@@ -103,7 +98,6 @@
     "starting": "启动中",
     "privacy": "本地运行 · 音频不会离开你的设备"
   },
-
   "transcript": {
     "preparing": "准备中…",
     "preparingHint": "首次启动需要片刻，正在加载 Whisper 和翻译模型。",
@@ -118,7 +112,6 @@
     "speakerUnknown": "未识别 — 点击命名（仅作用于本段）",
     "speakerRename": "点击重命名 — 作用于该说话人的所有片段"
   },
-
   "player": {
     "play": "从头播放",
     "pause": "暂停",
@@ -130,7 +123,6 @@
     "abSetB": "点击设定 B 点",
     "speed": "播放速度"
   },
-
   "chat": {
     "switch": "切换对话",
     "history": "对话历史",
@@ -154,7 +146,6 @@
     "placeholderNoSession": "开始一个会话后即可对话",
     "send": "发送（回车）"
   },
-
   "export": {
     "tooltip": "导出转写",
     "format": {
@@ -169,7 +160,6 @@
     "copied": "转写已复制",
     "failed": "导出失败"
   },
-
   "upload": {
     "title": "从文件转写",
     "drop": "拖入文件，或点击选择",
@@ -185,14 +175,12 @@
     "startN": "开始转写（{count}）",
     "jobLabel": "转写：{title}"
   },
-
   "glossary": {
     "title": "术语表 · 自定义词汇",
     "termPlaceholder": "术语（例如 Kubernetes、张伟）",
     "translationPlaceholder": "译法（可选）",
     "removeTerm": "移除该术语"
   },
-
   "progress": {
     "starting": "开始中…",
     "complete": "已完成",
@@ -200,13 +188,11 @@
     "showLog": "展开日志",
     "hideLog": "收起日志"
   },
-
   "overlay": {
     "compact": "精简条",
     "expand": "展开字幕",
     "close": "关闭悬浮窗"
   },
-
   "settings": {
     "title": "设置",
     "cat": {
@@ -239,7 +225,6 @@
     "nextSessionNote": "部分改动会在下一个会话生效。",
     "enginesEmpty": "开始一个会话后即可看到正在使用的引擎。"
   },
-
   "setup": {
     "step": "第 {current} 步，共 {total} 步",
     "computeTitle": "选择 Wrenote 的运行方式",
@@ -255,7 +240,40 @@
     "modelsHint": "保存到 ~/.wrenote/models · 中断后可续传",
     "restart": "完成后重启 Wrenote 即可启用新的运行时。"
   },
-
+  "models": {
+    "kind": {
+      "stt": "语音识别",
+      "translator": "翻译",
+      "chat": "对话",
+      "speaker": "说话人识别"
+    },
+    "onDisk": "已下载",
+    "sizeMb": "{mb} MB",
+    "loading": "正在加载模型列表…",
+    "missing_other": "需下载 {count} 个文件 · {mb} MB",
+    "downloadMissing": "下载",
+    "nextSession": "新模型将在下一个会话生效。",
+    "statusFailed": "无法获取模型列表",
+    "selectFailed": "无法保存模型选择",
+    "reason": {
+      "ample_ram": "{ram} 内存 —— 可以用最好的模型",
+      "moderate_ram": "{ram} 内存",
+      "limited_ram": "{ram} 内存 —— 建议选轻量的",
+      "gpu_headroom": "{gpu} —— 显存足够跑更大的模型"
+    },
+    "blocked": {
+      "needs_ram": "大约需要 {need} 内存"
+    },
+    "note": {
+      "stt_fast_rough": "最快，准确度最低 —— 单一语种、口齿清晰时够用",
+      "stt_balanced": "多数机器上的均衡选择",
+      "stt_best": "最准，尤其是口音和中英混说的场景",
+      "mt_default": "翻译专用模型",
+      "chat_light": "更轻量，适合内存较小的机器",
+      "chat_default": "长转写稿上的回答质量更好",
+      "speaker_default": "用于区分不同说话人的声纹模型"
+    }
+  },
   "compute": {
     "hardware": "硬件",
     "platform": "平台",

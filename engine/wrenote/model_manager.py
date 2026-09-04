@@ -59,6 +59,34 @@ class ModelManager:
                     self._diarize_loaded = True
         return self._diarize_speaker
 
+    async def replace_chat(self, backend: ChatBackend) -> None:
+        """Swap the chat backend (a different model was chosen).
+
+        Under the same lock ``ensure_chat_loaded`` uses, so a request that is
+        mid-load finishes against the old backend rather than racing the swap.
+        The old weights are unloaded — otherwise choosing a *smaller* model
+        would raise memory use until the next restart.
+        """
+        async with self._chat_lock:
+            old, was_loaded = self._chat_backend, self._chat_loaded
+            self._chat_backend, self._chat_loaded = backend, False
+        if was_loaded:
+            try:
+                await old.unload()
+            except Exception:
+                log.exception("unloading the previous chat backend failed")
+
+    async def replace_diarize_speaker(self, backend: SpeakerBackend | None) -> None:
+        """Swap the offline-diarization speaker backend. See :meth:`replace_chat`."""
+        async with self._diarize_lock:
+            old, was_loaded = self._diarize_speaker, self._diarize_loaded
+            self._diarize_speaker, self._diarize_loaded = backend, False
+        if was_loaded and old is not None:
+            try:
+                await old.unload()
+            except Exception:
+                log.exception("unloading the previous speaker backend failed")
+
     async def aclose(self) -> None:
         """Unload whatever was loaded. Best-effort; logs and continues."""
         if self._chat_loaded:

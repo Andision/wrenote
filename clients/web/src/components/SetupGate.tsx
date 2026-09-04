@@ -17,7 +17,16 @@ import { Button } from "@/components/ui/button";
 import { formatEta, subscribeJob } from "@/lib/jobs";
 import { hardwareText, optionText } from "@/lib/computeText";
 import { useT } from "@/i18n";
-import { getModelStatus, startModelDownload, type ModelStatusItem } from "@/lib/models";
+import {
+  type KindOptions,
+  type ModelKind,
+  type ModelStatusItem,
+  getModelStatus,
+  selectModel,
+  startModelDownload,
+} from "@/lib/models";
+import { ModelPicker } from "@/components/ModelPicker";
+import { kindReason } from "@/lib/modelText";
 import {
   type ComputeStatus,
   type RuntimeOption,
@@ -52,6 +61,10 @@ export function SetupGate() {
   const [runtimeBusy, setRuntimeBusy] = useState(false);
 
   const [models, setModels] = useState<ModelStatusItem[]>([]);
+  // Model choices for this machine, from the same status call. Picking one
+  // changes which files are needed, so the list above is refetched after.
+  const [modelOptions, setModelOptions] = useState<KindOptions[]>([]);
+  const [pickingModel, setPickingModel] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState("");
   const [restartNeeded, setRestartNeeded] = useState(false);
@@ -69,6 +82,7 @@ export function SetupGate() {
           return;
         }
         setModels(st.models);
+        setModelOptions(st.options ?? []);
         let comp: ComputeStatus | null = null;
         try {
           comp = await getComputeStatus();
@@ -142,6 +156,24 @@ export function SetupGate() {
       setRuntimeBusy(false);
     }
   }, [chosen, compute, t]);
+
+  const chooseModel = useCallback(
+    async (kind: ModelKind, id: string) => {
+      setPickingModel(true);
+      setError("");
+      try {
+        await selectModel(kind, id);
+        const st = await getModelStatus();
+        setModels(st.models);
+        setModelOptions(st.options ?? []);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setPickingModel(false);
+      }
+    },
+    [],
+  );
 
   const beginModelDownload = useCallback(() => {
     setError("");
@@ -230,6 +262,25 @@ export function SetupGate() {
             ))}
           </div>
         )}
+
+        {/* Which models, then which files that implies. Only kinds with a real
+            choice are shown — a single-entry kind is not a decision. */}
+        {!onCompute &&
+          modelOptions
+            .filter((k) => k.options.length > 1)
+            .map((k) => (
+              <section key={k.kind} className="mt-5 space-y-1.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {t(`models.kind.${k.kind}`)}
+                  </h2>
+                  <span className="text-[11px] text-muted-foreground/70">
+                    {kindReason(t, k)}
+                  </span>
+                </div>
+                <ModelPicker kind={k} busy={pickingModel} onPick={(id) => void chooseModel(k.kind, id)} />
+              </section>
+            ))}
 
         {!onCompute && (
           <ul className="mt-5 space-y-1.5">

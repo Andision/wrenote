@@ -69,7 +69,8 @@ under `clients/web/src/i18n/locales/` — see `ARCHITECTURE.md`.
 
 First run walks through setup: pick the compute runtime for your hardware
 (recommended option pre-selected — see `ARCHITECTURE.md`), then download the
-models into `~/.wrenote/models/`. Both are changeable later in Settings.
+models into `~/.wrenote/models/` — the model sizes offered are ranked against
+your hardware. Both are changeable later in Settings.
 
 ## Package
 

@@ -25,11 +25,13 @@ import logging
 import os
 import sys
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
+
+from ..platform import HardwareInfo
 
 if TYPE_CHECKING:
     from .config import Config
@@ -222,12 +224,170 @@ class ModelCatalogue:
     def for_kind(self, kind: str) -> list[ModelSpec]:
         return [self._by_id[i] for i in self._order if self._by_id[i].kind == kind]
 
+    def options(
+        self,
+        kind: str,
+        hw: HardwareInfo,
+        *,
+        models_dir: Path,
+        selected: str | None = None,
+    ) -> KindOptions:
+        """Every model for ``kind``, smallest first, with one recommended.
+
+        The recommendation is the largest tier this machine is targeted at that
+        it can actually run. Models that don't fit stay in the list carrying
+        their blocker: an option that silently vanishes reads as a missing
+        feature, not as a considered exclusion.
+        """
+        target, reason, params = _target_tier(hw)
+        budget = _memory_budget_mb(hw)
+        specs = sorted(self.for_kind(kind), key=lambda m: TIERS.index(m.tier))
+
+        def fits(spec: ModelSpec) -> tuple[bool, str, dict[str, str]]:
+            need = spec.requires.get("ram_mb", 0)
+            if budget and need and budget < need:
+                return False, "needs_ram", {"need": f"{need // 1024} GB"}
+            return True, "", {}
+
+        usable = [m for m in specs if fits(m)[0]]
+        at_or_below = [m for m in usable if TIERS.index(m.tier) <= TIERS.index(target)]
+        if at_or_below:
+            pick = at_or_below[-1]  # the largest we aim at
+        elif usable:
+            pick = usable[0]  # the catalogue offers nothing that small
+        elif specs:
+            # Nothing fits. Recommend the smallest anyway, with its blocker
+            # showing: the user still has to choose something to use the app,
+            # and `requires` is a guideline, not a hard gate.
+            pick = specs[0]
+        else:
+            pick = None
+
+        rows: list[ModelOption] = []
+        for spec in specs:
+            ok, code, blocked_params = fits(spec)
+            installed = all(
+                f.local_path(models_dir).exists() for f in spec.files
+            )
+            rows.append(ModelOption(
+                id=spec.id,
+                kind=spec.kind,
+                tier=spec.tier,
+                name=spec.name,
+                note_code=spec.note_code,
+                size_mb=max(1, spec.size >> 20),
+                installed=installed,
+                fits=ok,
+                recommended=pick is not None and spec.id == pick.id,
+                selected=selected == spec.id,
+                blocked_code=code,
+                blocked_params=blocked_params,
+            ))
+        return KindOptions(kind=kind, reason_code=reason, reason_params=params, options=rows)
+
     def default_for(self, kind: str) -> ModelSpec | None:
         chosen = self._defaults.get(kind)
         if chosen and chosen in self._by_id:
             return self._by_id[chosen]
         options = self.for_kind(kind)
         return options[0] if options else None
+
+
+# ---------- matching models to the machine ----------
+
+#: Tier we aim at, by total RAM. Not per model: a live session keeps whisper
+#: *and* the translator resident, and the chat model loads on top of them later,
+#: so what matters is the machine rather than any one file's size.
+_TIER_BY_RAM_MB: tuple[tuple[int, str], ...] = ((16384, "large"), (8192, "medium"), (0, "small"))
+
+#: A discrete GPU with at least this much VRAM lifts the target one tier: the
+#: weights move off system RAM and decode gets fast enough for the bigger model
+#: to stay real-time.
+_GPU_LIFT_VRAM_MB = 6144
+
+
+def _memory_budget_mb(hw: HardwareInfo) -> int:
+    """Memory a model can actually occupy: system RAM plus discrete VRAM.
+
+    With ``n_gpu_layers=-1`` the weights live on the GPU, so a 8 GB laptop with
+    a 12 GB card runs models an 8 GB check would reject. Unified memory is *not*
+    added — an iGPU's VRAM is system RAM, and counting it twice over-promises.
+    """
+    vram = sum(g.vram_mb or 0 for g in hw.gpus if not g.unified_memory)
+    return (hw.ram_mb or 0) + vram
+
+
+def _target_tier(hw: HardwareInfo) -> tuple[str, str, dict[str, str]]:
+    """``(tier, reason_code, params)`` — the tier to aim at, and why.
+
+    The reason is carried as a code, not a sentence: the setup wizard shows it
+    to a person and the client owns the wording (see clients/web/src/i18n/).
+    """
+    ram = hw.ram_mb or 0
+    tier = next(t for floor, t in _TIER_BY_RAM_MB if ram >= floor)
+    params = {"ram": f"{ram // 1024} GB" if ram else "?"}
+
+    gpu = max(
+        (g for g in hw.gpus if not g.unified_memory and (g.vram_mb or 0) >= _GPU_LIFT_VRAM_MB),
+        key=lambda g: g.vram_mb or 0,
+        default=None,
+    )
+    if gpu is not None and tier != "large":
+        lifted = TIERS[min(TIERS.index(tier) + 1, len(TIERS) - 1)]
+        return lifted, "gpu_headroom", {**params, "gpu": gpu.name}
+    if tier == "large":
+        return tier, "ample_ram", params
+    if tier == "medium":
+        return tier, "moderate_ram", params
+    return tier, "limited_ram", params
+
+
+@dataclass(frozen=True)
+class ModelOption:
+    """One model a person could pick for a kind, with the reasoning shown to them.
+
+    Same shape as :class:`wrenote.core.runtimes.RuntimeOption` on purpose: the
+    setup wizard renders both, and a second vocabulary for "here are the
+    choices, here is the one we suggest" would be one to keep in sync forever.
+    """
+
+    id: str
+    kind: str
+    tier: str
+    name: str
+    note_code: str  # what this model is for, from the catalogue
+    size_mb: int
+    installed: bool
+    fits: bool  # the machine meets `requires`
+    recommended: bool
+    selected: bool
+    blocked_code: str = ""  # set when `fits` is False
+    blocked_params: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def download_mb(self) -> int | None:
+        return None if self.installed else self.size_mb
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "download_mb": self.download_mb}
+
+
+@dataclass(frozen=True)
+class KindOptions:
+    """The choices for one kind, and the hardware verdict behind them."""
+
+    kind: str
+    reason_code: str  # why this tier was targeted
+    reason_params: dict[str, str]
+    options: list[ModelOption]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "reason_code": self.reason_code,
+            "reason_params": dict(self.reason_params),
+            "options": [o.to_dict() for o in self.options],
+        }
 
 
 @dataclass(frozen=True)

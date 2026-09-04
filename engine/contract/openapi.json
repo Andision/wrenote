@@ -64,19 +64,6 @@
         "title": "InstallRequest",
         "type": "object"
       },
-      "SelectRequest": {
-        "properties": {
-          "accelerator": {
-            "title": "Accelerator",
-            "type": "string"
-          }
-        },
-        "required": [
-          "accelerator"
-        ],
-        "title": "SelectRequest",
-        "type": "object"
-      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -115,6 +102,37 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "wrenote__api__compute__SelectRequest": {
+        "properties": {
+          "accelerator": {
+            "title": "Accelerator",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accelerator"
+        ],
+        "title": "SelectRequest",
+        "type": "object"
+      },
+      "wrenote__api__models__SelectRequest": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "model"
+        ],
+        "title": "SelectRequest",
         "type": "object"
       }
     }
@@ -264,7 +282,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SelectRequest"
+                "$ref": "#/components/schemas/wrenote__api__compute__SelectRequest"
               }
             }
           },
@@ -598,9 +616,50 @@
         "summary": "Models Download"
       }
     },
+    "/v1/models/select": {
+      "post": {
+        "description": "Choose the model for one kind, persisting it to the user config.\n\nHow soon it applies differs by kind, and the response says which: STT and\nthe translator are constructed per WebSocket session, so the next session\npicks the new model up; chat and the diarization speaker are held by\n:class:`ModelManager`, so they are swapped here and now. Neither needs a\nrestart — claiming otherwise would train people to restart for nothing.",
+        "operationId": "models_select_v1_models_select_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/wrenote__api__models__SelectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Models Select V1 Models Select Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Models Select"
+      }
+    },
     "/v1/models/status": {
       "get": {
-        "description": "Which required model files are present locally, and their sizes.",
+        "description": "Which model files are needed, which are present, and what else could be\nchosen for this machine.\n\n``options`` is per kind, ranked and with one recommended — the setup wizard\nand Settings → Models both render it, the same way they render the compute\nruntime's options.",
         "operationId": "models_status_v1_models_status_get",
         "responses": {
           "200": {
