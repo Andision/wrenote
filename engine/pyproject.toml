@@ -55,10 +55,26 @@ wrenote = ["vad/assets/*.onnx"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# tests/_spike_*.py, _smoke_*.py and _compare_wer.py are research scripts kept
+# for provenance, not code we maintain: they are run by hand, never imported,
+# and pytest doesn't collect them (leading underscore). Linting them only
+# produces findings nobody will act on.
+extend-exclude = ["tests/_*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "RUF", "SIM"]
-ignore = ["E501"]
+ignore = [
+    "E501",
+    # Ambiguous-unicode: this app is about Chinese ↔ English, so full-width
+    # punctuation (！？。) and × in comments and strings are correct, not typos.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # contextlib.suppress instead of try/except/pass: the except blocks in the
+    # async cleanup paths carry comments explaining *why* the failure is
+    # ignored, and suppress() has nowhere to put them.
+    "SIM105",
+]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's DI/parameter callables are *designed* to be used as argument

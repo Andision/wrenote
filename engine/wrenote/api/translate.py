@@ -99,5 +99,12 @@ async def translate_session(
             except Exception:
                 pass
 
-    asyncio.create_task(runner(), name=f"translate-{job.id[:8]}")
+    task = asyncio.create_task(runner(), name=f"translate-{job.id[:8]}")
+    # Hold a reference: the event loop keeps only a weak one, so an
+    # unreferenced task can be collected mid-flight (RUF006).
+    _background.add(task)
+    task.add_done_callback(_background.discard)
     return {"job_id": job.id}
+
+
+_background: set[asyncio.Task[None]] = set()

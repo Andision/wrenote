@@ -13,7 +13,6 @@ on our example MP3. No streaming, no online clustering — just batch.
 from __future__ import annotations
 
 import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -37,7 +36,7 @@ def decode_to_float32(mp3: Path, duration_s: float) -> np.ndarray:
 
 def silero_segments(audio: np.ndarray, min_speech_s: float = 0.5) -> list[tuple[float, float]]:
     """Use Silero VAD to get speech segments. Returns [(start_s, end_s), ...]."""
-    from silero_vad import load_silero_vad, get_speech_timestamps
+    from silero_vad import get_speech_timestamps, load_silero_vad
 
     model = load_silero_vad(onnx=False)
     ts = get_speech_timestamps(

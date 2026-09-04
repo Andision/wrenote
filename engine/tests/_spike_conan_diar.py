@@ -63,7 +63,7 @@ def main() -> None:
         per_speaker[spk] = per_speaker.get(spk, 0.0) + dur
         print(f"  {t_start:6.2f}  {t_end:6.2f}  {dur:5.2f}  {spk}")
 
-    print(f"\nTotal time per speaker:")
+    print("\nTotal time per speaker:")
     for spk, secs in sorted(per_speaker.items(), key=lambda x: -x[1]):
         print(f"  {spk}: {secs:5.1f}s ({secs/DURATION_S*100:.1f}%)")
 

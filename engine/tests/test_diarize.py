@@ -6,10 +6,10 @@ from pathlib import Path
 import numpy as np
 
 from wrenote.core.diarize import (
-    diarize_session,
     _normalize_source_segments,
     _pick_k,
     _trim_speech_bounds,
+    diarize_session,
 )
 from wrenote.speaker.base import SpeakerBackend
 

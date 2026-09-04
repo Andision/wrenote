@@ -18,13 +18,14 @@ import asyncio
 import logging
 import re
 import wave
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from ..translator.base import TranslatorBackend
+from .jobs import JobRegistry, Phase
 from .recording import resolve_recording_path
 from .store import Store
 
@@ -120,9 +121,6 @@ def _split_dialogue_turns(text: str) -> list[str]:
     return parts or [text.strip()]
 
 
-from .jobs import JobRegistry, Phase
-
-
 # Phase weights, tuned from M1 Max measurements: transcribe dominates,
 # then translate, then everything else. Translator is dropped from the
 # total when transcribe-only mode is selected.
@@ -199,7 +197,7 @@ async def process_upload(
     # but we still mark the phase as a discrete step so the progress bar
     # has something visible to advance through.
     requested_lang = _normalize_src_lang(src_lang)
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
     await store.upsert_session(
         session_id=session_id,
         title=title,

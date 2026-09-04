@@ -34,11 +34,15 @@ const DYNAMIC_PREFIXES = [
   "export.format.", // the FORMATS table holds keys
 ];
 
+// Test files are skipped: their `t("plain")` fixtures are made-up keys, not
+// app strings, and counting them would demand messages for them.
+const isTest = (name) => /\.test\.tsx?$/.test(name);
+
 function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = join(dir, e.name);
-    if (e.isDirectory()) return walk(p);
-    return /\.tsx?$/.test(e.name) ? [p] : [];
+    if (e.isDirectory()) return e.name === "test" ? [] : walk(p);
+    return /\.tsx?$/.test(e.name) && !isTest(e.name) ? [p] : [];
   });
 }
 

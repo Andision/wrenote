@@ -219,7 +219,7 @@ class Pipeline:
             try:
                 remaining = max(0.1, deadline - asyncio.get_event_loop().time())
                 await asyncio.wait_for(asyncio.shield(self._vad_task), timeout=remaining)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.warning("flush: vad_loop did not exit within timeout")
 
         # 2. Wait for stt + translation pipelines to fully idle (queue empty
@@ -730,7 +730,7 @@ class Pipeline:
                         src=src_lang,
                         tgt=self.params.tgt_lang,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     await self._emit_client(
                         ErrorEvent(
                             code="TRANSLATION_TIMEOUT",

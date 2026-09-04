@@ -228,6 +228,31 @@ speaker model stay on CPU (ONNX Runtime) by design.
 * Everything is under `/v1` except `/health` (the shell's readiness probe).
   Breaking changes ship under `/v2` with `/v1` kept for a release.
 
+## Checks (`.github/workflows/checks.yml`)
+
+Everything that can fail without a Mac, a Windows box or a 40-minute compile
+runs on every push: engine lint + 182 tests + the API-contract drift check, and
+for the client types, lint, locale parity, 48 tests and the build. The
+platform-specific packaging workflows stay slow and separate.
+
+* **The frozen engine is smoke-tested** in `.github/actions/build-engine`: a
+  bundle can be missing a data file or a hidden import and still *build*
+  cleanly, because PyInstaller only finds out at run time. The action boots it
+  the way a shell does (spawn, read the `WRENOTE_PORT=` handshake) and asks for
+  `/health`, `/v1/models/status`, `/v1/compute/status` and the SPA at `/` —
+  between them those touch the config, the catalogue, the hardware probe and
+  the bundled static files.
+* **`eslint-suppressions.json` baselines** the client findings that predate the
+  gate (React 19's new hook rules, in components this work didn't touch).
+  Anything new fails; the file only shrinks. It is a debt list, not an
+  exemption — `TODO.md` tracks it.
+* **Ruff runs clean**, with three categories disabled and a reason in
+  `pyproject.toml`: ambiguous-unicode (this app is *about* CJK text), SIM105
+  (the `except` blocks carry comments `suppress()` has nowhere to put), and the
+  `tests/_spike_*.py` research scripts.
+* The **catalogue-vs-upstream** check runs weekly rather than per push: it talks
+  to HuggingFace, and a push shouldn't fail because a third party is down.
+
 ## Rules that keep this true
 
 1. The engine has one entry point and no UI. Shells only spawn it.

@@ -8,12 +8,10 @@ from __future__ import annotations
 import asyncio
 import re
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 import jiwer
-import numpy as np
 
 import wrenote  # noqa: F401 -- registers backends
 from wrenote.core.events import AudioSegment
@@ -66,7 +64,7 @@ def decode_mp3(path: Path, duration_s: float) -> bytes:
 
 
 async def main() -> None:
-    print(f"Loading SRT…")
+    print("Loading SRT…")
     cues = parse_srt(SRT)
     truth_cues = [c for c in cues if c[0] < DURATION_S]
     truth_raw = " ".join(c[2] for c in truth_cues)
@@ -76,7 +74,7 @@ async def main() -> None:
     print(f"\nDecoding {MP3.name} first {DURATION_S}s …")
     pcm = decode_mp3(MP3, DURATION_S)
 
-    print(f"\nLoading whisper.cpp model …")
+    print("\nLoading whisper.cpp model …")
     stt = make_stt("whisper_cpp", {"model_path": str(MODEL), "language": "en"})
     t0 = time.monotonic()
     await stt.load()
@@ -96,7 +94,7 @@ async def main() -> None:
     out = jiwer.process_words(truth, hyp)
     cer = jiwer.cer(truth, hyp)
     total_ref = out.hits + out.substitutions + out.deletions
-    print(f"\n--- WER metrics ---")
+    print("\n--- WER metrics ---")
     print(f"  WER (word error rate): {out.wer*100:.2f}%")
     print(f"  CER (char error rate): {cer*100:.2f}%")
     print(f"  Hits:          {out.hits}")
@@ -137,7 +135,7 @@ async def main() -> None:
         else:
             print(f"  {op}   ref={r!r}   hyp={h!r}")
 
-    print(f"\n--- Raw whisper text ---")
+    print("\n--- Raw whisper text ---")
     print(event.text)
     print(f"\n--- Raw SRT text (cues 1..{len(truth_cues)}) ---")
     print(truth_raw)

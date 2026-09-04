@@ -17,7 +17,7 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -186,7 +186,7 @@ class JobRegistry:
             tick = job._tick
             try:
                 await asyncio.wait_for(tick.wait(), timeout=15.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Heartbeat — keeps clients/proxies happy on long pauses.
                 pass
             yield job.snapshot()
@@ -216,4 +216,4 @@ class PhaseReporter:
 
 def encode_sse(payload: dict[str, Any]) -> bytes:
     """Standard SSE framing: ``data: <json>\\n\\n``."""
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()

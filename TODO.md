@@ -46,13 +46,22 @@ The engine has 149 tests; `clients/web` has 10k lines of TypeScript and no test
 script at all. Business rules are leaking into the client (e.g. when the setup
 wizard may skip the runtime step) with nothing holding them.
 
-- [ ] Vitest in `clients/web`: `lib/` pure functions first, then the gates
-      (`SetupGate`, `ComputePanel`) with a mocked API
+- [x] Vitest in `clients/web` — 48 tests: the message lookup, the code→words
+      renderers, `SetupGate`'s skip logic and `ModelPicker` with a mocked API
 - [x] Locale key parity in CI (`npm run check:locales`, run before the SPA build)
-- [ ] Lint in CI — `ruff` and `eslint` currently run nowhere; ~28 eslint and
-      ~39 ruff findings are pre-existing debt that no gate is holding
-- [ ] A smoke test that boots the frozen engine and hits `/health` + `/v1/...`
+- [x] Lint in CI (`checks.yml`) — ruff clean; eslint baselined so new findings
+      fail (see below)
+- [x] A smoke test that boots the frozen engine and hits `/health` + `/v1/...`
       in the packaging workflows, so a broken bundle fails CI, not the user
+- [ ] **Work off `eslint-suppressions.json`** (15 files, 27 findings). These
+      predate the gate and are mostly React 19's stricter hook rules —
+      `react-hooks/refs` (reading a ref during render, 12×),
+      `set-state-in-effect` (5×), `react-refresh/only-export-components` (5×).
+      Each is a small refactor in a component this work didn't touch; doing
+      them blind, bundled into "add CI", is how a working app breaks. Take them
+      one component at a time, with a test.
+- [ ] Component tests for the parts with real interaction left: `ComputePanel`
+      (install → select → restart-required), `Transcript` editing, `ChatPanel`
 
 ## Next
 

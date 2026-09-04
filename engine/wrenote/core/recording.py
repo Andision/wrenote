@@ -38,7 +38,9 @@ class WavWriter:
         target_dir.mkdir(parents=True, exist_ok=True)
         self._path = target_dir / f"{session_id}.wav"
         self._lock = threading.Lock()
-        self._wf: wave.Wave_write | None = wave.open(str(self._path), "wb")
+        # Not a context manager: this handle lives as long as the recording
+        # does, and close() belongs to the recorder's own lifecycle.
+        self._wf: wave.Wave_write | None = wave.open(str(self._path), "wb")  # noqa: SIM115
         self._wf.setnchannels(channels)
         self._wf.setsampwidth(sample_width_bytes)
         self._wf.setframerate(sample_rate)

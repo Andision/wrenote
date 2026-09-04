@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -23,6 +23,16 @@ export default defineConfig({
       "/v1": { target: "http://127.0.0.1:8000", ws: true, changeOrigin: true },
       "/health": "http://127.0.0.1:8000",
     },
+  },
+  // Vitest: jsdom for the component tests, and `globals` so specs read as
+  // plainly as the engine's pytest ones. `setupFiles` is where the browser
+  // APIs jsdom lacks get stubbed — see src/test/setup.ts.
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    restoreMocks: true,
   },
   build: {
     // Emit straight into the engine's static dir so the packaged server can

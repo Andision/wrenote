@@ -155,5 +155,12 @@ async def models_download(
             log.exception("model download failed")
             jobs.fail(job.id, str(ex))
 
-    asyncio.create_task(runner())
+    task = asyncio.create_task(runner())
+    # Hold a reference: the event loop keeps only a weak one, so an
+    # unreferenced task can be collected mid-flight (RUF006).
+    _background.add(task)
+    task.add_done_callback(_background.discard)
     return {"job_id": job.id, "all_present": False}
+
+
+_background: set[asyncio.Task[None]] = set()

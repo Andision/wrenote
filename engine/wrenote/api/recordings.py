@@ -33,7 +33,7 @@ async def delete_recording(session_id: str) -> dict[str, str]:
     if path.exists():
         try:
             path.unlink()
-        except Exception:
+        except Exception as e:
             log.exception("failed to delete recording %s", path)
-            raise HTTPException(status_code=500, detail="delete failed")
+            raise HTTPException(status_code=500, detail="delete failed") from e
     return {"status": "ok"}

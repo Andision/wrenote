@@ -1,0 +1,96 @@
+name: checks
+
+# The fast gate: everything that can fail without a Mac, a Windows box or a
+# 40-minute compile. The packaging workflows (build.yml, build-tauri.yml,
+# build-runtimes.yml) stay slow and platform-specific; this one runs on every
+# push and should stay under a couple of minutes.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  # The catalogue check below talks to HuggingFace. Upstream changes are rare
+  # and unrelated to our pushes, so it runs weekly rather than gating every
+  # commit on a third party being reachable.
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+# A new push to the same branch makes the previous run's answer irrelevant.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        working-directory: engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint
+        working-directory: engine
+        run: ruff check .
+
+      - name: Tests
+        working-directory: engine
+        # The suite is native-dependency-free by design (mock backends), so it
+        # runs here exactly as it does on a developer's machine.
+        run: python -m pytest -q
+
+      - name: The committed API contract matches the code
+        working-directory: engine
+        run: python -m wrenote.contract --check
+
+      - name: The model catalogue matches upstream
+        # A model quietly replaced on HuggingFace changes its sha256 and every
+        # download starts failing verification. Weekly, because it reaches out
+        # to HuggingFace and a push shouldn't fail when that is down.
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python packaging/models/refresh_catalogue.py --check
+
+  web:
+    name: web client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
+
+      - name: Install
+        working-directory: clients/web
+        run: npm ci --no-audit --no-fund
+
+      - name: Types
+        working-directory: clients/web
+        run: npx tsc -b --noEmit
+
+      - name: Lint
+        working-directory: clients/web
+        # eslint-suppressions.json baselines the findings that predate this
+        # gate; anything new fails. See TODO.md for what's left in it.
+        run: npx eslint src scripts
+
+      - name: Locales
+        working-directory: clients/web
+        run: npm run check:locales
+
+      - name: Tests
+        working-directory: clients/web
+        run: npm test
+
+      - name: Build
+        working-directory: clients/web
+        run: npm run build

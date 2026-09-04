@@ -9,7 +9,6 @@ from collections.abc import Awaitable, Callable
 
 from ..core.events import AudioSegment, BackendInfo, TranscriptEvent
 
-
 PartialCallback = Callable[[TranscriptEvent], Awaitable[None]]
 
 

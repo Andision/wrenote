@@ -319,7 +319,7 @@ async def _embed_session_windows(
     sr: int,
     speech_segments: list[_SpeechSegment],
     speaker: SpeakerBackend,
-    on_progress: "Callable[[float, str | None], None] | None",
+    on_progress: Callable[[float, str | None], None] | None,
 ) -> list[_EmbeddingWindow]:
     jobs: list[tuple[float, float]] = []
     for seg in speech_segments:
@@ -507,12 +507,12 @@ def _merge_short_runs(
     for run in runs:
         start, end, label = run
         if out and (end - start) < MIN_RESEGMENT_RUN_S:
-            prev_start, prev_end, prev_label = out[-1]
+            prev_start, _prev_end, prev_label = out[-1]
             out[-1] = (prev_start, end, prev_label if prev_label != "unknown" else label)
         else:
             out.append(run)
     if len(out) >= 2 and (out[-1][1] - out[-1][0]) < MIN_RESEGMENT_RUN_S:
-        last_start, last_end, last_label = out.pop()
+        _last_start, last_end, last_label = out.pop()
         prev_start, _, prev_label = out[-1]
         out[-1] = (prev_start, last_end, prev_label if prev_label != "unknown" else last_label)
     return out
@@ -713,7 +713,7 @@ async def diarize_session(
     wav_path: Path,
     segments: list[dict],
     speaker: SpeakerBackend,
-    on_progress: "Callable[[float, str | None], None] | None" = None,
+    on_progress: Callable[[float, str | None], None] | None = None,
 ) -> DiarizeResult:
     """Build speaker-aware transcript rows. See module docstring."""
     if not wav_path.exists():

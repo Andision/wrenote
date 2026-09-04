@@ -178,7 +178,11 @@ async def diarize_endpoint(
                 except Exception:
                     pass
 
-    asyncio.create_task(runner(), name=f"diarize-{job.id[:8]}")
+    task = asyncio.create_task(runner(), name=f"diarize-{job.id[:8]}")
+    # Hold a reference: the event loop keeps only a weak one, so an
+    # unreferenced task can be collected mid-flight (RUF006).
+    _background.add(task)
+    task.add_done_callback(_background.discard)
     return {"job_id": job.id}
 
 
@@ -218,3 +222,6 @@ async def assign_segment_speaker(
     labels = {str(s): speaker for s in seg_ids}
     n = await store.set_segment_speakers(sid, labels)
     return {"updated": n}
+
+
+_background: set[asyncio.Task[None]] = set()

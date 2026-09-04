@@ -80,3 +80,39 @@ runs:
     - name: Freeze engine sidecar (PyInstaller)
       shell: bash
       run: pyinstaller packaging/wrenote_server.spec --noconfirm --distpath engine/dist --workpath packaging/build
+
+    # A frozen bundle can be missing a data file or a hidden import and still
+    # build cleanly — PyInstaller only finds out at run time, which until now
+    # meant the user found out. Boot it exactly as a shell does (spawn, read the
+    # WRENOTE_PORT handshake) and ask it for something that touches the config,
+    # the catalogue and the SPA it was supposed to bundle.
+    - name: Smoke-test the frozen engine
+      shell: bash
+      run: |
+        set -euo pipefail
+        exe="engine/dist/wrenote-server/wrenote-server"
+        [ -f "$exe.exe" ] && exe="$exe.exe"
+        "$exe" > engine-boot.log 2>&1 &
+        pid=$!
+        trap 'kill $pid 2>/dev/null || true' EXIT
+
+        port=""
+        for _ in $(seq 1 60); do
+          port="$(grep -m1 -oE 'WRENOTE_PORT=[0-9]+' engine-boot.log | cut -d= -f2 || true)"
+          [ -n "$port" ] && break
+          kill -0 $pid 2>/dev/null || { echo "engine exited before announcing a port"; cat engine-boot.log; exit 1; }
+          sleep 1
+        done
+        [ -n "$port" ] || { echo "no WRENOTE_PORT after 60s"; cat engine-boot.log; exit 1; }
+        echo "engine on :$port"
+
+        base="http://127.0.0.1:$port"
+        curl -fsS --retry 10 --retry-connrefused --retry-delay 1 "$base/health" > /dev/null
+        # Reads config.yaml + models.yaml and resolves them — the paths most
+        # likely to be missing from a bundle.
+        curl -fsS "$base/v1/models/status" | grep -q '"all_present"'
+        # Probes the hardware and reads the runtime state.
+        curl -fsS "$base/v1/compute/status" | grep -q '"platform_tag"'
+        # The SPA has to be inside the bundle, not just in the repo.
+        curl -fsS "$base/" | grep -qi '<div id="root"'
+        echo "frozen engine answers on /health, /v1 and /"

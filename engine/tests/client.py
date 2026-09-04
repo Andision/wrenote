@@ -133,7 +133,7 @@ async def run(
         # connection (it does so after the flush completes).
         try:
             await asyncio.wait_for(recv_task, timeout=8.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             print("(stop drain: 8s timeout — server may not have flushed)")
             recv_task.cancel()
         except (asyncio.CancelledError, websockets.ConnectionClosed):
