@@ -3,7 +3,7 @@ name = "wrenote"
 version = "0.1.0"
 description = "Local real-time speech transcription and translation"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "AGPL-3.0-only" }
 authors = [
     { name = "andision" },
 ]

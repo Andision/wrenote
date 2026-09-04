@@ -2,6 +2,7 @@
   "name": "wrenote-shell-tauri",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "Tauri desktop shell for Wrenote \u2014 spawns the engine as a loopback sidecar and hosts the web client in the system WebView.",
   "scripts": {
     "dev": "tauri dev",

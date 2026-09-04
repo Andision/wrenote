@@ -2,6 +2,7 @@
   "name": "wrenote-desktop",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "Electron shell for Wrenote — hosts the Python server as a loopback sidecar (P0 migration off pywebview).",
   "main": "main.js",
   "scripts": {
