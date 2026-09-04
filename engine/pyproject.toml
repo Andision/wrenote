@@ -33,6 +33,10 @@ desktop = [
 ]
 dev = [
     "pytest>=8.0",
+    # fastapi.testclient -> starlette.testclient, which needs an HTTP client it
+    # doesn't depend on itself. Undeclared until CI ran on a clean environment
+    # and found the whole suite unable to import its conftest.
+    "httpx2>=2.0",
     "pytest-asyncio>=0.24",
     "pytest-timeout>=2.3",
     # Pinned, not floating: a lint gate whose rule set changes under you is
