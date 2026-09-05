@@ -40,6 +40,13 @@ log = logging.getLogger(__name__)
 
 SCHEMA = 1
 KINDS = ("stt", "translator", "chat", "speaker")
+# Config sections that hold a model. Two of them are speech recognition:
+# what a live session hears (`stt`, may be a streaming model) and what a
+# whole recording goes through afterwards (`stt_offline`, Whisper). Models
+# are catalogued by kind; a slot names which kind it takes.
+SLOTS = ("stt", "stt_offline", "translator", "chat", "speaker")
+SLOT_KIND = {"stt": "stt", "stt_offline": "stt", "translator": "translator",
+             "chat": "chat", "speaker": "speaker"}
 TIERS = ("small", "medium", "large")
 
 USER_CATALOGUE = Path.home() / ".wrenote" / "models.yaml"
@@ -226,13 +233,13 @@ class ModelCatalogue:
 
     def options(
         self,
-        kind: str,
+        slot: str,
         hw: HardwareInfo,
         *,
         models_dir: Path,
         selected: str | None = None,
     ) -> KindOptions:
-        """Every model for ``kind``, smallest first, with one recommended.
+        """Every model for ``slot``, smallest first, with one recommended.
 
         The recommendation is the largest tier this machine is targeted at that
         it can actually run. Models that don't fit stay in the list carrying
@@ -241,6 +248,7 @@ class ModelCatalogue:
         """
         target, reason, params = _target_tier(hw)
         budget = _memory_budget_mb(hw)
+        kind = SLOT_KIND.get(slot, slot)
         specs = sorted(self.for_kind(kind), key=lambda m: TIERS.index(m.tier))
 
         def fits(spec: ModelSpec) -> tuple[bool, str, dict[str, str]]:
@@ -283,12 +291,15 @@ class ModelCatalogue:
                 blocked_code=code,
                 blocked_params=blocked_params,
             ))
-        return KindOptions(kind=kind, reason_code=reason, reason_params=params, options=rows)
+        return KindOptions(kind=slot, reason_code=reason, reason_params=params, options=rows)
 
-    def default_for(self, kind: str) -> ModelSpec | None:
-        chosen = self._defaults.get(kind)
-        if chosen and chosen in self._by_id:
-            return self._by_id[chosen]
+    def default_for(self, slot: str) -> ModelSpec | None:
+        """The catalogue's pick for a slot: its own default, else its kind's."""
+        kind = SLOT_KIND.get(slot, slot)
+        for key in (slot, kind):
+            chosen = self._defaults.get(key)
+            if chosen and chosen in self._by_id:
+                return self._by_id[chosen]
         options = self.for_kind(kind)
         return options[0] if options else None
 
@@ -410,7 +421,7 @@ _NO_MODEL = ("mock", "disabled", "")
 
 
 def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
-    """Work out the backend arguments for ``kind`` (see the module docstring)."""
+    """Work out the backend arguments for slot ``kind`` (see the module docstring)."""
     section = getattr(cfg, kind)
     backend = section.backend or ""
     params = dict(section.params or {})
@@ -454,4 +465,4 @@ def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
 
 
 def resolve_all(cfg: Config, catalogue: ModelCatalogue) -> dict[str, ResolvedModel]:
-    return {kind: resolve(cfg, kind, catalogue) for kind in KINDS}
+    return {slot: resolve(cfg, slot, catalogue) for slot in SLOTS}

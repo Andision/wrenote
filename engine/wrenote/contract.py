@@ -34,6 +34,7 @@ def build_openapi() -> dict[str, Any]:
     cfg = Config.model_validate(
         {
             "stt": {"backend": "mock"},
+            "stt_offline": {"backend": "mock"},
             "vad": {"backend": "disabled"},
             "translator": {"backend": "mock"},
             "speaker": {"backend": "disabled"},

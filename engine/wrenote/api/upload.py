@@ -47,12 +47,12 @@ async def upload_session(
     if not files:
         raise HTTPException(status_code=400, detail="no files")
 
-    if cfg.stt.backend != "whisper_cpp":
+    if cfg.stt_offline.backend != "whisper_cpp":
         raise HTTPException(
             status_code=400,
-            detail="upload only supports the whisper_cpp STT backend currently",
+            detail="upload needs the whisper_cpp backend in stt_offline",
         )
-    whisper_model_path = str(resolve(cfg, "stt", catalogue).params.get("model_path") or "")
+    whisper_model_path = str(resolve(cfg, "stt_offline", catalogue).params.get("model_path") or "")
     if not whisper_model_path:
         raise HTTPException(status_code=500, detail="stt model not configured")
 

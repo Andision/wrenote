@@ -285,10 +285,11 @@
   },
   "models": {
     "kind": {
-      "stt": "Speech recognition",
+      "stt": "Speech recognition (live)",
       "translator": "Translation",
       "chat": "Chat",
-      "speaker": "Speaker identification"
+      "speaker": "Speaker identification",
+      "stt_offline": "Speech recognition (after recording, uploads)"
     },
     "onDisk": "on disk",
     "sizeMb": "{mb} MB",
@@ -315,7 +316,8 @@
       "mt_default": "Translation-specific model",
       "chat_light": "Lighter, for machines with less memory",
       "chat_default": "Better answers over long transcripts",
-      "speaker_default": "Voice embeddings for telling speakers apart"
+      "speaker_default": "Voice embeddings for telling speakers apart",
+      "stt_streaming": "Streaming: text appears as you speak and never rewrites itself; rougher wording, replaced by Whisper after the recording. CPU only, no runtime pack."
     }
   },
   "compute": {

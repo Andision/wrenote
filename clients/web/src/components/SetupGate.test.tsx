@@ -137,7 +137,7 @@ describe("SetupGate", () => {
       }),
     );
     setup();
-    expect(await screen.findByText("Speech recognition")).toBeTruthy();
+    expect(await screen.findByText("Speech recognition (live)")).toBeTruthy();
     expect(screen.getByText("Whisper large")).toBeTruthy();
     expect(screen.getByText("16 GB RAM — the best models fit")).toBeTruthy();
     expect(screen.queryByText("Translation")).toBeNull();

@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 
 from ..speaker.base import SpeakerBackend
-from ..stt.base import STTBackend
+from ..stt.base import STTBackend, STTStream
 from ..translator.base import TranslatorBackend
 from ..vad.base import VADBackend
 from .events import (
@@ -138,6 +138,10 @@ class Pipeline:
 
         self._tasks: list[asyncio.Task[None]] = []
         self._vad_task: asyncio.Task[None] | None = None
+        # A streaming-native recogniser, when the STT backend offers one: the
+        # audio goes straight into it and it decides the utterances itself
+        # (see _stream_loop); the VAD and the segment queue sit idle.
+        self._stream: STTStream | None = None
         self._next_seq = 0
         self._started = False
         # Set at the end of start(); all timestamps emitted downstream are
@@ -200,7 +204,13 @@ class Pipeline:
         """Load backends and spawn internal loop tasks. Idempotent."""
         if self._started:
             return
-        loads = [self.stt.load(), self.vad.load()]
+        loads = [self.stt.load()]
+        self._stream = self.stt.open_stream(
+            min_silence_ms=self.params.min_silence_ms,
+            max_segment_ms=self.params.max_segment_ms,
+        )
+        if self._stream is None:
+            loads.append(self.vad.load())
         if self.params.translate_enabled:
             loads.append(self.translator.load())
         if self.speaker is not None and self.params.speaker_enabled:
@@ -209,7 +219,10 @@ class Pipeline:
         # Reset session clock now that backends are loaded — timestamps in
         # client-facing events start from 0 here, not from process start.
         self._session_start_ts = time.monotonic()
-        self._vad_task = asyncio.create_task(self._vad_loop(), name="pipeline.vad")
+        self._vad_task = asyncio.create_task(
+            self._stream_loop(self._stream) if self._stream is not None else self._vad_loop(),
+            name="pipeline.vad",
+        )
         self._tasks = [
             self._vad_task,
             asyncio.create_task(self._stt_loop(), name="pipeline.stt"),
@@ -285,6 +298,12 @@ class Pipeline:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
         self._vad_task = None
+        if self._stream is not None:
+            try:
+                await self._stream.close()
+            except Exception:
+                log.exception("stream close failed")
+            self._stream = None
         unloads = [self.stt.unload()]
         if self.params.translate_enabled:
             unloads.append(self.translator.unload())
@@ -608,6 +627,136 @@ class Pipeline:
                 buffer = bytearray()
                 silence_start_ts = None
 
+    async def _publish_final(self, final: TranscriptEvent, seg: AudioSegment) -> None:
+        """A final transcript is known: label the speaker, tell the client,
+        queue the translation. Shared by the STT loop and the stream loop."""
+        if (final.text or "").strip():
+            self._last_final_text = final.text
+        speaker_label = await self._identify_speaker(seg)
+        if speaker_label is not None:
+            final = final.model_copy(update={"speaker": speaker_label})
+        await self._emit_client(final)
+        # Marking finalized first keeps a late partial translation from
+        # clobbering the final one in the UI.
+        self._finalized_segments.add(final.segment_id)
+        self._partial_jobs.pop(final.segment_id, None)
+        await self.final_events.put(final)
+
+    def _queue_partial_translation(self, segment_id: str, text: str, lang: str | None) -> None:
+        effective_src = text_lang_override(text, audio_lang=lang, tgt_lang=self.params.tgt_lang)
+        if (
+            self.params.translate_enabled
+            and self.params.translate_partials
+            and effective_src != self.params.tgt_lang
+            and segment_id not in self._finalized_segments
+        ):
+            self._partial_jobs[segment_id] = (text, effective_src)
+            self._partial_translation_event.set()
+
+    async def _stream_loop(self, stream: STTStream) -> None:
+        """The streaming-native path: every chunk goes into the recogniser,
+        which answers with the utterance so far and says when it is over.
+
+        Segment ids, speech_start/end, partials and finals come out exactly
+        as the VAD path produces them, so nothing downstream knows the
+        difference. The utterance's audio is kept for the speaker pass.
+        """
+        seg_id: str | None = None
+        seg_t0 = 0.0
+        seg_audio = bytearray()
+        first_ts: float | None = None  # when the current utterance's audio began
+        last_text = ""
+        last_partial_at = 0.0
+        interval_s = self.params.partial_interval_ms / 1000.0
+        # Enough audio for the speaker pass; a runaway utterance is capped
+        # by the recogniser's own length rule anyway.
+        max_audio = self.params.max_segment_ms * 32 + 32_000
+
+        lang_for = getattr(self.stt, "lang_for", None)
+
+        def lang_of(text: str) -> str:
+            if lang_for is not None:
+                return str(lang_for(text))
+            src = self.params.src_lang
+            return src if src not in ("", "auto") else "en"
+
+        async def finalize(text: str, t1: float) -> None:
+            nonlocal seg_id, seg_audio, first_ts, last_text
+            if seg_id is not None and text.strip():
+                seg = AudioSegment(segment_id=seg_id, pcm=bytes(seg_audio), t0=seg_t0, t1=t1)
+                await self._emit_client(VADEvent(type="speech_end", segment_id=seg_id, ts=t1))
+                final = TranscriptEvent(
+                    type="final", segment_id=seg_id, text=text, lang=lang_of(text), t0=seg_t0, t1=t1,
+                )
+                await self._publish_final(final, seg)
+            seg_id = None
+            seg_audio = bytearray()
+            first_ts = None
+            last_text = ""
+
+        while True:
+            try:
+                chunk = await self._wait_audio_or_stop()
+            except asyncio.CancelledError:
+                return
+
+            if chunk is None:
+                # Stopping: the tail of the audio is decoded and closed out.
+                try:
+                    upd = await stream.flush()
+                except Exception:
+                    log.exception("stream flush failed")
+                    return
+                await finalize(upd.text, seg_t0 + len(seg_audio) / 2 / 16000)
+                return
+
+            if chunk == "force_close":
+                # Pause: what is decoded so far is the utterance.
+                await finalize(last_text, seg_t0 + len(seg_audio) / 2 / 16000)
+                try:
+                    await stream.reset()
+                except Exception:
+                    log.exception("stream reset failed")
+                continue
+
+            now = chunk.server_ts
+            if first_ts is None:
+                first_ts = now
+            seg_audio.extend(chunk.pcm)
+            if len(seg_audio) > max_audio:
+                del seg_audio[: len(seg_audio) - max_audio]
+            try:
+                upd = await stream.feed(chunk.pcm)
+            except Exception as e:
+                log.exception("stream feed failed")
+                await self._emit_client(
+                    ErrorEvent(code="STT_FAILED", msg=f"{type(e).__name__}: {e}", recoverable=True)
+                )
+                continue
+
+            text = upd.text
+            if text and seg_id is None:
+                seg_id = str(uuid.uuid4())
+                offset = upd.start_offset_s if upd.start_offset_s is not None else 0.0
+                seg_t0 = max(0.0, min(now, first_ts + max(0.0, offset)))
+                await self._emit_client(VADEvent(type="speech_start", segment_id=seg_id, ts=seg_t0))
+
+            if upd.endpoint:
+                await finalize(text, now)
+                try:
+                    await stream.reset()
+                except Exception:
+                    log.exception("stream reset failed")
+                continue
+
+            if seg_id is not None and text != last_text and (now - last_partial_at) >= interval_s:
+                last_text = text
+                last_partial_at = now
+                await self._emit_client(
+                    TranscriptEvent(type="partial", segment_id=seg_id, text=text, lang=lang_of(text), t0=seg_t0, t1=now)
+                )
+                self._queue_partial_translation(seg_id, text, lang_of(text))
+
     async def _partial_loop(
         self,
         segment_id: str,
@@ -714,23 +863,7 @@ class Pipeline:
                     )
                     continue
 
-                if (final.text or "").strip():
-                    self._last_final_text = final.text
-
-                # Speaker identification on the final segment audio.
-                speaker_label = await self._identify_speaker(seg)
-                if speaker_label is not None:
-                    final = final.model_copy(update={"speaker": speaker_label})
-
-                await self._emit_client(final)
-                # Always mark as finalized + queue for translation. The
-                # translation loop decides whether to skip (detected lang
-                # equals target) or actually translate. Marking finalized
-                # here prevents a late partial translation from clobbering
-                # the final one in the UI.
-                self._finalized_segments.add(final.segment_id)
-                self._partial_jobs.pop(final.segment_id, None)
-                await self.final_events.put(final)
+                await self._publish_final(final, seg)
             finally:
                 self._stt_inflight -= 1
 

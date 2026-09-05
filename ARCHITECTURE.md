@@ -333,6 +333,35 @@ turned into terms, the matching lines (with a neighbour each side) go in
 ahead of the recent tail, and a question about the first hour of a
 two-hour meeting has something to be answered from.
 
+## Two kinds of speech recognition (`stt/`, `core/pipeline.py`)
+
+Whisper is an offline model: it reads a 30-second window and decodes it
+with attention over the whole thing. Every "live Whisper" is a wrapper that
+segments the audio outside and re-decodes a growing buffer — which is what
+the VAD path here does, with its silence rules, its cut at the length cap,
+and its prompt from the previous segment. A streaming-native recogniser
+(a Zipformer transducer through sherpa-onnx) needs none of it: audio goes
+in as it arrives, a decoded prefix never changes, and the model says when
+the utterance ended. So there are two STT slots in the config:
+
+* **`stt` — what a live session hears.** Whisper by default; Settings →
+  Models can put the streaming model there. When the backend offers a
+  stream (`STTBackend.open_stream`), the pipeline runs `_stream_loop`
+  instead of `_vad_loop`: every chunk is fed, partials are the recogniser's
+  growing text, the endpoint makes the final, and the utterance's audio is
+  kept for the speaker pass. Everything downstream — events, persistence,
+  translation, the client — sees the same segments either way. Runs on the
+  CPU through ONNX Runtime, several times real time, no runtime pack.
+* **`stt_offline` — whole recordings.** The post-recording pass and
+  uploads. Whisper, always: this is the job it was built for.
+
+The two are slots over one kind of catalogue model (`SLOTS` / `SLOT_KIND`
+in `core/catalogue.py`), and choosing a model on another backend switches
+the slot's backend with it. The streaming model writes English in capitals
+with no punctuation on either language; `tidy_text` makes it readable and
+the post-recording pass replaces it with Whisper's text anyway — the live
+transcript's job is to be there in time, the final one's is to be right.
+
 ## Languages (`core/lang.py`)
 
 A meeting has a main language and, often, one more. "Auto" per segment

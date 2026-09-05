@@ -264,10 +264,12 @@ export function SetupGate() {
         )}
 
         {/* Which models, then which files that implies. Only kinds with a real
-            choice are shown — a single-entry kind is not a decision. */}
+            choice are shown — a single-entry kind is not a decision — and the
+            after-recording recogniser stays on its default here: it is a
+            Settings → Models choice, not a first-run one. */}
         {!onCompute &&
           modelOptions
-            .filter((k) => k.options.length > 1)
+            .filter((k) => k.options.length > 1 && k.kind !== "stt_offline")
             .map((k) => (
               <section key={k.kind} className="mt-5 space-y-1.5">
                 <div className="flex items-baseline justify-between gap-2">

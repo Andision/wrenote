@@ -31,6 +31,7 @@ def _mock_config(data_dir) -> Config:
     return Config.model_validate(
         {
             "stt": {"backend": "mock"},
+            "stt_offline": {"backend": "mock"},
             "vad": {"backend": "disabled"},
             "translator": {"backend": "mock"},
             "speaker": {"backend": "disabled"},

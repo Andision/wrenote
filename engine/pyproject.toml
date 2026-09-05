@@ -31,6 +31,11 @@ dependencies = [
 desktop = [
     "pywebview>=5",
 ]
+# The streaming-native live recogniser (stt/sherpa_onnx.py). Pure CPU via
+# ONNX Runtime, so one wheel serves every platform — no runtime pack.
+streaming = [
+    "sherpa-onnx>=1.12",
+]
 dev = [
     "pytest>=8.0",
     # fastapi.testclient -> starlette.testclient, which needs an HTTP client it

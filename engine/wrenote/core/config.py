@@ -134,6 +134,11 @@ class Config(BaseSettings):
 
     server: ServerConfig = Field(default_factory=ServerConfig)
     stt: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="mock"))
+    # Speech recognition for whole recordings (the post-recording pass and
+    # uploads), as opposed to `stt`, which is what a live session hears.
+    # The two are different jobs — a streaming model for one, Whisper for
+    # the other — so they are two slots (see core/catalogue.py SLOTS).
+    stt_offline: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="whisper_cpp"))
     vad: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="disabled"))
     translator: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="mock"))
     speaker: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="ecapa"))

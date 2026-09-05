@@ -141,7 +141,8 @@ class TestRefineSession:
 def _cfg(tmp_path, backend: str = "whisper_cpp") -> Config:
     return Config.model_validate(
         {
-            "stt": {"backend": backend, "params": {"model_path": str(tmp_path / "m.bin")}},
+            "stt": {"backend": "mock"},
+            "stt_offline": {"backend": backend, "params": {"model_path": str(tmp_path / "m.bin")}},
             "translator": {"backend": "mock"},
             "data": {"dir": str(tmp_path)},
         }

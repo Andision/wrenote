@@ -157,6 +157,29 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       recording: DOM size with ~1500 cards (virtualising the list is the
       next step if scrolling degrades) and the WAV writer's steady state.
 
+### Live recognition
+
+- [x] **A streaming-native recogniser for the live path.** sherpa-onnx
+      Zipformer (bilingual zh-en, int8, ~200 MB, CPU) as a second STT
+      backend; the pipeline feeds it directly and takes its endpoints, so
+      the VAD segmentation, the cut at the cap and the prompt context are
+      all idle on that path. Whisper stays on the whole-recording pass
+      (`stt_offline`). Verified here on the model's own test clips: real
+      time on 4 CPU threads, partials only grow, endpoints land on pauses,
+      mixed 中/English in one line. Not verified: accuracy on a real
+      meeting against Whisper's partials, and how the endpoint rules feel
+      (trailing silence = the "min silence" setting, cap = "max segment").
+      Whisper remains the default until that comparison is made.
+- [ ] Punctuation for the streaming path (sherpa-onnx's CT-Transformer
+      zh-en model, ~300 MB) so live English isn't a wall of lower case; or
+      accept it, since the post-recording pass rewrites everything.
+- [ ] Glossary → sherpa-onnx hotwords (it supports them with
+      modified-beam-search; the bilingual model ships a `bpe.model` for
+      the token mapping). The glossary reaches Whisper as a prompt today
+      and the streaming model not at all.
+- [ ] Apple SpeechAnalyzer (macOS 26+) as a third live backend on the Mac
+      shell — system-provided, streaming, Chinese-capable, free.
+
 ### Data safety
 
 - [x] **Migrations.** `PRAGMA user_version` + an ordered `MIGRATIONS` list in

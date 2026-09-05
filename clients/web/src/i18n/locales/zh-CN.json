@@ -285,10 +285,11 @@
   },
   "models": {
     "kind": {
-      "stt": "语音识别",
+      "stt": "语音识别（实时）",
       "translator": "翻译",
       "chat": "对话",
-      "speaker": "说话人识别"
+      "speaker": "说话人识别",
+      "stt_offline": "语音识别（录制后整理、导入文件）"
     },
     "onDisk": "已下载",
     "sizeMb": "{mb} MB",
@@ -314,7 +315,8 @@
       "mt_default": "翻译专用模型",
       "chat_light": "更轻量，适合内存较小的机器",
       "chat_default": "长转写稿上的回答质量更好",
-      "speaker_default": "用于区分不同说话人的声纹模型"
+      "speaker_default": "用于区分不同说话人的声纹模型",
+      "stt_streaming": "流式：边说边出字、已出的字不回改；文字较糙，录制后由 Whisper 替换。纯 CPU，不需要算力包。"
     }
   },
   "compute": {

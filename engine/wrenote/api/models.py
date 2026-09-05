@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from ..core.catalogue import KINDS, ModelCatalogue, resolve, resolve_all
+from ..core.catalogue import SLOT_KIND, SLOTS, ModelCatalogue, resolve, resolve_all
 from ..core.config import Config, write_user_config
 from ..core.jobs import JobRegistry, Phase
 from ..core.models import download_model, required_models
@@ -46,8 +46,8 @@ async def models_status(
             kind, hw, models_dir=models_dir,
             selected=(resolved[kind].spec.id if resolved[kind].spec else None),
         ).to_dict()
-        for kind in KINDS
-        if catalogue.for_kind(kind)
+        for kind in SLOTS
+        if catalogue.for_kind(SLOT_KIND[kind])
     ]
     return {
         "models": [e.status_dict() for e in entries],
@@ -80,10 +80,10 @@ async def models_select(
     restart — claiming otherwise would train people to restart for nothing.
     """
     kind = body.kind.strip().lower()
-    if kind not in KINDS:
+    if kind not in SLOTS:
         raise HTTPException(status_code=400, detail=f"unknown kind {body.kind!r}")
     spec = catalogue.get(body.model)
-    if spec is None or spec.kind != kind:
+    if spec is None or spec.kind != SLOT_KIND[kind]:
         raise HTTPException(
             status_code=404, detail=f"no {kind} model {body.model!r} in the catalogue"
         )
@@ -94,15 +94,16 @@ async def models_select(
             detail=(f"{kind}.params.model_path pins an explicit file; "
                     "remove it to choose from the catalogue"),
         )
-    if spec.backend != section.backend:
-        raise HTTPException(
-            status_code=409,
-            detail=f"{body.model!r} runs on the {spec.backend!r} backend, "
-                   f"but {kind} is configured for {section.backend!r}",
-        )
 
-    path = await asyncio.to_thread(write_user_config, {kind: {"model": body.model}})
+    # A model names its backend; choosing a model on another backend (a
+    # streaming recogniser instead of Whisper for the live slot) switches
+    # the backend with it. Each backend ignores the other's tuning keys.
+    update: dict[str, Any] = {"model": body.model}
+    if spec.backend != section.backend:
+        update["backend"] = spec.backend
+    path = await asyncio.to_thread(write_user_config, {kind: update})
     section.model = body.model  # the running config, so the next session agrees
+    section.backend = spec.backend
 
     applies = "next_session"
     if kind in ("chat", "speaker"):

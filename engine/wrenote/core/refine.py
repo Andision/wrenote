@@ -231,9 +231,9 @@ async def launch(
     wav = resolve_recording_path(sid, recordings_dir=recordings_dir)
     if not wav.exists():
         raise RefineError("no_recording")
-    if cfg.stt.backend != "whisper_cpp":
+    if cfg.stt_offline.backend != "whisper_cpp":
         raise RefineError("unsupported_backend")
-    model_path = str(resolve(cfg, "stt", catalogue).params.get("model_path") or "")
+    model_path = str(resolve(cfg, "stt_offline", catalogue).params.get("model_path") or "")
     if not model_path:
         raise RefineError("no_model")
     if translate is None:

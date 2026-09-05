@@ -6,7 +6,10 @@ import { API_BASE as BASE } from "./api";
 // Same-origin: the SPA is served by the backend, so talk to our own origin.
 // Vite dev proxies /api to the backend — see vite.config.ts.
 
-export type ModelKind = "stt" | "translator" | "chat" | "speaker";
+/** A model slot in the engine's config. Two are speech recognition: what a
+ *  live session hears (`stt`, may be a streaming model) and what a whole
+ *  recording goes through afterwards (`stt_offline`, Whisper). */
+export type ModelKind = "stt" | "stt_offline" | "translator" | "chat" | "speaker";
 
 export interface ModelStatusItem {
   key: ModelKind;

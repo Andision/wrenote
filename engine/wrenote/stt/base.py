@@ -6,11 +6,53 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from ..core.events import AudioSegment, BackendInfo, TranscriptEvent
 from ..core.lang import LanguagePolicy
 
 PartialCallback = Callable[[TranscriptEvent], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class StreamUpdate:
+    """What a streaming recogniser knows after the latest audio."""
+
+    text: str
+    #: The recogniser has decided the utterance is over (trailing silence, or
+    #: the length cap). The caller reads ``text`` as final and calls reset().
+    endpoint: bool = False
+    #: Seconds from the start of the current utterance (the last reset) to
+    #: its first token, when the backend knows; None otherwise.
+    start_offset_s: float | None = None
+
+
+class STTStream(ABC):
+    """A recogniser that takes audio as it arrives and answers each time.
+
+    The streaming-native path: no segmentation outside, no re-decoding of a
+    growing buffer. Audio goes in chunk by chunk; ``text`` after each chunk
+    is the utterance so far and only ever grows; ``endpoint`` says the
+    utterance ended. One stream per session, reset between utterances.
+
+    Blocking work runs off the event loop, as with :class:`STTBackend`.
+    """
+
+    @abstractmethod
+    async def feed(self, pcm: bytes) -> StreamUpdate:
+        """Take one chunk of 16 kHz mono int16 PCM; return the state after it."""
+
+    @abstractmethod
+    async def flush(self) -> StreamUpdate:
+        """No more audio is coming: decode what is buffered and return the end state."""
+
+    @abstractmethod
+    async def reset(self) -> None:
+        """Start the next utterance; the text so far is dropped."""
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Release the stream."""
 
 
 class STTBackend(ABC):
@@ -62,6 +104,16 @@ class STTBackend(ABC):
 
         Chunking strategy is a backend-internal detail.
         """
+
+    def open_stream(
+        self, *, min_silence_ms: int, max_segment_ms: int
+    ) -> STTStream | None:
+        """A live stream for one session, or None for a backend that only does
+        whole segments (the pipeline then segments with the VAD and calls
+        :meth:`transcribe_segment`). ``min_silence_ms`` is how much trailing
+        silence ends an utterance; ``max_segment_ms`` caps one utterance.
+        """
+        return None
 
     def set_language_policy(self, policy: LanguagePolicy) -> None:  # noqa: B027 — optional hook, no-op default
         """Which languages this session may be in, and how sure detection

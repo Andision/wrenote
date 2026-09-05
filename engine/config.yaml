@@ -54,6 +54,15 @@ stt:
     device: auto              # Metal on Mac, CUDA on Win, CPU fallback — whisper.cpp auto-detects
     language: null            # null = per-segment auto-detect (recommended). Pin to "en"/"zh"/… to force.
 
+# Speech recognition for whole recordings — the pass after a recording
+# stops, and uploads. Whisper is the right tool there (it decodes 30 s
+# windows offline with context between them). `stt` above is what a live
+# session hears; Settings → Models can put a streaming model there
+# (zipformer-zh-en-streaming) while this stays Whisper.
+stt_offline:
+  backend: whisper_cpp
+  model: whisper-large-v3-turbo-q5
+
 vad:
   backend: silero
   params:

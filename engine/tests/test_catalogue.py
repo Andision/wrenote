@@ -124,6 +124,9 @@ def test_missing_shipped_catalogue_yields_an_empty_one(tmp_path):
 
 
 def _cfg(tmp_path, **sections) -> Config:
+    # The after-recording slot defaults to whisper; a test that doesn't set
+    # it up gets a mock so it needs no model file.
+    sections.setdefault("stt_offline", {"backend": "mock"})
     base = {"models": {"dir": str(tmp_path / "models")}}
     base.update(sections)
     return Config(**base)
@@ -379,11 +382,36 @@ def test_select_rejects_unknown_kinds_and_models(client):
                        json={"kind": "stt", "model": "qwen3-4b-instruct-q4"}).status_code == 404
 
 
-def test_select_refuses_when_the_backend_cannot_run_the_model(client):
-    """The mock config's stt backend is `mock`; whisper models don't apply."""
-    r = client.post("/v1/models/select",
-                    json={"kind": "stt", "model": "whisper-small-q5"})
-    assert r.status_code == 409 and "backend" in r.json()["detail"]
+def test_select_switches_the_backend_with_the_model(client):
+    """A model names its backend. The mock config's live stt backend is
+    `mock`; choosing a whisper model puts whisper_cpp in charge of that slot,
+    and choosing the streaming model afterwards switches again."""
+    r = client.post("/v1/models/select", json={"kind": "stt", "model": "whisper-small-q5"})
+    assert r.status_code == 200 and r.json()["applies"] == "next_session"
+    cfg = client.app.state.config
+    assert (cfg.stt.backend, cfg.stt.model) == ("whisper_cpp", "whisper-small-q5")
+    r = client.post("/v1/models/select", json={"kind": "stt", "model": "zipformer-zh-en-streaming"})
+    assert r.status_code == 200
+    assert (cfg.stt.backend, cfg.stt.model) == ("sherpa_onnx", "zipformer-zh-en-streaming")
+    # The offline slot is its own choice and was not touched.
+    assert cfg.stt_offline.backend == "mock"
+    import yaml
+
+    from wrenote.core.config import user_config_path
+    written = yaml.safe_load(user_config_path().read_text(encoding="utf-8"))
+    assert written["stt"] == {"backend": "sherpa_onnx", "model": "zipformer-zh-en-streaming"}
+
+
+def test_two_stt_slots_share_the_stt_models(client):
+    """Live and after-recording recognition are two slots over one kind of
+    model: both list the whisper models, only the offline one may not stream."""
+    body = client.get("/v1/models/status").json()
+    by_slot = {k["kind"]: [o["id"] for o in k["options"]] for k in body["options"]}
+    assert "zipformer-zh-en-streaming" in by_slot["stt"]
+    assert "whisper-small-q5" in by_slot["stt"] and "whisper-small-q5" in by_slot["stt_offline"]
+    r = client.post("/v1/models/select", json={"kind": "stt_offline", "model": "whisper-base-q5"})
+    assert r.status_code == 200
+    assert client.app.state.config.stt_offline.model == "whisper-base-q5"
 
 
 @pytest.fixture
