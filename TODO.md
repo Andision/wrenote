@@ -131,9 +131,8 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       top of the sidebar with hits grouped by session that open the session
       at the line, a paged session list (keyset cursor, "load older"), and
       the chat pulls the lines matching the question from the trimmed part
-      of a long transcript. Untested at scale: FTS write cost on a very
-      long live session (one trigger per upsert; partials rewrite the row
-      every ~800 ms).
+      of a long transcript. (The FTS write cost on partials is settled by
+      item 9 below: partial rows are not indexed.)
 - [x] **8. Mixed Chinese/English.** A session has a main language and the
       others that may come up ("Also spoken" chips under the language
       strip; the translation target is the default). Whisper's per-segment
@@ -145,9 +144,18 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       it sits right. The whole-file pass still uses one language for the
       whole recording (whisper.cpp detects once per call); a per-chunk
       pass there is the next step if mixed sessions come out wrong.
-- [ ] **9. Long meetings.** Memory and DB growth over two hours: the
-      `_recent_finals` window is bounded, but the client keeps every segment
-      in one store, and the timeline redraws all of them.
+- [x] **9. Long meetings.** The per-event costs that grew with the
+      transcript are gone: the transcript's speaker turns are cached so a
+      partial re-renders one memoised card, not every card; the timeline
+      rail measures card offsets at most three times a second instead of
+      per partial; the full-text index skips rows that are still partial
+      (schema v5 recreates the triggers), so the one write-path cost that
+      grew with the text is paid once per line; the store runs WAL with
+      `synchronous=NORMAL`, so a live session's two or three commits a
+      second no longer fsync each; and partial events reach the client
+      before the write, not after. Still to measure on a real two-hour
+      recording: DOM size with ~1500 cards (virtualising the list is the
+      next step if scrolling degrades) and the WAV writer's steady state.
 
 ### Data safety
 

@@ -12,6 +12,9 @@ interface TimelineMinimapProps {
   segments: Segment[];
 }
 
+/** Least time between two measurements of the card offsets. */
+const MEASURE_EVERY_MS = 350;
+
 interface Marker {
   id: string;
   /** Scroll offset (px) of the segment's card within the scroll container. */
@@ -76,11 +79,16 @@ export function TimelineMinimap({ scrollRef, segments }: TimelineMinimapProps) {
   }, [scrollRef]);
 
   // Measure each card's scroll offset (one tick per card). Re-runs when the
-  // segment set or layout changes; rAF-debounced so streaming doesn't thrash.
+  // segment set or layout changes. Streaming changes the set every ~800 ms
+  // and each measure reads every card's offset, so measures are coalesced
+  // to one per MEASURE_EVERY_MS at most — a tick a third of a second late
+  // is invisible; a layout pass per partial on a two-hour transcript is not.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     let raf = 0;
+    let timer = 0;
+    let last = 0;
     const measure = () => {
       const cards = el.querySelectorAll<HTMLElement>("[data-segment-ids]");
       const out: Marker[] = [];
@@ -98,14 +106,21 @@ export function TimelineMinimap({ scrollRef, segments }: TimelineMinimapProps) {
       setScrollHeight(Math.max(1, el.scrollHeight));
       setMarkers(out);
     };
-    const schedule = () => {
+    const run = () => {
+      last = performance.now();
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(measure);
+    };
+    const schedule = () => {
+      window.clearTimeout(timer);
+      const wait = Math.max(0, MEASURE_EVERY_MS - (performance.now() - last));
+      timer = window.setTimeout(run, wait);
     };
     schedule();
     const ro = new ResizeObserver(schedule);
     ro.observe(el);
     return () => {
+      window.clearTimeout(timer);
       cancelAnimationFrame(raf);
       ro.disconnect();
     };

@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 
 # Bump together with an entry in MIGRATIONS. A new file is created at this
 # version straight from SCHEMA; test_store_migrations holds the two equal.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # sessions.status — where a session is in its life:
 #   recording   the WS session is live; segments arrive as the user speaks
@@ -154,8 +154,13 @@ _SEARCH_TABLES: tuple[str, ...] = (
         tokenize = 'trigram'
     )
     """,
+    # Partial rows stay out of the index: a live segment is rewritten every
+    # ~800 ms while it is open, and tokenising it each time is the one cost
+    # in the write path that grows with the text. Nobody searches a line
+    # that is still being spoken; it goes in when it is final.
     """
-    CREATE TRIGGER IF NOT EXISTS segments_fts_ai AFTER INSERT ON segments BEGIN
+    CREATE TRIGGER IF NOT EXISTS segments_fts_ai AFTER INSERT ON segments
+    WHEN new.orig_status != 'partial' AND new.trans_status != 'partial' BEGIN
         INSERT INTO segments_fts (session_id, segment_id, orig_text, trans_text)
         VALUES (new.session_id, new.segment_id, new.orig_text, new.trans_text);
     END
@@ -167,9 +172,13 @@ _SEARCH_TABLES: tuple[str, ...] = (
     END
     """,
     """
-    CREATE TRIGGER IF NOT EXISTS segments_fts_au AFTER UPDATE OF orig_text, trans_text ON segments BEGIN
-        UPDATE segments_fts SET orig_text = new.orig_text, trans_text = new.trans_text
+    CREATE TRIGGER IF NOT EXISTS segments_fts_au
+    AFTER UPDATE OF orig_text, trans_text, orig_status, trans_status ON segments
+    WHEN new.orig_status != 'partial' AND new.trans_status != 'partial' BEGIN
+        DELETE FROM segments_fts
         WHERE session_id = new.session_id AND segment_id = new.segment_id;
+        INSERT INTO segments_fts (session_id, segment_id, orig_text, trans_text)
+        VALUES (new.session_id, new.segment_id, new.orig_text, new.trans_text);
     END
     """,
 )
@@ -310,6 +319,18 @@ async def _migrate_4_search(db: aiosqlite.Connection) -> None:
     )
 
 
+async def _migrate_5_fts_finals_only(db: aiosqlite.Connection) -> None:
+    """4 → 5: the index triggers skip rows that are still partial.
+
+    Trigger bodies can't be altered, so the three are recreated. Any
+    partial row the old triggers indexed is replaced when it becomes final.
+    """
+    for name in ("segments_fts_ai", "segments_fts_ad", "segments_fts_au"):
+        await db.execute(f"DROP TRIGGER IF EXISTS {name}")
+    for stmt in _SEARCH_TABLES[1:]:
+        await db.execute(stmt)
+
+
 # Ordered. Each step takes a file at the previous version to its own; the
 # runner wraps it in a transaction and stamps the version on commit. Append,
 # never edit or reorder: a step that already ran somewhere is history.
@@ -318,6 +339,7 @@ MIGRATIONS: tuple[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]],
     (2, _migrate_2_session_status),
     (3, _migrate_3_minutes),
     (4, _migrate_4_search),
+    (5, _migrate_5_fts_finals_only),
 )
 
 
@@ -338,6 +360,12 @@ class Store:
         self._db.row_factory = aiosqlite.Row
         await self._db.execute("PRAGMA foreign_keys = ON")
         await self._db.execute("PRAGMA journal_mode = WAL")
+        # WAL + NORMAL: a commit appends to the log and syncs at checkpoint,
+        # not on every commit. A live session commits two or three times a
+        # second for hours; FULL would fsync each one. The file stays
+        # consistent through an app crash; a power cut can lose the last
+        # moments of a transcript, which the recording still holds.
+        await self._db.execute("PRAGMA synchronous = NORMAL")
         try:
             await self._upgrade(self._db)
         except BaseException:

@@ -58,6 +58,12 @@ async def _send_error(
         log.exception("Failed to send error to client")
 
 
+def _is_partial(event: Any) -> bool:
+    return (isinstance(event, TranscriptEvent) and event.type == "partial") or (
+        isinstance(event, TranslationEvent) and event.partial
+    )
+
+
 async def _finish_session(
     state: Any, session_id: str, *, refine: bool, recordings_dir: Path
 ) -> None:
@@ -370,10 +376,16 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         async def event_pump() -> None:
             try:
                 async for event in pipeline.client_event_stream():
-                    # Persist before sending so a slow DB doesn't drop events,
-                    # and so the client can immediately re-fetch from /sessions.
-                    await _persist_event(event)
-                    await _send_event(ws, event)
+                    # Finals are persisted before they are sent, so a client
+                    # can re-fetch the session the moment it sees one. A
+                    # partial is on screen for less than a second; it goes
+                    # out first and the write follows.
+                    if _is_partial(event):
+                        await _send_event(ws, event)
+                        await _persist_event(event)
+                    else:
+                        await _persist_event(event)
+                        await _send_event(ws, event)
             except (WebSocketDisconnect, asyncio.CancelledError):
                 pass
             except Exception:

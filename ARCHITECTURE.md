@@ -236,6 +236,12 @@ large files, and it is the user's only copy.
   from. Nothing carries a module-level default path any more — `Store` and the
   recording writer take theirs as a required argument, so a forgotten one is
   a TypeError rather than a file written next to the user's real library.
+* **Everything per event is bounded.** A live session raises an event
+  every ~800 ms for hours. The client caches speaker turns so a partial
+  re-renders one memoised card, the timeline rail measures card offsets at
+  most three times a second, the store runs WAL with `synchronous=NORMAL`
+  (a commit appends and syncs at checkpoint, not each time), and partial
+  events reach the client before the write, finals after it.
 * **The schema is versioned.** `PRAGMA user_version` says what a file has.
   `SCHEMA` is the current shape and is what a new file gets outright; an
   existing file goes through `MIGRATIONS`, an ordered list of
@@ -315,7 +321,9 @@ knowing. The tokenizer is `trigram`: the one that makes Chinese searchable
 without a word segmenter (any three-character window is a token, in any
 script), at the price that a one- or two-character query cannot use the
 index and falls back to a `LIKE` scan, which at a personal library's size
-is fine. `GET /v1/search` returns matching lines best-first with their
+is fine. Rows still marked partial are not indexed: a live segment is
+rewritten every ~800 ms while open, and tokenising it each time was the
+one write cost that grew with the text; it goes in once, when final. `GET /v1/search` returns matching lines best-first with their
 full text — the client highlights the query itself; trigram snippets cut
 words in half — plus sessions whose title matches. The session list is
 paged with a keyset cursor (`GET /v1/sessions?limit&cursor`), so a session

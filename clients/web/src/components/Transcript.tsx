@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, Loader2, Merge, Mic, Pause, Pencil, Play, Scissors } from "lucide-react";
 
@@ -15,6 +15,7 @@ import {
 import { assignSpeaker, renameSpeaker } from "@/lib/diarize";
 import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
+import { type TurnCache, mergeBySpeaker } from "@/lib/turns";
 import type { Segment } from "@/types";
 
 /**
@@ -41,7 +42,11 @@ export function Transcript() {
   // a single "turn" card. Pure presentation — original segment rows in DB
   // are untouched, so re-diarize / playback timing still work. Segments
   // without a real speaker label fall through one-per-card as before.
-  const turns = useMemo(() => mergeBySpeaker(ordered), [ordered]);
+  // Cached across renders: a partial arriving every ~800 ms changes one
+  // segment, and only the turn holding it should be a new object — every
+  // other card keeps its props and, being memoised, does not render.
+  const [turnCache] = useState<TurnCache>(() => new Map());
+  const turns = useMemo(() => mergeBySpeaker(ordered, turnCache), [ordered, turnCache]);
 
   // Stable per-speaker colors, assigned by order of first appearance so the
   // transcript and the timeline rail agree. `diarized` tells us whether the
@@ -217,7 +222,23 @@ interface SegmentCardProps {
   diarized?: boolean;
 }
 
-function SegmentCard({
+const SegmentCard = memo(SegmentCardInner, (a, b) =>
+  a.seg === b.seg &&
+  a.srcLang === b.srcLang &&
+  a.tgtLang === b.tgtLang &&
+  a.color === b.color &&
+  a.diarized === b.diarized &&
+  sameIds(a.relatedIds, b.relatedIds),
+);
+
+function sameIds(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function SegmentCardInner({
   seg,
   relatedIds,
   srcLang,
@@ -659,57 +680,3 @@ function SpeakerChip({
   );
 }
 
-interface SpeakerTurn {
-  /** Synthetic merged segment for rendering. segmentId = first sub-segment id. */
-  segment: Segment;
-  /** Original segment IDs covered by this turn, in order. */
-  relatedIds: string[];
-}
-
-/**
- * Build "speaker turns" — adjacent same-speaker segments collapse into one
- * synthetic merged segment for display. Pre-diarize content and any
- * segments labeled "unknown" fall through one-card-per-segment (no merge).
- */
-function mergeBySpeaker(ordered: Segment[]): SpeakerTurn[] {
-  const out: SpeakerTurn[] = [];
-  for (const seg of ordered) {
-    const last = out[out.length - 1];
-    const canMerge =
-      last !== undefined &&
-      seg.speaker != null &&
-      seg.speaker !== "unknown" &&
-      seg.speaker === last.segment.speaker;
-    if (canMerge) {
-      const prev = last.segment;
-      const joinSep = (a: string, b: string) => (a && b ? `${a} ${b}` : a + b);
-      // Don't let a single partial in the middle of an otherwise-final
-      // turn mark the whole bubble as partial.
-      const origStatus =
-        prev.origStatus === "partial" || seg.origStatus === "partial"
-          ? "partial"
-          : "final";
-      const transStatus: Segment["transStatus"] =
-        prev.transStatus === "skipped" && seg.transStatus === "skipped"
-          ? "skipped"
-          : prev.transStatus === "partial" || seg.transStatus === "partial"
-            ? "partial"
-            : "final";
-      const merged: Segment = {
-        ...prev,
-        endedAt: Math.max(prev.endedAt, seg.endedAt),
-        origText: joinSep(prev.origText, seg.origText),
-        origStatus,
-        transText: joinSep(prev.transText, seg.transText),
-        transStatus,
-      };
-      out[out.length - 1] = {
-        segment: merged,
-        relatedIds: [...last.relatedIds, seg.segmentId],
-      };
-    } else {
-      out.push({ segment: seg, relatedIds: [seg.segmentId] });
-    }
-  }
-  return out;
-}

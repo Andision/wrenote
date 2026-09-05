@@ -222,6 +222,31 @@ async def test_v3_file_gets_its_transcript_indexed(tmp_path):
         await s.close()
 
 
+async def test_partial_rows_stay_out_of_the_index_until_final(tmp_path):
+    """A live segment is rewritten every partial; the index sees it once,
+    when it is final — and a v4 file's old triggers are replaced."""
+    path = _patched_file(tmp_path / "data.db", version=1)
+    s = Store(path)
+    await s.open()
+    try:
+        kw = dict(session_id="s1", segment_id="a", ord_=0, started_at=0.0, ended_at=1.0)
+        await s.upsert_segment_orig(**kw, orig_text="the quarterly bud", orig_status="partial")
+        assert await s.search_segments('"quarterly"') == []
+        await s.upsert_segment_orig(**kw, orig_text="the quarterly budget", orig_status="final")
+        assert [h["segment_id"] for h in await s.search_segments('"quarterly budget"')] == ["a"]
+        # A partial translation on a final line does not re-index it either…
+        await s.upsert_segment_trans(session_id="s1", segment_id="a", ord_=0, trans_text="季度预",
+                                     trans_status="partial", trans_lang="zh")
+        assert await s.search_segments('"季度预"') == []
+        # …the final one does.
+        await s.upsert_segment_trans(session_id="s1", segment_id="a", ord_=0, trans_text="季度预算",
+                                     trans_status="final", trans_lang="zh")
+        assert [h["segment_id"] for h in await s.search_segments('"季度预算"')] == ["a"]
+    finally:
+        await s.close()
+    assert _version(path) == SCHEMA_VERSION
+
+
 async def test_v1_file_sessions_come_up_ready(tmp_path):
     """1 → 2 gives every existing session a lifecycle, and a finished one is
     what every existing session is: ``ready``, never refined, no detail."""
