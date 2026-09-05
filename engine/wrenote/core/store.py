@@ -1,19 +1,32 @@
-"""SQLite-backed persistence for sessions, segments, and (later) chat.
+"""SQLite-backed persistence for sessions, segments, chat and the glossary.
 
-Single-file DB at ``~/.wrenote/data.db``. Async access via aiosqlite —
-the WS handler upserts as transcripts/translations arrive so a crash mid-
-session still leaves the partial work persisted. Cascade-delete is wired
-on the foreign key, but we also explicitly remove the per-session WAV file
-(filesystem) from the same code path so the two stay in sync.
+Single-file DB (``data.db`` under the data directory — see
+:mod:`wrenote.core.config`). Async access via aiosqlite — the WS handler
+upserts as transcripts/translations arrive so a crash mid-session still leaves
+the partial work persisted. Cascade-delete is wired on the foreign key, but we
+also explicitly remove the per-session WAV file (filesystem) from the same code
+path so the two stay in sync.
 
-The frontend reads via the HTTP endpoints in :mod:`wrenote.server`;
-LocalStorage is no longer authoritative.
+Schema versioning
+-----------------
+The file header's ``PRAGMA user_version`` says which schema a file has.
+``SCHEMA`` is the current one and is what a *new* file gets outright; an
+existing file is brought up through ``MIGRATIONS``, an ordered list of
+``(version, step)``. Each step runs in its own transaction and stamps its
+version as part of that transaction, so a crash mid-migration rolls back to the
+previous version instead of leaving a half-rebuilt table behind. Before the
+first step touches an existing file, a copy is taken next to it
+(``data.db.v<N>.bak``) — this is a local-first app and that file is the user's
+only copy. A file newer than this code refuses to open rather than guess.
+
+The frontend reads via the HTTP endpoints in :mod:`wrenote.api`; LocalStorage
+is no longer authoritative.
 """
 from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -24,91 +37,182 @@ log = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path("~/.wrenote/data.db").expanduser()
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS sessions (
-    id           TEXT PRIMARY KEY,
-    title        TEXT NOT NULL,
-    created_at   TEXT NOT NULL,
-    src_lang     TEXT NOT NULL,
-    tgt_lang     TEXT NOT NULL,
-    duration_s   REAL NOT NULL DEFAULT 0,
-    group_id     TEXT
-);
+# Bump together with an entry in MIGRATIONS. A new file is created at this
+# version straight from SCHEMA; test_store_migrations holds the two equal.
+SCHEMA_VERSION = 1
 
--- Optional folders the sidebar groups sessions into. Membership is the
--- nullable sessions.group_id above; deleting a group just orphans its members.
-CREATE TABLE IF NOT EXISTS session_groups (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    created_at  TEXT NOT NULL,
-    position    INTEGER NOT NULL DEFAULT 0
-);
+# One statement per entry: a migration replays these inside its transaction,
+# and executescript() would commit that transaction first. Every statement is
+# idempotent (IF NOT EXISTS) because the pre-versioning catch-up below runs
+# them against files that may already have any subset.
+_BASE_TABLES: tuple[str, ...] = (
+    """
+    CREATE TABLE IF NOT EXISTS sessions (
+        id           TEXT PRIMARY KEY,
+        title        TEXT NOT NULL,
+        created_at   TEXT NOT NULL,
+        src_lang     TEXT NOT NULL,
+        tgt_lang     TEXT NOT NULL,
+        duration_s   REAL NOT NULL DEFAULT 0,
+        group_id     TEXT
+    )
+    """,
+    # Optional folders the sidebar groups sessions into. Membership is the
+    # nullable sessions.group_id above; deleting a group just orphans its members.
+    """
+    CREATE TABLE IF NOT EXISTS session_groups (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        position    INTEGER NOT NULL DEFAULT 0
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS segments (
+        session_id   TEXT NOT NULL,
+        segment_id   TEXT NOT NULL,
+        ord          INTEGER NOT NULL,
+        started_at   REAL NOT NULL,
+        ended_at     REAL NOT NULL,
+        orig_text    TEXT NOT NULL DEFAULT '',
+        orig_status  TEXT NOT NULL DEFAULT 'final',
+        orig_lang    TEXT,
+        trans_text   TEXT NOT NULL DEFAULT '',
+        trans_status TEXT NOT NULL DEFAULT 'final',
+        trans_lang   TEXT,
+        speaker      TEXT,
+        PRIMARY KEY (session_id, segment_id),
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_segments_session_ord ON segments(session_id, ord)",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at DESC)",
+    # A session can hold many chat threads ("conversations"). Messages hang off
+    # a conversation, not the session directly.
+    """
+    CREATE TABLE IF NOT EXISTS chat_conversations (
+        id          TEXT PRIMARY KEY,
+        session_id  TEXT NOT NULL,
+        title       TEXT NOT NULL DEFAULT '',
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS glossary (
+        id          TEXT PRIMARY KEY,
+        term        TEXT NOT NULL,
+        translation TEXT NOT NULL DEFAULT '',
+        note        TEXT NOT NULL DEFAULT '',
+        position    INTEGER NOT NULL DEFAULT 0
+    )
+    """,
+)
 
-CREATE TABLE IF NOT EXISTS segments (
-    session_id   TEXT NOT NULL,
-    segment_id   TEXT NOT NULL,
-    ord          INTEGER NOT NULL,
-    started_at   REAL NOT NULL,
-    ended_at     REAL NOT NULL,
-    orig_text    TEXT NOT NULL DEFAULT '',
-    orig_status  TEXT NOT NULL DEFAULT 'final',
-    orig_lang    TEXT,
-    trans_text   TEXT NOT NULL DEFAULT '',
-    trans_status TEXT NOT NULL DEFAULT 'final',
-    trans_lang   TEXT,
-    speaker      TEXT,
-    PRIMARY KEY (session_id, segment_id),
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_segments_session_ord
-    ON segments(session_id, ord);
-CREATE INDEX IF NOT EXISTS idx_sessions_created_at
-    ON sessions(created_at DESC);
-
--- A session can hold many chat threads ("conversations"). Messages hang off
--- a conversation, not the session directly. (chat_messages is created/migrated
--- separately in _migrate_chat so an older session-keyed table can be upgraded.)
-CREATE TABLE IF NOT EXISTS chat_conversations (
-    id          TEXT PRIMARY KEY,
-    session_id  TEXT NOT NULL,
-    title       TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL,
-    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_conversations_session
-    ON chat_conversations(session_id, updated_at DESC);
-
--- Custom-vocabulary glossary (global for now; a nullable session_id can be
--- added later for per-session entries). Fed to both STT and translation.
-CREATE TABLE IF NOT EXISTS glossary (
-    id          TEXT PRIMARY KEY,
-    term        TEXT NOT NULL,
-    translation TEXT NOT NULL DEFAULT '',
-    note        TEXT NOT NULL DEFAULT '',
-    position    INTEGER NOT NULL DEFAULT 0
-);
+# Kept apart from _BASE_TABLES: the pre-versioning catch-up has to look at an
+# existing chat_messages before deciding whether to create or rebuild it.
+_CHAT_MESSAGES = """
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        conversation_id TEXT NOT NULL,
+        ord             INTEGER NOT NULL,
+        role            TEXT NOT NULL,                  -- 'user' | 'assistant'
+        content         TEXT NOT NULL,
+        created_at      TEXT NOT NULL,
+        PRIMARY KEY (conversation_id, ord),
+        FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE
+    )
 """
+_CHAT_MESSAGES_INDEX = (
+    "CREATE INDEX IF NOT EXISTS idx_chat_conversation_ord ON chat_messages(conversation_id, ord)"
+)
 
-# chat_messages is managed by _migrate_chat() rather than the main SCHEMA: a DB
-# created before multi-conversation has a session_id-keyed table we must rebuild
-# in place, and CREATE INDEX on conversation_id would fail against that old shape.
-CHAT_MESSAGES_SCHEMA = """
-CREATE TABLE IF NOT EXISTS chat_messages (
-    conversation_id TEXT NOT NULL,
-    ord             INTEGER NOT NULL,
-    role            TEXT NOT NULL,                  -- 'user' | 'assistant'
-    content         TEXT NOT NULL,
-    created_at      TEXT NOT NULL,
-    PRIMARY KEY (conversation_id, ord),
-    FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE
-);
+# The whole current schema — what a fresh file is built from.
+SCHEMA = ";\n".join((*_BASE_TABLES, _CHAT_MESSAGES, _CHAT_MESSAGES_INDEX)) + ";\n"
 
-CREATE INDEX IF NOT EXISTS idx_chat_conversation_ord
-    ON chat_messages(conversation_id, ord);
-"""
+
+class StoreVersionError(RuntimeError):
+    """The file was written by a newer Wrenote than this one."""
+
+
+async def _user_version(db: aiosqlite.Connection) -> int:
+    cur = await db.execute("PRAGMA user_version")
+    row = await cur.fetchone()
+    return int(row[0]) if row else 0
+
+
+async def _columns(db: aiosqlite.Connection, table: str) -> set[str]:
+    """Column names of ``table``; empty when it doesn't exist."""
+    cur = await db.execute(f"PRAGMA table_info({table})")
+    return {row["name"] for row in await cur.fetchall()}
+
+
+async def _rebuild_legacy_chat(db: aiosqlite.Connection) -> None:
+    """Rebuild a chat_messages keyed by ``session_id`` into the conversation model.
+
+    Each session's existing messages are wrapped in one migrated conversation
+    so no chat history is lost.
+    """
+    log.info("migrating chat_messages to the conversation model")
+    cur = await db.execute("SELECT DISTINCT session_id FROM chat_messages")
+    session_ids = [row["session_id"] for row in await cur.fetchall()]
+
+    conv_for: dict[str, str] = {}
+    for sid in session_ids:
+        cur = await db.execute(
+            "SELECT MIN(created_at) AS first, MAX(created_at) AS last "
+            "FROM chat_messages WHERE session_id = ?",
+            (sid,),
+        )
+        row = await cur.fetchone()
+        first = (row["first"] if row else None) or ""
+        last = (row["last"] if row else None) or first
+        conv_id = uuid.uuid4().hex
+        conv_for[sid] = conv_id
+        await db.execute(
+            "INSERT INTO chat_conversations (id, session_id, title, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (conv_id, sid, "", first, last),
+        )
+
+    await db.execute(_CHAT_MESSAGES.replace("chat_messages", "chat_messages_v2", 1))
+    for sid, conv_id in conv_for.items():
+        await db.execute(
+            "INSERT INTO chat_messages_v2 (conversation_id, ord, role, content, created_at) "
+            "SELECT ?, ord, role, content, created_at FROM chat_messages WHERE session_id = ?",
+            (conv_id, sid),
+        )
+    await db.execute("DROP TABLE chat_messages")
+    await db.execute("ALTER TABLE chat_messages_v2 RENAME TO chat_messages")
+
+
+async def _migrate_1_pre_versioning(db: aiosqlite.Connection) -> None:
+    """0 → 1: bring a file from before schema versioning up to date.
+
+    Version-0 files were built by running the schema with IF NOT EXISTS on
+    every open plus two probe-and-patch fixes (the chat rebuild, the group_id
+    column), so one may be in any of several shapes. This step re-does exactly
+    those idempotent moves, once. It is the last migration that has to probe:
+    from here on ``user_version`` says what a file has.
+    """
+    for stmt in _BASE_TABLES:
+        await db.execute(stmt)
+    chat_cols = await _columns(db, "chat_messages")
+    if not chat_cols:
+        await db.execute(_CHAT_MESSAGES)
+    elif "conversation_id" not in chat_cols:
+        await _rebuild_legacy_chat(db)
+    await db.execute(_CHAT_MESSAGES_INDEX)
+    if "group_id" not in await _columns(db, "sessions"):
+        await db.execute("ALTER TABLE sessions ADD COLUMN group_id TEXT")
+
+
+# Ordered. Each step takes a file at the previous version to its own; the
+# runner wraps it in a transaction and stamps the version on commit. Append,
+# never edit or reorder: a step that already ran somewhere is history.
+MIGRATIONS: tuple[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]], ...] = (
+    (1, _migrate_1_pre_versioning),
+)
 
 
 class Store:
@@ -118,93 +222,71 @@ class Store:
         self._db_path = db_path or DEFAULT_DB_PATH
         self._db: aiosqlite.Connection | None = None
 
+    @property
+    def path(self) -> Path:
+        return self._db_path
+
     async def open(self) -> None:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db = await aiosqlite.connect(self._db_path)
         self._db.row_factory = aiosqlite.Row
         await self._db.execute("PRAGMA foreign_keys = ON")
         await self._db.execute("PRAGMA journal_mode = WAL")
-        await self._db.executescript(SCHEMA)
-        await self._migrate_chat(self._db)
-        await self._migrate_groups(self._db)
-        await self._db.commit()
-        log.info("SQLite store opened at %s", self._db_path)
+        try:
+            await self._upgrade(self._db)
+        except BaseException:
+            await self._db.close()
+            self._db = None
+            raise
+        log.info("SQLite store opened at %s (schema v%d)", self._db_path, SCHEMA_VERSION)
 
-    async def _migrate_groups(self, db: aiosqlite.Connection) -> None:
-        """Add sessions.group_id to a DB created before grouping existed."""
-        cur = await db.execute("PRAGMA table_info(sessions)")
-        cols = {row["name"] for row in await cur.fetchall()}
-        if "group_id" not in cols:
-            await db.execute("ALTER TABLE sessions ADD COLUMN group_id TEXT")
-
-    async def _migrate_chat(self, db: aiosqlite.Connection) -> None:
-        """Create chat_messages, upgrading a legacy session-keyed table.
-
-        Old DBs keyed messages by ``session_id``; the conversation model keys
-        them by ``conversation_id``. We rebuild the table once, wrapping each
-        session's existing messages in a single migrated conversation so no
-        chat history is lost.
-        """
-        cur = await db.execute("PRAGMA table_info(chat_messages)")
-        cols = {row["name"] for row in await cur.fetchall()}
-
-        if not cols:
-            # Fresh DB — just create the current schema.
-            await db.executescript(CHAT_MESSAGES_SCHEMA)
+    async def _upgrade(self, db: aiosqlite.Connection) -> None:
+        """Create or migrate the file to ``SCHEMA_VERSION``."""
+        version = await _user_version(db)
+        if version > SCHEMA_VERSION:
+            raise StoreVersionError(
+                f"{self._db_path} is schema v{version}; this Wrenote knows up to "
+                f"v{SCHEMA_VERSION}. It was written by a newer version — update Wrenote, "
+                "or move the file aside to start empty."
+            )
+        if version == SCHEMA_VERSION:
             return
-        if "conversation_id" in cols:
-            # Already migrated; make sure the index is present.
-            await db.executescript(CHAT_MESSAGES_SCHEMA)
+        if version == 0 and not await _columns(db, "sessions"):
+            # A new file: build the current schema outright.
+            await db.executescript(SCHEMA)
+            await db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            await db.commit()
             return
 
-        # Legacy session-keyed table → rebuild.
-        log.info("migrating chat_messages to the conversation model")
-        cur = await db.execute("SELECT DISTINCT session_id FROM chat_messages")
-        session_ids = [row["session_id"] for row in await cur.fetchall()]
+        await self._backup(db, version)
+        for target, step in MIGRATIONS:
+            if target <= version:
+                continue
+            log.info("migrating %s: schema v%d → v%d", self._db_path, version, target)
+            # BEGIN explicitly: sqlite3's implicit transactions don't cover DDL,
+            # and the point is that a step either lands whole or not at all.
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                await step(db)
+                await db.execute(f"PRAGMA user_version = {target}")
+                await db.execute("COMMIT")
+            except BaseException:
+                await db.execute("ROLLBACK")
+                raise
+            version = target
 
-        conv_for: dict[str, str] = {}
-        for sid in session_ids:
-            cur = await db.execute(
-                "SELECT MIN(created_at) AS first, MAX(created_at) AS last "
-                "FROM chat_messages WHERE session_id = ?",
-                (sid,),
-            )
-            row = await cur.fetchone()
-            first = (row["first"] if row else None) or ""
-            last = (row["last"] if row else None) or first
-            conv_id = uuid.uuid4().hex
-            conv_for[sid] = conv_id
-            await db.execute(
-                "INSERT INTO chat_conversations (id, session_id, title, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (conv_id, sid, "", first, last),
-            )
-
-        await db.execute(
-            """
-            CREATE TABLE chat_messages_v2 (
-                conversation_id TEXT NOT NULL,
-                ord             INTEGER NOT NULL,
-                role            TEXT NOT NULL,
-                content         TEXT NOT NULL,
-                created_at      TEXT NOT NULL,
-                PRIMARY KEY (conversation_id, ord),
-                FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE
-            )
-            """
-        )
-        for sid, conv_id in conv_for.items():
-            await db.execute(
-                "INSERT INTO chat_messages_v2 (conversation_id, ord, role, content, created_at) "
-                "SELECT ?, ord, role, content, created_at FROM chat_messages WHERE session_id = ?",
-                (conv_id, sid),
-            )
-        await db.execute("DROP TABLE chat_messages")
-        await db.execute("ALTER TABLE chat_messages_v2 RENAME TO chat_messages")
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_chat_conversation_ord "
-            "ON chat_messages(conversation_id, ord)"
-        )
+    async def _backup(self, db: aiosqlite.Connection, version: int) -> None:
+        """Copy the file (via SQLite's backup API, so WAL content is included)
+        before the first migration touches it. Overwrites a previous attempt's
+        copy for the same source version; the user has the one that matters."""
+        target = self._db_path.with_name(f"{self._db_path.name}.v{version}.bak")
+        target.unlink(missing_ok=True)
+        bak = await aiosqlite.connect(target)
+        try:
+            await db.backup(bak)
+        finally:
+            await bak.close()
+        log.info("backed up %s to %s before migrating", self._db_path, target)
 
     async def close(self) -> None:
         if self._db is not None:
