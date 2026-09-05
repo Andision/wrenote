@@ -387,9 +387,9 @@ platform-specific packaging workflows stay slow and separate.
    transparency, signing). Fall back to engine-side mic capture via the
    platform adapter if a WebView can't. `shells/electron/` ships until then.
 3. 🔧 Runtime packs — engine install/activate, API, settings UI and the
-   pack build scripts are done; `build-runtimes.yml` needs its first manual
-   run (`workflow_dispatch`) to publish real Windows `cpu` / `vulkan` /
-   `cuda` packs, then a driver-matrix check (NVIDIA, AMD, Intel) on real
-   machines.
+   pack build scripts are done, and the Windows `cpu` (4 MB) / `vulkan`
+   (37 MB) / `cuda` (779 MB) packs are published on the rolling `runtimes`
+   release with their index. What remains is the driver-matrix check
+   (NVIDIA, AMD, Intel) on real machines.
 4. Native clients only where native matters (macOS menu bar / overlay),
    starting with one platform against the contract.
