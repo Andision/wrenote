@@ -51,6 +51,12 @@ jobs:
         working-directory: engine
         run: python -m wrenote.contract --check
 
+      - name: Every manifest agrees on the version
+        # The engine reports its version and compares it with the release
+        # index; a shell built at 0.2.0 over an engine that says 0.1.0 would
+        # tell its user to update to what they already run.
+        run: python packaging/release/version.py --check
+
       - name: The model catalogue matches upstream
         # A model quietly replaced on HuggingFace changes its sha256 and every
         # download starts failing verification. Weekly, because it reaches out
