@@ -85,7 +85,7 @@ async def test_new_file_is_created_at_the_current_version(tmp_path):
     assert _version(s.path) == SCHEMA_VERSION
     assert set(_shape(s.path)) == {
         "sessions", "session_groups", "segments", "chat_conversations",
-        "chat_messages", "glossary",
+        "chat_messages", "glossary", "session_minutes",
     }
     # Nothing to protect yet, so nothing to copy.
     assert _backups(s.path) == []

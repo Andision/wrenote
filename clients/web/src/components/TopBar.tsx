@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Download,
+  FileText,
   Languages,
   Loader2,
   MessageSquare,
@@ -42,6 +43,8 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
   const renameSession = useSessionStore((s) => s.renameSession);
   const toggleChat = useSessionStore((s) => s.toggleChat);
   const chatOpen = useSessionStore((s) => s.chatOpen);
+  const toggleMinutes = useSessionStore((s) => s.toggleMinutes);
+  const minutesOpen = useSessionStore((s) => s.minutesOpen);
   const sessionId = useSessionStore((s) => s.sessionId);
   const segmentCountForDiarize = useSessionStore((s) => s.segmentOrder.length);
   const trackJob = useJobsStore((s) => s.track);
@@ -413,6 +416,19 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
 
       {canDownload && sessionId && (
         <ExportMenu sessionId={sessionId} title={title} hasTranslations={hasTranslations} />
+      )}
+
+      {finished && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => toggleMinutes()}
+          data-tip={t("topbar.minutes")}
+          aria-pressed={minutesOpen}
+          className={minutesOpen ? "size-9 bg-accent text-foreground" : "size-9"}
+        >
+          <FileText className="size-4" />
+        </Button>
       )}
 
       <Button

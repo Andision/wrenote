@@ -111,6 +111,8 @@ interface State {
   settingsOpen: boolean;
   sidebarOpen: boolean;
   chatOpen: boolean;
+  /** The minutes panel shares the right-hand column with chat: one at a time. */
+  minutesOpen: boolean;
 
   // Playback (the actual <audio> element lives in usePlayback; this is
   // just the bit of state every segment card needs to read to highlight
@@ -181,6 +183,7 @@ interface Actions {
   toggleSettings: (open?: boolean) => void;
   toggleSidebar: (open?: boolean) => void;
   toggleChat: (open?: boolean) => void;
+  toggleMinutes: (open?: boolean) => void;
 
   // Speaker post-processing (offline). Patches local segment state to
   // mirror the backend after a diarize / rename round-trip — avoids a
@@ -295,6 +298,7 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
   settingsOpen: false,
   sidebarOpen: loadSidebarOpen(),
   chatOpen: false,
+  minutesOpen: false,
   playingSegmentId: null,
   isPlaying: false,
   playbackCurrentTime: 0,
@@ -552,7 +556,15 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
       return { sidebarOpen: next };
     }),
   toggleChat: (open) =>
-    set((s) => ({ chatOpen: open ?? !s.chatOpen })),
+    set((s) => {
+      const next = open ?? !s.chatOpen;
+      return { chatOpen: next, minutesOpen: next ? false : s.minutesOpen };
+    }),
+  toggleMinutes: (open) =>
+    set((s) => {
+      const next = open ?? !s.minutesOpen;
+      return { minutesOpen: next, chatOpen: next ? false : s.chatOpen };
+    }),
 
   applySpeakerLabels: (labels) =>
     set((s) => {

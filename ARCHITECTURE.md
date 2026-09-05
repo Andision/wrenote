@@ -289,6 +289,22 @@ lifecycle, persisted as `sessions.status` and shown by the client:
   neither has been measured on real meetings yet — they are the standard
   practice, not a tuned result.
 
+## Minutes (`core/minutes.py`)
+
+A transcript is the record; the minutes are what people read afterwards.
+The on-device chat model that already answers questions about a session is
+asked, once, for a fixed document — summary, key points, decisions, action
+items with owner and due date, open questions — as JSON, in a chosen
+language, and the answer is kept in `session_minutes` (schema v3), one row
+per language. The parse is lenient (fenced JSON, JSON in prose, or no JSON
+at all, which becomes a summary-only document) because a small model does
+not always comply. A transcript longer than the model's window is done in
+~16k-character pieces and merged with one more call. Each row remembers the
+transcript hash it was written from, so the client can say "the transcript
+changed since" — the post-recording pass does exactly that. The document
+renders to Markdown with headings in its own language, on its own
+(`/minutes/markdown`) or ahead of the transcript (`/export?minutes=<lang>`).
+
 ## Updates and releases (`core/update.py`, `packaging/release/`)
 
 * **The engine reports, the shell installs, the client renders.** On launch

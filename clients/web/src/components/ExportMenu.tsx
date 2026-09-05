@@ -9,6 +9,7 @@ import {
   downloadText,
   fetchExport,
 } from "@/lib/export";
+import { getMinutes } from "@/lib/minutes";
 import { cn } from "@/lib/utils";
 import { useT } from "@/i18n";
 
@@ -38,7 +39,26 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
   const [content, setContent] = useState<ExportContent>(hasTranslations ? "both" : "original");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Languages the session has minutes in; the first is offered for inclusion.
+  const [minutesLangs, setMinutesLangs] = useState<string[]>([]);
+  const [withMinutes, setWithMinutes] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    getMinutes(sessionId)
+      .then((s) => {
+        if (!cancelled) setMinutesLangs(s.minutes.map((m) => m.lang));
+      })
+      .catch(() => {
+        if (!cancelled) setMinutesLangs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, sessionId]);
+  const minutesLang = withMinutes && minutesLangs.length > 0 ? minutesLangs[0] : undefined;
 
   // Close on outside click / Escape.
   useEffect(() => {
@@ -68,7 +88,7 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
 
   const onCopy = () =>
     run(async () => {
-      const text = await fetchExport(sessionId, "txt", content);
+      const text = await fetchExport(sessionId, "txt", content, minutesLang);
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -77,7 +97,7 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
 
   const onDownload = (fmt: ExportFormat) =>
     run(async () => {
-      const text = await fetchExport(sessionId, fmt, content);
+      const text = await fetchExport(sessionId, fmt, content, minutesLang);
       downloadText(title || sessionId, fmt, text);
       setOpen(false);
     });
@@ -132,6 +152,18 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
               ))}
             </div>
           </div>
+
+          {minutesLangs.length > 0 && (
+            <label className="flex cursor-pointer items-center gap-2 px-1.5 py-1 text-[12px] text-foreground">
+              <input
+                type="checkbox"
+                checked={withMinutes}
+                onChange={(e) => setWithMinutes(e.target.checked)}
+                className="size-3.5 accent-brand-600"
+              />
+              {t("export.withMinutes", { lang: minutesLangs[0].toUpperCase() })}
+            </label>
+          )}
 
           <div className="my-1 h-px bg-border" />
 

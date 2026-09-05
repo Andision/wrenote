@@ -109,7 +109,8 @@
       "confirmBody": "整段录音会重新经过语音引擎，转写结果将被替换。对当前文本的修改会丢失；说话人名称会保留。",
       "confirmRun": "重新转写",
       "jobLabel": "转写录音：{title}"
-    }
+    },
+    "minutes": "会议纪要"
   },
   "preflight": {
     "translateOn": "边说边译",
@@ -190,7 +191,8 @@
     "translation": "译文",
     "both": "双语",
     "copied": "转写已复制",
-    "failed": "导出失败"
+    "failed": "导出失败",
+    "withMinutes": "附上会议纪要（{lang}）"
   },
   "upload": {
     "title": "从文件转写",
@@ -392,6 +394,32 @@
       "unreachable": "无法连接发布索引，请检查网络后重试。",
       "bad_index": "发布索引无法读取，请稍后再试。",
       "no_index": "未配置发布索引（update.index_url）。"
+    }
+  },
+  "minutes": {
+    "title": "纪要",
+    "generate": "生成纪要",
+    "regenerate": "重新生成",
+    "writing": "正在整理纪要…",
+    "loading": "加载中…",
+    "emptyTitle": "还没有纪要",
+    "emptyHint": "由本地模型根据转写内容整理：摘要、决定事项、谁负责什么。",
+    "waitForStop": "录制结束后可用。",
+    "noSessionTitle": "还没有可整理的内容",
+    "noSessionHint": "纪要根据已结束会话的转写内容生成。",
+    "stale": "生成纪要后转写内容有过变动。重新生成可以更新。",
+    "generatedAt": "生成于 {when}",
+    "busy": "这个会话的纪要正在生成中。",
+    "noTranscript": "这个会话没有可整理的转写内容。",
+    "copy": "复制为 Markdown",
+    "copied": "纪要已复制",
+    "download": "下载（.md）",
+    "section": {
+      "summary": "摘要",
+      "keyPoints": "要点",
+      "decisions": "决定事项",
+      "actionItems": "待办事项",
+      "openQuestions": "待定问题"
     }
   }
 }

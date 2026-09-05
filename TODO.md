@@ -117,10 +117,15 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       in the same language with each new one, live and in every batch path.
       Hy-MT reads a `Context:` block by design; still needs a look at real
       output for a small model translating the context along with the text.
-- [ ] **1. Meeting minutes.** Summary / decisions / action items from the
-      transcript via the chat model, bilingual, stored per session (new
-      table), exported with the transcript. The biggest single thing a
-      meeting tool does that this one doesn't.
+- [x] **1. Meeting minutes.** Summary / key points / decisions / action
+      items (owner, due) / open questions from the transcript via the chat
+      model, one document per language (schema v3, `session_minutes`),
+      shown in a right-hand panel next to the transcript, copied or saved
+      as Markdown, and put ahead of the transcript in an export. Long
+      transcripts go through the model in pieces and are merged. Untested
+      on a real model: how well Qwen3-4B keeps to the JSON shape and how
+      long an hour's transcript takes — the lenient parse and the
+      per-part fallback exist for exactly that.
 - [ ] **2 (search half). FTS5 over segments** plus pagination on the list
       (see "Findability" below); feed the chat model the matching segments
       instead of the whole transcript on long sessions.

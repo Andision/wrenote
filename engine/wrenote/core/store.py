@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 
 # Bump together with an entry in MIGRATIONS. A new file is created at this
 # version straight from SCHEMA; test_store_migrations holds the two equal.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # sessions.status — where a session is in its life:
 #   recording   the WS session is live; segments arrive as the user speaks
@@ -117,6 +117,21 @@ _BASE_TABLES: tuple[str, ...] = (
         translation TEXT NOT NULL DEFAULT '',
         note        TEXT NOT NULL DEFAULT '',
         position    INTEGER NOT NULL DEFAULT 0
+    )
+    """,
+    # Meeting minutes the chat model wrote for a session, one row per language.
+    # `content` is the JSON document core/minutes.py defines; `transcript_hash`
+    # is what it was written from, so a changed transcript shows as stale.
+    """
+    CREATE TABLE IF NOT EXISTS session_minutes (
+        session_id      TEXT NOT NULL,
+        lang            TEXT NOT NULL,
+        content         TEXT NOT NULL,
+        generated_at    TEXT NOT NULL,
+        model           TEXT NOT NULL DEFAULT '',
+        transcript_hash TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (session_id, lang),
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     )
     """,
 )
@@ -239,12 +254,18 @@ async def _migrate_2_session_status(db: aiosqlite.Connection) -> None:
     await db.execute("ALTER TABLE sessions ADD COLUMN refined_at TEXT")
 
 
+async def _migrate_3_minutes(db: aiosqlite.Connection) -> None:
+    """2 → 3: a table for the minutes the chat model writes (see core/minutes.py)."""
+    await db.execute(_BASE_TABLES[-1])
+
+
 # Ordered. Each step takes a file at the previous version to its own; the
 # runner wraps it in a transaction and stamps the version on commit. Append,
 # never edit or reorder: a step that already ran somewhere is history.
 MIGRATIONS: tuple[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]], ...] = (
     (1, _migrate_1_pre_versioning),
     (2, _migrate_2_session_status),
+    (3, _migrate_3_minutes),
 )
 
 
@@ -703,6 +724,52 @@ class Store:
                 f"UPDATE segments SET {', '.join(sets)} "
                 "WHERE session_id = ? AND segment_id = ?",
                 params,
+            )
+            await db.commit()
+            return cur.rowcount > 0
+
+    # ---------- Minutes ----------
+
+    async def list_minutes(self, session_id: str) -> list[dict[str, Any]]:
+        async with self._conn() as db:
+            cur = await db.execute(
+                "SELECT session_id, lang, content, generated_at, model, transcript_hash "
+                "FROM session_minutes WHERE session_id = ? ORDER BY generated_at DESC",
+                (session_id,),
+            )
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def upsert_minutes(
+        self,
+        *,
+        session_id: str,
+        lang: str,
+        content: str,
+        generated_at: str,
+        model: str,
+        transcript_hash: str,
+    ) -> None:
+        async with self._conn() as db:
+            await db.execute(
+                """
+                INSERT INTO session_minutes
+                    (session_id, lang, content, generated_at, model, transcript_hash)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_id, lang) DO UPDATE SET
+                    content = excluded.content,
+                    generated_at = excluded.generated_at,
+                    model = excluded.model,
+                    transcript_hash = excluded.transcript_hash
+                """,
+                (session_id, lang, content, generated_at, model, transcript_hash),
+            )
+            await db.commit()
+
+    async def delete_minutes(self, session_id: str, lang: str) -> bool:
+        async with self._conn() as db:
+            cur = await db.execute(
+                "DELETE FROM session_minutes WHERE session_id = ? AND lang = ?",
+                (session_id, lang),
             )
             await db.commit()
             return cur.rowcount > 0

@@ -9,9 +9,15 @@ export async function fetchExport(
   sessionId: string,
   fmt: ExportFormat,
   content: ExportContent,
+  /** Put this language's minutes before the transcript (md / txt only). */
+  minutesLang?: string,
 ): Promise<string> {
+  const minutes =
+    minutesLang && (fmt === "md" || fmt === "txt")
+      ? `&minutes=${encodeURIComponent(minutesLang)}`
+      : "";
   const res = await fetch(
-    `${BASE}/sessions/${encodeURIComponent(sessionId)}/export?fmt=${fmt}&content=${content}`,
+    `${BASE}/sessions/${encodeURIComponent(sessionId)}/export?fmt=${fmt}&content=${content}${minutes}`,
   );
   if (!res.ok) throw new Error(`export failed (${res.status})`);
   return res.text();

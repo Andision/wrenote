@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { AnimatePresence, LayoutGroup } from "motion/react";
 
 import { ChatPanel } from "@/components/ChatPanel";
+import { MinutesPanel } from "@/components/MinutesPanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SetupGate } from "@/components/SetupGate";
 import { PreFlight } from "@/components/PreFlight";
@@ -136,6 +137,7 @@ export default function App() {
                   )}
                 </AnimatePresence>
               </main>
+              <MinutesPanel />
               <ChatPanel />
             </div>
             <StatusBar />

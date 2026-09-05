@@ -109,7 +109,8 @@
       "confirmBody": "The whole recording is run through the speech engine again and the transcript is replaced. Edits to the current text are lost; speaker names are kept.",
       "confirmRun": "Re-transcribe",
       "jobLabel": "Transcribe recording: {title}"
-    }
+    },
+    "minutes": "Meeting minutes"
   },
   "preflight": {
     "translateOn": "Translate as I speak",
@@ -190,7 +191,8 @@
     "translation": "Translation",
     "both": "Both",
     "copied": "Transcript copied",
-    "failed": "Export failed"
+    "failed": "Export failed",
+    "withMinutes": "Include minutes ({lang})"
   },
   "upload": {
     "title": "Transcribe from file",
@@ -393,6 +395,32 @@
       "unreachable": "Couldn't reach the release index. Check your connection and try again.",
       "bad_index": "The release index couldn't be read. Try again later.",
       "no_index": "No release index is configured (update.index_url)."
+    }
+  },
+  "minutes": {
+    "title": "Minutes",
+    "generate": "Write minutes",
+    "regenerate": "Write again",
+    "writing": "Writing the minutes…",
+    "loading": "Loading…",
+    "emptyTitle": "No minutes yet",
+    "emptyHint": "A summary, the decisions and who took on what, written from the transcript by the on-device model.",
+    "waitForStop": "Available once the recording has stopped.",
+    "noSessionTitle": "Nothing to summarise yet",
+    "noSessionHint": "Minutes are written from a finished session's transcript.",
+    "stale": "The transcript changed after these minutes were written. Write them again to bring them up to date.",
+    "generatedAt": "Written {when}",
+    "busy": "Minutes are already being written for this session.",
+    "noTranscript": "This session has no transcript to summarise.",
+    "copy": "Copy as Markdown",
+    "copied": "Minutes copied",
+    "download": "Download (.md)",
+    "section": {
+      "summary": "Summary",
+      "keyPoints": "Key points",
+      "decisions": "Decisions",
+      "actionItems": "Action items",
+      "openQuestions": "Open questions"
     }
   }
 }

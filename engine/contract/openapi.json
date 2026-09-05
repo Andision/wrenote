@@ -1330,7 +1330,7 @@
     },
     "/v1/sessions/{session_id}/export": {
       "get": {
-        "description": "Export the transcript as text. ``fmt`` = md|txt|srt|vtt;\n``content`` = original|translation|both. Returned as text so the frontend\ncan copy it or save it client-side with a chosen filename.",
+        "description": "Export the transcript as text. ``fmt`` = md|txt|srt|vtt;\n``content`` = original|translation|both. ``minutes`` = a language code\nputs that language's minutes before the transcript (md and txt only;\n404 when the session has none in that language). Returned as text so\nthe frontend can copy it or save it client-side with a chosen filename.",
         "operationId": "export_session_v1_sessions__session_id__export_get",
         "parameters": [
           {
@@ -1359,6 +1359,16 @@
             "schema": {
               "default": "both",
               "title": "Content",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minutes",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Minutes",
               "type": "string"
             }
           }
@@ -1428,6 +1438,187 @@
           }
         },
         "summary": "Set Session Group"
+      }
+    },
+    "/v1/sessions/{session_id}/minutes": {
+      "delete": {
+        "operationId": "delete_minutes_v1_sessions__session_id__minutes_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Minutes V1 Sessions  Session Id  Minutes Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Minutes"
+      },
+      "get": {
+        "description": "Every language's minutes for the session, each with ``stale`` (the\ntranscript changed since), plus the running job's id if one is writing.",
+        "operationId": "get_minutes_v1_sessions__session_id__minutes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Minutes V1 Sessions  Session Id  Minutes Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Minutes"
+      },
+      "post": {
+        "description": "(Re)write the minutes in ``lang`` (body ``{\"lang\": \"zh\"}``; default the\nsession's target language). Returns ``{job_id}``; 409 while one is running.",
+        "operationId": "write_minutes_v1_sessions__session_id__minutes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Write Minutes V1 Sessions  Session Id  Minutes Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Minutes"
+      }
+    },
+    "/v1/sessions/{session_id}/minutes/markdown": {
+      "get": {
+        "description": "The minutes in ``lang`` rendered as Markdown, titled with the session.",
+        "operationId": "minutes_markdown_v1_sessions__session_id__minutes_markdown_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Minutes Markdown"
       }
     },
     "/v1/sessions/{session_id}/refine": {

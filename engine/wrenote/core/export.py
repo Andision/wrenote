@@ -11,6 +11,7 @@ unit-tested. ``content`` selects which text to emit:
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 Segment = dict[str, Any]
@@ -130,6 +131,25 @@ def to_srt(segments: list[Segment], content: Content) -> str:
 
 def to_vtt(segments: list[Segment], content: Content) -> str:
     return _subtitle(segments, content, vtt=True)
+
+
+def with_minutes(text: str, minutes_md: str, fmt: str) -> str:
+    """Put the minutes before the transcript. Markdown keeps its heading
+    level (the document title stays the session's); plain text gets the
+    same content without the marks."""
+    if fmt == "md":
+        lines = text.split("\n")
+        # After the "# title" and the "_meta_" line, before the first segment.
+        head_end = 0
+        for i, line in enumerate(lines[:4]):
+            if line.startswith("# ") or line.startswith("_") or line == "":
+                head_end = i + 1
+            else:
+                break
+        return "\n".join(lines[:head_end]) + "\n" + minutes_md + "\n---\n\n" + "\n".join(lines[head_end:])
+    plain = re.sub(r"^#+\s*", "", minutes_md, flags=re.M)
+    plain = plain.replace("- [ ] ", "- ")
+    return plain + "\n" + ("-" * 40) + "\n\n" + text
 
 
 def export_transcript(

@@ -12,7 +12,7 @@ const STORAGE_KEY = "wrenote.activeJobs";
 const LINGER_MS = 4000;
 
 /** Kind tells us how to rebuild onDone after a refresh. */
-export type JobKind = "upload" | "diarize" | "translate" | "refine";
+export type JobKind = "upload" | "diarize" | "translate" | "refine" | "minutes";
 
 /** What we persist — enough to re-track + reconstruct the completion side-effect. */
 interface PersistedJob {
