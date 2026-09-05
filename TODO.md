@@ -63,6 +63,34 @@ wizard may skip the runtime step) with nothing holding them.
 - [ ] Component tests for the parts with real interaction left: `ComputePanel`
       (install → select → restart-required), `Transcript` editing, `ChatPanel`
 
+### d. In-place updates — the shell half of the update channel
+
+The engine now says a newer version exists and the client offers a Download;
+what the user gets is an installer to run by hand. The index (`latest.json`)
+is already in Tauri's updater format precisely so this step is only the shell
+side. Agreed to do; the first item is a human action, and nothing below it can
+start until it is done.
+
+- [ ] **Signing keys (you).** `npx tauri signer generate -w ~/.tauri/wrenote.key`
+      → a minisign keypair. Private key + password become the repo secrets
+      `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the
+      public key is committed (it goes in `tauri.conf.json` below). Keep the
+      private key somewhere durable: a lost key means every installed copy
+      stops trusting new releases and needs a manual reinstall.
+- [ ] `tauri build` then writes a `.sig` next to each installer and
+      `packaging/release/make_latest.py` already carries it into `latest.json`
+      — verify on the first tagged build that `signature` is non-empty
+- [ ] `tauri-plugin-updater` in `Cargo.toml`, `.plugin(tauri_plugin_updater::Builder::new().build())`
+      in `lib.rs`, `plugins.updater.pubkey` + `endpoints` (the index URL) in
+      `tauri.conf.json`, `updater:default` in `capabilities/default.json`
+- [ ] One more bridge call (`wrenoteDesktop.installUpdate()`): download,
+      verify, install, relaunch, with progress relayed to the client. The
+      client's Download button prefers it when present and falls back to
+      `openExternal` (Electron, older shells, plain browser).
+- [ ] macOS: the replaced `.app` must be signed and notarized or Gatekeeper
+      refuses it — that is the "Waiting on hardware" checklist, so ship
+      Windows in-place first if the Mac side is still open.
+
 ## Next
 
 ### Data safety
@@ -105,15 +133,6 @@ wizard may skip the runtime step) with nothing holding them.
       and shows the state in Settings → General, and Download opens the
       installer in the system browser through the shell. A `v*` tag now
       publishes the Release and the index (`build-tauri.yml`).
-- [ ] **In-place install.** The index is already in the updater plugin's
-      format, so this is the shell side: `npx tauri signer generate` for a
-      minisign keypair, `TAURI_SIGNING_PRIVATE_KEY` (+ `_PASSWORD`) as repo
-      secrets so `tauri build` writes `.sig` files (`make_latest.py` already
-      carries them), `tauri-plugin-updater` with `plugins.updater.pubkey` and
-      the `endpoints` URL in `tauri.conf.json`, and one more `wrenoteDesktop`
-      call the client's Download button prefers when present. On macOS the
-      replaced app must be signed and notarized first — see "Waiting on
-      hardware".
 
 ### Engineering
 
