@@ -83,11 +83,16 @@ export function MinutesBody({ sessionId }: { sessionId: string | null }) {
   const refresh = useCallback(async () => {
     if (!sessionId) return;
     try {
-      setState(await getMinutes(sessionId));
+      const next = await getMinutes(sessionId);
+      setState(next);
+      // A job GET told us about (a reload mid-generation): follow it.
+      if (next.jobId && !useJobsStore.getState().jobs[next.jobId]) {
+        trackJob({ jobId: next.jobId, label: next.jobLang ?? "", kind: "minutes", sessionId });
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     }
-  }, [sessionId]);
+  }, [sessionId, trackJob]);
 
   // The job writing minutes right now: ours (tracked) or one found via GET.
   const jobId = state?.jobId ?? null;
@@ -106,12 +111,6 @@ export function MinutesBody({ sessionId }: { sessionId: string | null }) {
     if (runningId) return;
     void refresh();
   }, [runningId, refresh]);
-  // Follow a job GET told us about (a reload mid-generation).
-  useEffect(() => {
-    if (jobId && sessionId && !useJobsStore.getState().jobs[jobId]) {
-      trackJob({ jobId, label: state?.jobLang ?? "", kind: "minutes", sessionId });
-    }
-  }, [jobId, sessionId, state?.jobLang, trackJob]);
 
   const srcLang = meta?.srcLang ?? settings.srcLang;
   const tgtLang = meta?.tgtLang ?? settings.tgtLang;
