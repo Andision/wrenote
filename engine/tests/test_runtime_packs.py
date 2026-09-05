@@ -479,21 +479,18 @@ def install_client(monkeypatch, tmp_path, published):
     """A TestClient whose engine can really install the published fake pack."""
     from fastapi.testclient import TestClient
 
-    import wrenote.core.recording as recording_mod
-    import wrenote.core.store as store_mod
     import wrenote.server as server
     from wrenote import platform as plat
     from wrenote.core.config import Config
 
     _, index_url = published
-    monkeypatch.setattr(store_mod, "DEFAULT_DB_PATH", tmp_path / "data.db")
-    monkeypatch.setattr(recording_mod, "DEFAULT_DIR", tmp_path / "recordings")
     monkeypatch.setattr(config_mod, "USER_CONFIG", tmp_path / "config.yaml")
     plat.set_platform(HostPlatform())
     cfg = Config.model_validate({
         "stt": {"backend": "mock"}, "vad": {"backend": "disabled"}, "translator": {"backend": "mock"},
         "speaker": {"backend": "disabled"}, "chat": {"backend": "mock"},
-        "compute": {"runtimes_dir": str(tmp_path / "runtimes"), "runtimes_index_url": index_url},
+        "data": {"dir": str(tmp_path)},
+        "compute": {"runtimes_index_url": index_url},
     })
     with TestClient(server.create_app(cfg)) as c:
         yield c

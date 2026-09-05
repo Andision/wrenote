@@ -60,7 +60,7 @@ from pathlib import Path
 from typing import Any
 
 from ..platform import AcceleratorNote, HardwareInfo, PlatformAdapter
-from .config import ComputeConfig
+from .config import DEFAULT_DATA_DIR, ComputeConfig
 from .models import _ssl_context
 
 log = logging.getLogger(__name__)
@@ -304,7 +304,9 @@ class RuntimeManager:
         self._hardware = platform.probe_hardware()
         self._tag = platform_tag(self._hardware)
         self._builtin = builtin or builtin_variant_for(self._tag)
-        self._dir = Path(config.runtimes_dir).expanduser()
+        # A ComputeConfig built on its own (tests, tools) has no Config around
+        # it to fill the default in; the app's always comes resolved.
+        self._dir = Path(config.runtimes_dir or f"{DEFAULT_DATA_DIR}/runtimes").expanduser()
         self._active: RuntimeSelection | None = None
         self._finder: PackFinder | None = None
         self._path_entry: str | None = None

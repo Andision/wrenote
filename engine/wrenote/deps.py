@@ -7,6 +7,8 @@ stay app-agnostic (no app import), so there is no import cycle.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import Request
 
 from .core.catalogue import ModelCatalogue
@@ -23,6 +25,11 @@ def get_store(request: Request) -> Store:
 
 def get_config(request: Request) -> Config:
     return request.app.state.config
+
+
+def get_recordings_dir(request: Request) -> Path:
+    """Where per-session WAVs live (``data.recordings_dir``, resolved)."""
+    return Path(request.app.state.config.data.recordings_dir)
 
 
 def get_jobs(request: Request) -> JobRegistry:

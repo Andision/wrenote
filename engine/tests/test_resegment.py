@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -59,9 +60,9 @@ def test_merge_last_segment_rejected():
 # ---------- endpoints ----------
 
 
-def _seed(*, two=True):
+def _seed(client, *, two=True):
     async def seed():
-        s = store_mod.Store(store_mod.DEFAULT_DB_PATH)
+        s = store_mod.Store(Path(client.app.state.config.data.db_path))
         await s.open()
         await s.upsert_session(
             session_id="s1", title="T", created_at="2026-01-01T00:00:00",
@@ -82,7 +83,7 @@ def _seed(*, two=True):
 
 
 def test_split_endpoint(client):
-    _seed(two=False)
+    _seed(client, two=False)
     r = client.post("/v1/sessions/s1/segments/a/split", json={"offset": 5})
     assert r.status_code == 200 and r.json()["n_segments"] == 2
     texts = [s["orig_text"] for s in client.get("/v1/sessions/s1").json()["segments"]]
@@ -90,14 +91,14 @@ def test_split_endpoint(client):
 
 
 def test_merge_endpoint(client):
-    _seed(two=True)
+    _seed(client, two=True)
     r = client.post("/v1/sessions/s1/segments/a/merge")
     assert r.status_code == 200 and r.json()["n_segments"] == 1
     assert client.get("/v1/sessions/s1").json()["segments"][0]["orig_text"] == "hello world again"
 
 
 def test_split_bad_offset_400(client):
-    _seed(two=False)
+    _seed(client, two=False)
     assert client.post("/v1/sessions/s1/segments/a/split", json={}).status_code == 400
 
 

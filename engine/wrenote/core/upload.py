@@ -154,6 +154,7 @@ async def process_upload(
     whisper_model_path: str,
     translator: TranslatorBackend | None,
     store: Store,
+    recordings_dir: Path,
     sample_rate: int = 16000,
 ) -> None:
     """Decode → concat → transcribe → translate → persist, reporting
@@ -187,7 +188,7 @@ async def process_upload(
 
     # ---- Phase 1: write WAV ----
     advance(1, 0.0, "Writing recording")
-    wav_path = resolve_recording_path(session_id)
+    wav_path = resolve_recording_path(session_id, recordings_dir=recordings_dir)
     _write_wav(wav_path, full_pcm, sample_rate=sample_rate)
     tick(1.0)
 

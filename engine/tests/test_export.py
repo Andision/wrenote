@@ -92,11 +92,13 @@ def test_export_happy_path_through_http(client):
     """Seed a real session+segment into the app's DB, then export it over HTTP —
     exercises the one link the unit tests don't: get_session → export → response."""
     import asyncio
+    from pathlib import Path
 
     import wrenote.core.store as store_mod
 
     async def seed():
-        s = store_mod.Store(store_mod.DEFAULT_DB_PATH)  # same temp DB the app uses
+        # The same temp DB the app uses.
+        s = store_mod.Store(Path(client.app.state.config.data.db_path))
         await s.open()
         await s.upsert_session(
             session_id="s1", title="Demo", created_at="2026-06-03T09:00:00",

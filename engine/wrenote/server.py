@@ -100,7 +100,8 @@ def _make_lifespan(config: Config | None):
         runtimes.activate()
         app.state.runtimes = runtimes
 
-        store = Store()
+        log.info("data: %s", cfg.paths())
+        store = Store(Path(cfg.data.db_path))
         await store.open()
         app.state.store = store
         # Chat + offline-diarize models are instantiated up-front (cheap) but
@@ -141,7 +142,7 @@ def _register_meta_routes(app: FastAPI) -> None:
         async def root() -> dict[str, Any]:
             return {
                 "service": "wrenote",
-                "version": "0.1.0",
+                "version": __version__,
                 "api": API_PREFIX,
                 "ws": f"{API_PREFIX}/ws",
                 "test_page": "/static/test.html",
@@ -157,7 +158,9 @@ def _register_meta_routes(app: FastAPI) -> None:
         plat = get_platform()
         runtimes: RuntimeManager = request.app.state.runtimes
         return {
+            "version": __version__,
             "config": cfg.model_dump(),
+            "paths": cfg.paths(),
             "static_dir_exists": STATIC_DIR.exists(),
             "platform": {"name": plat.name, "capabilities": plat.capabilities.to_dict()},
             "compute": {

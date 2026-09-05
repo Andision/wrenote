@@ -75,6 +75,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     log.info("WS connected (client=%s, origin=%s)", ws.client, origin)
 
     cfg: Config = ws.app.state.config
+    recordings_dir = Path(cfg.data.recordings_dir)
     pipeline: Pipeline | None = None
     pump_task: asyncio.Task[None] | None = None
     mixer: SystemAudioMixer | None = None
@@ -196,7 +197,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         # Falls back gracefully if unavailable / no permission.
         if capture_screen and session_id:
             recorder = screenrec.ScreenRecorder()
-            screen_video_path = resolve_recording_path(session_id).with_suffix(".screen.mp4")
+            screen_video_path = resolve_recording_path(
+                session_id, recordings_dir=recordings_dir
+            ).with_suffix(".screen.mp4")
             if not await recorder.start(screen_video_path, target=capture_target):
                 recorder = None
                 screen_video_path = None
@@ -205,7 +208,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         # non-fatal: we log and continue without recording (translation
         # still works). The writer streams to disk; memory cost is O(1).
         try:
-            wav_writer = WavWriter(session_id)
+            wav_writer = WavWriter(session_id, recordings_dir=recordings_dir)
         except Exception:
             log.exception("Failed to open WAV writer for session %s — continuing without recording", session_id)
             wav_writer = None
@@ -406,7 +409,10 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         if recorder is not None:
             try:
                 await recorder.stop()
-                wav_path = resolve_recording_path(session_id) if session_id else None
+                wav_path = (
+                    resolve_recording_path(session_id, recordings_dir=recordings_dir)
+                    if session_id else None
+                )
                 if (
                     screen_video_path and screen_video_path.exists()
                     and wav_path and wav_path.exists()

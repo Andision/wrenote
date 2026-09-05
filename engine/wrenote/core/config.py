@@ -8,6 +8,14 @@ Per design.v1.1 §6. Loads layered config from (low → high priority):
 4. Environment variables (WRENOTE_<SECTION>__<KEY>__... with `__` nesting)
 
 All string values starting with `~` are expanded via `Path.expanduser()`.
+
+Paths: ``data.dir`` is the root for everything the app writes for the user —
+the database, recordings, model weights, runtime packs. Each has its own key
+that overrides the root when set, and an empty key means "under ``data.dir``";
+:meth:`Config._resolve_paths` fills the empties at load time, so consumers read
+absolute paths and never know about the defaulting. The user config file
+itself (``~/.wrenote/config.yaml``) cannot move: it is where ``data.dir`` is
+read from.
 """
 from __future__ import annotations
 
@@ -17,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -49,10 +57,28 @@ class SessionConfig(BaseModel):
     default_tgt_lang: str = "zh"
 
 
+# Where everything lives unless the config says otherwise. Kept as the
+# unexpanded string so config files and messages can show it as written.
+DEFAULT_DATA_DIR = "~/.wrenote"
+
+
+class DataConfig(BaseModel):
+    """Where the user's data lives.
+
+    ``dir`` is the root. The rest default to a subpath of it (empty = derived)
+    and can each be pointed elsewhere — a small system drive is the usual
+    reason; models and recordings are the gigabytes.
+    """
+
+    dir: str = DEFAULT_DATA_DIR
+    db_path: str = ""  # "" → <dir>/data.db
+    recordings_dir: str = ""  # "" → <dir>/recordings
+
+
 class ModelsConfig(BaseModel):
     """Where model weights live, and where the catalogue can be extended."""
 
-    dir: str = "~/.wrenote/models"
+    dir: str = ""  # "" → <data.dir>/models
     # Reserved: a published catalogue index, so new models need no app release.
     # Empty = the bundled catalogue plus ~/.wrenote/models.yaml only.
     catalogue_url: str = ""
@@ -70,7 +96,7 @@ class ComputeConfig(BaseModel):
     gpu_layers: int | None = None
     # None = 90% of the largest discrete GPU; unified memory = unbudgeted.
     vram_budget_mb: int | None = None
-    runtimes_dir: str = "~/.wrenote/runtimes"
+    runtimes_dir: str = ""  # "" → <data.dir>/runtimes
     # Where published runtime packs are listed (see packaging/runtimes/ and
     # .github/workflows/build-runtimes.yml). Empty = installs disabled.
     runtimes_index_url: str = (
@@ -95,8 +121,39 @@ class Config(BaseSettings):
     speaker: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="ecapa"))
     chat: BackendConfig = Field(default_factory=lambda: BackendConfig(backend="mock"))
     session: SessionConfig = Field(default_factory=SessionConfig)
+    data: DataConfig = Field(default_factory=DataConfig)
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     compute: ComputeConfig = Field(default_factory=ComputeConfig)
+
+    @model_validator(mode="after")
+    def _resolve_paths(self) -> Config:
+        """Fill every empty path key from ``data.dir`` and expand ``~``.
+
+        Done once here rather than at each use, so ``model_dump()`` (and
+        ``GET /v1/info``) shows the paths the process actually uses.
+        """
+        root = Path(self.data.dir or DEFAULT_DATA_DIR).expanduser()
+        self.data.dir = str(root)
+        self.data.db_path = str(Path(self.data.db_path).expanduser() if self.data.db_path else root / "data.db")
+        self.data.recordings_dir = str(
+            Path(self.data.recordings_dir).expanduser() if self.data.recordings_dir else root / "recordings"
+        )
+        self.models.dir = str(Path(self.models.dir).expanduser() if self.models.dir else root / "models")
+        self.compute.runtimes_dir = str(
+            Path(self.compute.runtimes_dir).expanduser() if self.compute.runtimes_dir else root / "runtimes"
+        )
+        return self
+
+    def paths(self) -> dict[str, str]:
+        """The resolved locations, for ``/v1/info`` and logs."""
+        return {
+            "data_dir": self.data.dir,
+            "db_path": self.data.db_path,
+            "recordings_dir": self.data.recordings_dir,
+            "models_dir": self.models.dir,
+            "runtimes_dir": self.compute.runtimes_dir,
+            "user_config": str(user_config_path()),
+        }
 
     @classmethod
     def settings_customise_sources(

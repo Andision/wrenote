@@ -12,7 +12,7 @@ compute:
   accelerator: auto
   gpu_layers: null          # null = derive n_gpu_layers from the VRAM budget; int forces it
   vram_budget_mb: null      # null = 90% of the largest discrete GPU; unified memory = unbudgeted
-  runtimes_dir: ~/.wrenote/runtimes
+  runtimes_dir: ""          # "" = <data.dir>/runtimes
   # Index of published packs; set to a mirror if GitHub is unreachable, or "" to disable installs.
   runtimes_index_url: https://github.com/Andision/wrenote/releases/download/runtimes/runtimes.json
 
@@ -21,8 +21,17 @@ server:
   port: 8000
   log_level: info
 
+# Where the app keeps what it writes for you. `dir` is the root; each of the
+# others is "" = under that root, or an explicit path to put just that
+# elsewhere (models and recordings are the gigabytes). This file's own
+# location (~/.wrenote/config.yaml) is fixed — it is where `dir` is read from.
+data:
+  dir: ~/.wrenote
+  db_path: ""               # "" = <dir>/data.db — the session library
+  recordings_dir: ""        # "" = <dir>/recordings — per-session WAVs (~115 MB/hour)
+
 models:
-  dir: ~/.wrenote/models    # where weights are downloaded to
+  dir: ""                   # "" = <data.dir>/models — where weights are downloaded to
   catalogue_url: ""         # reserved: a published catalogue, so new models need no app release
 
 # Each backend picks its weights by catalogue id (see engine/models.yaml and

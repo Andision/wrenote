@@ -88,6 +88,7 @@ async def upload_session(
                 whisper_model_path=whisper_model_path,
                 translator=translator,
                 store=store,
+                recordings_dir=Path(cfg.data.recordings_dir),
             )
             registry.complete(
                 job.id,

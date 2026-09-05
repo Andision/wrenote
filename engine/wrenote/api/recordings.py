@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from ..core.recording import resolve_recording_path
+from ..deps import get_recordings_dir
 from ._common import safe_session_id
 
 log = logging.getLogger(__name__)
@@ -14,9 +16,11 @@ router = APIRouter()
 
 
 @router.get("/recordings/{session_id}.wav")
-async def get_recording(session_id: str) -> FileResponse:
+async def get_recording(
+    session_id: str, recordings_dir: Path = Depends(get_recordings_dir)
+) -> FileResponse:
     sid = safe_session_id(session_id)
-    path = resolve_recording_path(sid)
+    path = resolve_recording_path(sid, recordings_dir=recordings_dir)
     if not path.exists():
         raise HTTPException(status_code=404, detail="recording not found")
     return FileResponse(
@@ -27,9 +31,11 @@ async def get_recording(session_id: str) -> FileResponse:
 
 
 @router.delete("/recordings/{session_id}.wav")
-async def delete_recording(session_id: str) -> dict[str, str]:
+async def delete_recording(
+    session_id: str, recordings_dir: Path = Depends(get_recordings_dir)
+) -> dict[str, str]:
     sid = safe_session_id(session_id)
-    path = resolve_recording_path(sid)
+    path = resolve_recording_path(sid, recordings_dir=recordings_dir)
     if path.exists():
         try:
             path.unlink()

@@ -394,12 +394,8 @@ def chat_client(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
     import wrenote.core.config as config_mod
-    import wrenote.core.recording as recording_mod
-    import wrenote.core.store as store_mod
     import wrenote.server as server
 
-    monkeypatch.setattr(store_mod, "DEFAULT_DB_PATH", tmp_path / "data.db")
-    monkeypatch.setattr(recording_mod, "DEFAULT_DIR", tmp_path / "recordings")
     monkeypatch.setattr(config_mod, "USER_CONFIG", tmp_path / "config.yaml")
     cfg = Config.model_validate({
         "stt": {"backend": "mock"},
@@ -407,8 +403,8 @@ def chat_client(monkeypatch, tmp_path):
         "translator": {"backend": "mock"},
         "speaker": {"backend": "disabled"},
         "chat": {"backend": "llama_cpp", "model": "qwen3-4b-instruct-q4"},
-        "models": {"dir": str(tmp_path / "models")},
-        "compute": {"runtimes_dir": str(tmp_path / "runtimes"), "runtimes_index_url": ""},
+        "data": {"dir": str(tmp_path)},
+        "compute": {"runtimes_index_url": ""},
     })
     with TestClient(server.create_app(cfg)) as c:
         yield c

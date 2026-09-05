@@ -2,10 +2,13 @@
 
 Streams int16 16k mono PCM chunks straight to disk via the stdlib ``wave``
 module — header is finalized on close. Files live at
-``~/.wrenote/recordings/<session_id>.wav`` and are owned by the server
-process. The frontend references them by the same session id it generated
-locally; on session deletion the frontend calls the matching DELETE endpoint
-on the server so files don't outlive their metadata.
+``<data.recordings_dir>/<session_id>.wav`` (see :mod:`wrenote.core.config`;
+every caller passes that directory in — there is no module default to fall
+back on, so a forgotten argument is a TypeError, not a file in the wrong
+place) and are owned by the server process. The frontend references them by
+the same session id it generated locally; on session deletion the frontend
+calls the matching DELETE endpoint on the server so files don't outlive their
+metadata.
 
 Paused audio is *not* written: the WS pause handler stops PCM flow on the
 client side, and this writer only ever sees what the WS actually delivers.
@@ -19,8 +22,6 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-DEFAULT_DIR = Path("~/.wrenote/recordings").expanduser()
-
 
 class WavWriter:
     """Thread-safe append-only WAV file for a single session."""
@@ -29,14 +30,13 @@ class WavWriter:
         self,
         session_id: str,
         *,
-        dir_: Path | None = None,
+        recordings_dir: Path,
         sample_rate: int = 16000,
         channels: int = 1,
         sample_width_bytes: int = 2,
     ) -> None:
-        target_dir = dir_ or DEFAULT_DIR
-        target_dir.mkdir(parents=True, exist_ok=True)
-        self._path = target_dir / f"{session_id}.wav"
+        recordings_dir.mkdir(parents=True, exist_ok=True)
+        self._path = recordings_dir / f"{session_id}.wav"
         self._lock = threading.Lock()
         # Not a context manager: this handle lives as long as the recording
         # does, and close() belongs to the recorder's own lifecycle.
@@ -84,6 +84,6 @@ class WavWriter:
                 log.exception("failed to remove empty recording %s", self._path)
 
 
-def resolve_recording_path(session_id: str, *, dir_: Path | None = None) -> Path:
+def resolve_recording_path(session_id: str, *, recordings_dir: Path) -> Path:
     """Where the WAV for this session lives. Caller checks existence."""
-    return (dir_ or DEFAULT_DIR) / f"{session_id}.wav"
+    return recordings_dir / f"{session_id}.wav"

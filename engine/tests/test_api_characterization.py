@@ -125,6 +125,12 @@ def test_info(client):
     assert "static_dir_exists" in body
     # The mock config we injected must be what the running app loaded.
     assert body["config"]["stt"]["backend"] == "mock"
+    # Where this process keeps the user's data — the client shows these.
+    assert body["version"]
+    paths = body["paths"]
+    assert paths["db_path"].endswith("data.db")
+    assert paths["recordings_dir"] == body["config"]["data"]["recordings_dir"]
+    assert paths["models_dir"] == body["config"]["models"]["dir"]
 
 
 def test_sessions_empty_on_fresh_db(client):

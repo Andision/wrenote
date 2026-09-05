@@ -35,8 +35,6 @@ import aiosqlite
 
 log = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = Path("~/.wrenote/data.db").expanduser()
-
 # Bump together with an entry in MIGRATIONS. A new file is created at this
 # version straight from SCHEMA; test_store_migrations holds the two equal.
 SCHEMA_VERSION = 1
@@ -218,8 +216,8 @@ MIGRATIONS: tuple[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]],
 class Store:
     """Thin async DAL — one Store instance per FastAPI app."""
 
-    def __init__(self, db_path: Path | None = None) -> None:
-        self._db_path = db_path or DEFAULT_DB_PATH
+    def __init__(self, db_path: Path) -> None:
+        self._db_path = db_path
         self._db: aiosqlite.Connection | None = None
 
     @property

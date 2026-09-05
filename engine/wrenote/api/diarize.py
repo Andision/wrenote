@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -19,7 +20,7 @@ from ..core.translation import (
     translate_segments_for_session,
     translation_candidates,
 )
-from ..deps import get_config, get_jobs, get_models, get_store
+from ..deps import get_config, get_jobs, get_models, get_recordings_dir, get_store
 from ..model_manager import ModelManager
 from ._common import safe_session_id
 
@@ -48,6 +49,7 @@ async def diarize_endpoint(
     registry: JobRegistry = Depends(get_jobs),
     models: ModelManager = Depends(get_models),
     cfg: Config = Depends(get_config),
+    recordings_dir: Path = Depends(get_recordings_dir),
 ) -> dict[str, str]:
     """Kick off offline diarization as a job. Returns ``{job_id}``
     immediately; subscribe to ``/jobs/{job_id}/stream`` for progress."""
@@ -55,7 +57,7 @@ async def diarize_endpoint(
     session = await store.get_session(sid)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
-    wav = resolve_recording_path(sid)
+    wav = resolve_recording_path(sid, recordings_dir=recordings_dir)
     if not wav.exists():
         raise HTTPException(
             status_code=400,

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -10,7 +11,7 @@ from fastapi.responses import PlainTextResponse
 from ..core import export as export_mod
 from ..core.recording import resolve_recording_path
 from ..core.store import Store
-from ..deps import get_store
+from ..deps import get_recordings_dir, get_store
 from ._common import safe_session_id
 
 log = logging.getLogger(__name__)
@@ -71,13 +72,17 @@ async def patch_session(
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(session_id: str, store: Store = Depends(get_store)) -> dict[str, str]:
+async def delete_session(
+    session_id: str,
+    store: Store = Depends(get_store),
+    recordings_dir: Path = Depends(get_recordings_dir),
+) -> dict[str, str]:
     """Delete the session row (cascades to segments) AND the WAV file."""
     sid = safe_session_id(session_id)
     existed = await store.delete_session(sid)
     # Always try to remove the WAV — file may exist without a DB row if
     # a previous run died mid-session.
-    wav = resolve_recording_path(sid)
+    wav = resolve_recording_path(sid, recordings_dir=recordings_dir)
     if wav.exists():
         try:
             wav.unlink()
