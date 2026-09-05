@@ -16,6 +16,15 @@ compute:
   # Index of published packs; set to a mirror if GitHub is unreachable, or "" to disable installs.
   runtimes_index_url: https://github.com/Andision/wrenote/releases/download/runtimes/runtimes.json
 
+# Whether to ask, once per launch, if a newer Wrenote has been released. The
+# request fetches one small JSON file from the release index and sends nothing
+# about you or this machine; set check: false to never ask automatically
+# (Settings → General has the same switch, and a "check now" that works
+# regardless). index_url: a mirror if GitHub is unreachable, or "" to disable.
+update:
+  check: true
+  index_url: https://github.com/Andision/wrenote/releases/latest/download/latest.json
+
 server:
   host: 127.0.0.1           # default localhost-only; do not change unless you accept LAN exposure
   port: 8000

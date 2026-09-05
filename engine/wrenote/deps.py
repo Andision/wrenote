@@ -16,6 +16,7 @@ from .core.config import Config
 from .core.jobs import JobRegistry
 from .core.runtimes import RuntimeManager
 from .core.store import Store
+from .core.update import UpdateChecker
 from .model_manager import ModelManager
 
 
@@ -46,3 +47,7 @@ def get_runtimes(request: Request) -> RuntimeManager:
 
 def get_catalogue(request: Request) -> ModelCatalogue:
     return request.app.state.catalogue
+
+
+def get_updates(request: Request) -> UpdateChecker:
+    return request.app.state.updates

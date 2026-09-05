@@ -35,6 +35,7 @@ from .api import (
     segments,
     sessions,
     translate,
+    update,
     upload,
 )
 from .auth import AUTH_TOKEN, install_loopback_auth
@@ -44,6 +45,7 @@ from .core.jobs import JobRegistry
 from .core.registry import make_chat, make_speaker
 from .core.runtimes import RuntimeManager
 from .core.store import Store
+from .core.update import UpdateChecker, tauri_target
 from .model_manager import ModelManager
 from .platform import get_platform
 
@@ -66,7 +68,7 @@ API_PREFIX = "/v1"
 # Resource routers, registered in this order before the SPA catch-all.
 _ROUTERS = (
     sessions, groups, recordings, jobs, models,
-    upload, translate, diarize, segments, chat, capture, glossary, compute, ws,
+    upload, translate, diarize, segments, chat, capture, glossary, compute, update, ws,
 )
 
 
@@ -99,6 +101,12 @@ def _make_lifespan(config: Config | None):
         runtimes = RuntimeManager(cfg.compute, get_platform())
         runtimes.activate()
         app.state.runtimes = runtimes
+        # Answers "is there a newer Wrenote?" when a client asks; it never
+        # asks the network on its own.
+        hw = runtimes.hardware
+        app.state.updates = UpdateChecker(
+            cfg.update, current=__version__, platform_key=tauri_target(hw.os, hw.arch)
+        )
 
         log.info("data: %s", cfg.paths())
         store = Store(Path(cfg.data.db_path))

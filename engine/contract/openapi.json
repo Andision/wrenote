@@ -64,6 +64,19 @@
         "title": "InstallRequest",
         "type": "object"
       },
+      "UpdateSettings": {
+        "properties": {
+          "check": {
+            "title": "Check",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "check"
+        ],
+        "title": "UpdateSettings",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1746,6 +1759,86 @@
           }
         },
         "summary": "Translate Session"
+      }
+    },
+    "/v1/update": {
+      "get": {
+        "operationId": "update_status_v1_update_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Status V1 Update Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Update Status"
+      }
+    },
+    "/v1/update/check": {
+      "post": {
+        "operationId": "update_check_v1_update_check_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Check V1 Update Check Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Update Check"
+      }
+    },
+    "/v1/update/settings": {
+      "post": {
+        "operationId": "update_settings_v1_update_settings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Settings V1 Update Settings Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Settings"
       }
     }
   }

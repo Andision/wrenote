@@ -36,8 +36,9 @@ def _mock_config(data_dir) -> Config:
             "speaker": {"backend": "disabled"},
             "chat": {"backend": "mock"},
             "data": {"dir": str(data_dir)},
-            # Never touch the network for the runtime index.
+            # Never touch the network: no runtime index, no update check.
             "compute": {"runtimes_index_url": ""},
+            "update": {"check": False, "index_url": ""},
         }
     )
 

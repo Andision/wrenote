@@ -104,6 +104,19 @@ class ComputeConfig(BaseModel):
     )
 
 
+class UpdateConfig(BaseModel):
+    """Learning that a newer Wrenote exists. See :mod:`wrenote.core.update`.
+
+    ``check`` is the automatic check the client asks for on launch; off means
+    the engine never contacts the index unless the user presses "check now".
+    ``index_url`` is where releases are listed (``latest.json``); a mirror
+    goes here when GitHub is unreachable, ``""`` disables checks entirely.
+    """
+
+    check: bool = True
+    index_url: str = "https://github.com/Andision/wrenote/releases/latest/download/latest.json"
+
+
 class Config(BaseSettings):
     """Top-level settings. Env vars override init kwargs (= loaded YAML)."""
 
@@ -124,6 +137,7 @@ class Config(BaseSettings):
     data: DataConfig = Field(default_factory=DataConfig)
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     compute: ComputeConfig = Field(default_factory=ComputeConfig)
+    update: UpdateConfig = Field(default_factory=UpdateConfig)
 
     @model_validator(mode="after")
     def _resolve_paths(self) -> Config:
