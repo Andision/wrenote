@@ -6,12 +6,13 @@ import { create } from "zustand";
 
 import { subscribeJob, type JobSnapshot } from "@/lib/jobs";
 import { useSessionStore } from "@/store/sessionStore";
+import type { SessionMeta } from "@/types";
 
 const STORAGE_KEY = "wrenote.activeJobs";
 const LINGER_MS = 4000;
 
 /** Kind tells us how to rebuild onDone after a refresh. */
-type JobKind = "upload" | "diarize" | "translate";
+export type JobKind = "upload" | "diarize" | "translate" | "refine";
 
 /** What we persist — enough to re-track + reconstruct the completion side-effect. */
 interface PersistedJob {
@@ -47,6 +48,10 @@ interface JobsState {
   dismiss: (jobId: string) => void;
   /** Called once at app mount: re-track every persisted job. */
   hydrateFromStorage: () => void;
+  /** Follow the jobs the engine reports on sessions in `processing` — the
+   * pass it starts by itself after a recording stops is one this client
+   * never asked for, so the session list is how it learns the job id. */
+  syncFromSessions: (sessions: SessionMeta[]) => void;
 }
 
 function readPersisted(): PersistedJob[] {
@@ -95,6 +100,24 @@ async function runOnDone(job: TrackedJob, snap: JobSnapshot): Promise<void> {
     if (store.sessionId === job.sessionId) {
       await store.loadSession(job.sessionId);
     }
+  } else if (job.kind === "refine") {
+    // The transcript was replaced wholesale: swap the live rows for the
+    // refined ones if the user is still looking at them, refresh the list
+    // so the session's status badge clears, and — now that the text is the
+    // good one — title the session if it is still waiting for a title.
+    if (store.sessionId === job.sessionId) {
+      await store.loadSession(job.sessionId);
+      store.autoTitleAfterRecording();
+    }
+    await store.refreshPastSessions();
+  }
+}
+
+/** A job that died may have left its session `failed`; the list is where
+ * that shows, so refresh it. */
+async function runOnError(job: TrackedJob): Promise<void> {
+  if (job.kind === "refine" || job.kind === "upload") {
+    await useSessionStore.getState().refreshPastSessions();
   }
 }
 
@@ -132,6 +155,8 @@ export const useJobsStore = create<JobsState>((set, get) => {
             next.lingerUntil = Date.now() + LINGER_MS;
             if (snap.status === "done") {
               void runOnDone(cur, snap);
+            } else if (snap.status === "error") {
+              void runOnError(cur);
             }
             window.setTimeout(() => {
               const live = useJobsStore.getState().jobs[job.id];
@@ -206,5 +231,22 @@ export const useJobsStore = create<JobsState>((set, get) => {
         subscribe(tracked);
       }
     },
+
+    syncFromSessions: (sessions) => {
+      for (const s of sessions) {
+        if (s.status !== "processing" || !s.jobId || get().jobs[s.jobId]) continue;
+        // The label is the session title; the overlay words it per kind
+        // (this runs outside React, so no `t()` here).
+        get().track({ jobId: s.jobId, label: s.title, kind: "refine", sessionId: s.id });
+      }
+    },
   };
+});
+
+// Whenever the session list is refreshed (after a recording stops, on
+// mount, after any job), pick up the passes the engine is running.
+useSessionStore.subscribe((state, prev) => {
+  if (state.pastSessions !== prev.pastSessions) {
+    useJobsStore.getState().syncFromSessions(state.pastSessions);
+  }
 });

@@ -145,6 +145,12 @@ export function SettingsDrawer() {
                         to the PreFlight "Capture sources" row — they're
                         per-recording input choices, not global preferences. */}
                     <ToggleField
+                      label={t("settings.refineAfterStop")}
+                      checked={settings.refineAfterStop}
+                      hint={t("settings.refineAfterStopHint")}
+                      onChange={(v) => updateSettings({ refineAfterStop: v })}
+                    />
+                    <ToggleField
                       label={t("settings.speakerLive")}
                       checked={settings.speakerEnabled}
                       hint={t("settings.speakerLiveHint")}

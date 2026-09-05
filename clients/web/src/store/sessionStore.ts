@@ -36,6 +36,10 @@ export interface SessionSettings {
   /** When false, skip the translator entirely (transcribe-only mode).
    * Affects live sessions and uploads alike. */
   translateEnabled: boolean;
+  /** After a recording stops, have the engine re-transcribe the whole
+   * recording and replace the live transcript (session status goes through
+   * "processing"). Off = the live transcript is final as recorded. */
+  refineAfterStop: boolean;
   minSilenceMs: number;
   maxSegmentMs: number;
   partialIntervalMs: number;
@@ -64,6 +68,7 @@ const DEFAULT_SETTINGS: SessionSettings = {
   srcLang: "auto",
   tgtLang: "zh",
   translateEnabled: true,
+  refineAfterStop: true,
   minSilenceMs: 800,
   maxSegmentMs: 25000,
   partialIntervalMs: 800,
@@ -150,6 +155,10 @@ interface Actions {
   mergeWithNext: (segmentId: string) => void;
   /** After a recording stops, ask the LLM for a title (best-effort). */
   autoTitleAfterRecording: () => void;
+  /** The recording just closed: refresh the list and, unless the engine is
+   * re-transcribing it (the title is better drawn from that result, so the
+   * job's completion asks for it instead), title it now. */
+  afterRecordingStopped: () => Promise<void>;
   saveCurrent: () => Promise<void>;
   loadSession: (id: string) => Promise<void>;
   deletePastSession: (id: string) => Promise<void>;
@@ -377,6 +386,15 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
     });
   },
 
+  afterRecordingStopped: async () => {
+    const id = get().sessionId;
+    const list = await loadAllSessions();
+    set({ pastSessions: list });
+    if (!id) return;
+    if (list.find((p) => p.id === id)?.status === "processing") return;
+    get().autoTitleAfterRecording();
+  },
+
   saveCurrent: async () => {
     // Real-time persistence happens server-side via the WS event pump.
     // Here we just bring the new/updated session into the visible catalog.
@@ -396,7 +414,9 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
     set({
       sessionId: target.id,
       sessionTitle: target.title,
-      titleIsAuto: false, // loaded sessions keep their stored title
+      // Loaded sessions keep their stored title. Reloading the one on screen
+      // (a job rewrote it) keeps whether it is still waiting for a title.
+      titleIsAuto: target.id === get().sessionId ? get().titleIsAuto : false,
       sessionStartedAt: target.createdAt,
       segmentOrder: order,
       segments: segmentsById,

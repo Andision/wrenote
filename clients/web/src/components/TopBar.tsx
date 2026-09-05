@@ -9,6 +9,7 @@ import {
   Pencil,
   PictureInPicture2,
   Play,
+  RefreshCw,
   Square,
   UserSquare2,
 } from "lucide-react";
@@ -16,6 +17,8 @@ import {
 import { ExportMenu } from "@/components/ExportMenu";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useActiveSessionMeta, useActiveSessionStatus } from "@/hooks/useSessionStatus";
+import { useRefineAction } from "@/hooks/useRefineAction";
 import { startDiarize, startTranslate } from "@/lib/diarize";
 import { hasDesktopOverlay } from "@/lib/overlayBridge";
 import { recordingUrl } from "@/lib/recording";
@@ -42,6 +45,11 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
   const sessionId = useSessionStore((s) => s.sessionId);
   const segmentCountForDiarize = useSessionStore((s) => s.segmentOrder.length);
   const trackJob = useJobsStore((s) => s.track);
+  const sessionStatus = useActiveSessionStatus();
+  const sessionMeta = useActiveSessionMeta();
+  const runRefine = useRefineAction();
+  // While the engine rewrites the transcript, nothing else may touch it.
+  const processing = sessionStatus === "processing";
   const activeDiarizeForThis = useJobsStore((s) =>
     Object.values(s.jobs).some(
       (j) =>
@@ -97,17 +105,18 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
     ),
   );
 
-  const canDiarize =
+  const finished =
     Boolean(sessionId) &&
     segmentCountForDiarize > 0 &&
     (connection === "disconnected" || connection === "error");
+  const canDiarize = finished;
   // Always available on a finished session — even when everything is
   // already translated, the user may want to re-translate (e.g. after
   // changing the target language or fixing the source text).
-  const canTranslate =
-    Boolean(sessionId) &&
-    segmentCountForDiarize > 0 &&
-    (connection === "disconnected" || connection === "error");
+  const canTranslate = finished;
+  // Re-transcribe from the recording. Shown on any finished session; the
+  // engine says no (with a reason) when there is no recording to use.
+  const canRefine = finished;
   // The WAV only exists once recording has stopped, so the download offer
   // rides the same "finished session" gate as translate / diarize.
   const canDownload =
@@ -116,7 +125,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
     (connection === "disconnected" || connection === "error");
 
   const runDiarize = async () => {
-    if (!sessionId || activeDiarizeForThis || activeTranslateForThis) return;
+    if (!sessionId || activeDiarizeForThis || activeTranslateForThis || processing) return;
     if (hasCustomSpeakerLabel) {
       const ok = await confirmDialog({
         title: t("topbar.diarize.confirmTitle"),
@@ -151,7 +160,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
   };
 
   const runTranslate = async () => {
-    if (!sessionId || activeTranslateForThis || activeDiarizeForThis) return;
+    if (!sessionId || activeTranslateForThis || activeDiarizeForThis || processing) return;
     let retranslate = false;
     if (!hasUntranslated) {
       const ok = await confirmDialog({
@@ -235,6 +244,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
 
       <AnimatePresence>
         {isActive && <RecordingTimer paused={isPaused} />}
+        {!isActive && processing && <ProcessingPill key="processing" />}
       </AnimatePresence>
 
       {/* Floating subtitles — desktop shell only, while a recording is live. */}
@@ -315,14 +325,39 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
         ) : null}
       </AnimatePresence>
 
+      {canRefine && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => void runRefine()}
+          disabled={processing || activeTranslateForThis || activeDiarizeForThis}
+          data-tip={
+            processing
+              ? t("topbar.refine.running")
+              : sessionMeta?.refinedAt
+                ? t("topbar.refine.tooltipAgain")
+                : t("topbar.refine.tooltip")
+          }
+          className="size-9"
+        >
+          {processing ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <RefreshCw className="size-4" />
+          )}
+        </Button>
+      )}
+
       {canTranslate && (
         <Button
           variant="ghost"
           size="icon"
           onClick={() => void runTranslate()}
-          disabled={activeTranslateForThis || activeDiarizeForThis}
+          disabled={processing || activeTranslateForThis || activeDiarizeForThis}
           data-tip={
-            activeTranslateForThis
+            processing
+              ? t("topbar.refine.blocking")
+              : activeTranslateForThis
               ? t("topbar.translate.running")
               : activeDiarizeForThis
                 ? t("topbar.diarize.blocking")
@@ -345,9 +380,11 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
           variant="ghost"
           size="icon"
           onClick={() => void runDiarize()}
-          disabled={activeDiarizeForThis || activeTranslateForThis}
+          disabled={processing || activeDiarizeForThis || activeTranslateForThis}
           data-tip={
-            activeDiarizeForThis
+            processing
+              ? t("topbar.refine.blocking")
+              : activeDiarizeForThis
               ? t("topbar.diarize.running")
               : activeTranslateForThis
                 ? t("topbar.translate.blocking")
@@ -393,6 +430,27 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
         <MessageSquare className="size-4" />
       </Button>
     </header>
+  );
+}
+
+/**
+ * Where the recording timer sits while the recording is being transcribed
+ * again from the file: the session isn't live, but it isn't done either.
+ */
+function ProcessingPill() {
+  const t = useT();
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.92 }}
+      transition={{ duration: 0.18 }}
+      className="flex h-8 items-center gap-2 rounded-lg border border-brand-500/20 bg-brand-500/8 px-2.5 text-brand-600 dark:border-brand-400/25 dark:bg-brand-400/10 dark:text-brand-400"
+      data-tip={t("session.status.processingHint")}
+    >
+      <Loader2 className="size-3 animate-spin" />
+      <span className="text-[12px] font-medium">{t("session.status.processing")}</span>
+    </motion.div>
   );
 }
 

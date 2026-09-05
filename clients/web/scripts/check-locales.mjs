@@ -31,6 +31,7 @@ const DYNAMIC_PREFIXES = [
   "compute.note.", // compute.note.${note_code}, from the engine
   "compute.tradeoff.", // compute.tradeoff.${variant}
   "update.error.", // update.error.${code}, from the engine
+  "session.refuse.", // session.refuse.${code}, from the engine
   "lang.", // LanguageSelect resolves "lang.*" labels
   "export.format.", // the FORMATS table holds keys
 ];

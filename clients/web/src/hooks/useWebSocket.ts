@@ -51,6 +51,7 @@ export function useWebSocket({ url = DEFAULT_URL }: UseWebSocketOptions = {}) {
             partial_interval_ms: s.partialIntervalMs,
             translate_partials: s.translatePartials,
             translate_enabled: s.translateEnabled,
+            refine_after_stop: s.refineAfterStop,
             speaker_enabled: s.speakerEnabled,
             capture_system: s.captureSystemAudio,
             capture_screen: s.captureScreen,

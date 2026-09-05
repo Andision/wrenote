@@ -85,7 +85,7 @@ export default function App() {
       (prev === "recording" || prev === "stopping") &&
       connection === "disconnected"
     ) {
-      useSessionStore.getState().autoTitleAfterRecording();
+      void useSessionStore.getState().afterRecordingStopped();
       // The subtitle overlay is a live-recording companion — dismiss it
       // with the session instead of leaving it parked over the desktop.
       void window.wrenoteDesktop?.closeOverlay();

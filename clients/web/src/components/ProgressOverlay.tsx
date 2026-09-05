@@ -35,6 +35,10 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
   const snap = tracked.snapshot;
   const status = snap?.status ?? "running";
   const pct = Math.round(((snap?.fraction ?? 0) * 100) || 0);
+  // Refine jobs are tracked with the bare session title (they may be started
+  // by the engine, outside React); the wording is added here.
+  const label =
+    tracked.kind === "refine" ? t("topbar.refine.jobLabel", { title: tracked.label }) : tracked.label;
 
   return (
     <motion.div
@@ -55,7 +59,7 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
         )}
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium text-foreground">
-            {tracked.label}
+            {label}
           </div>
           <div className="truncate text-[11px] text-muted-foreground">
             {status === "error"

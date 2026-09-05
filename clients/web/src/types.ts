@@ -92,6 +92,17 @@ export interface Segment {
   speaker?: string | null;
 }
 
+/** Where a session is in its life — mirrors engine/wrenote/core/store.py
+ *  SESSION_STATUSES.
+ *   recording   live; segments arrive as the user speaks
+ *   processing  the engine is rewriting the transcript from the recording
+ *               (the pass after a recording stops, or an upload); the rows
+ *               on screen stay until it replaces them
+ *   ready       the transcript is what the user gets
+ *   failed      that pass died; `statusDetail` says why and the previous
+ *               transcript is still there */
+export type SessionStatus = "recording" | "processing" | "ready" | "failed";
+
 export interface SessionMeta {
   id: string;
   title: string;
@@ -104,6 +115,14 @@ export interface SessionMeta {
   tgtLang: string;
   /** Group/folder this session belongs to, or null when ungrouped. */
   groupId: string | null;
+  status: SessionStatus;
+  /** Engine-side reason code or message when `status` is "failed". */
+  statusDetail: string | null;
+  /** When the transcript last came from a whole-recording pass; null if never. */
+  refinedAt: string | null;
+  /** The job rewriting this session while `status` is "processing", so a
+   *  client that finds one (after a reload, say) can follow its progress. */
+  jobId: string | null;
 }
 
 export interface StoredSession extends SessionMeta {

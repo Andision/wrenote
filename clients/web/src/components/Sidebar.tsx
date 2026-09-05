@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { StatusBadge } from "@/components/SessionStatus";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatRelativeTime } from "@/lib/colors";
@@ -136,8 +137,11 @@ export function Sidebar() {
         }`}
       >
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-foreground">
-            {s.title}
+          <div className="flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+              {s.title}
+            </span>
+            <StatusBadge status={s.status} />
           </div>
           <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
             {dateStr} · {timeStr} · {formatRelativeTime(s.durationS)} ·{" "}

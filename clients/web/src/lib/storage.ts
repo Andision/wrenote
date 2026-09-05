@@ -6,6 +6,7 @@ import type {
   Segment,
   SessionGroup,
   SessionMeta,
+  SessionStatus,
   StoredSession,
 } from "../types";
 import { API_BASE as BASE } from "./api";
@@ -19,6 +20,10 @@ interface SessionRow {
   tgt_lang: string;
   duration_s: number;
   group_id?: string | null;
+  status?: string | null;
+  status_detail?: string | null;
+  refined_at?: string | null;
+  job_id?: string | null;
 }
 
 interface GroupRow {
@@ -42,7 +47,15 @@ interface SegmentRow {
   speaker: string | null;
 }
 
-function toMeta(row: SessionRow): SessionMeta {
+const STATUSES: readonly SessionStatus[] = ["recording", "processing", "ready", "failed"];
+
+/** An engine we don't know the statuses of is one we'd rather treat as done
+ *  than as busy: an unknown value reads as `ready`. */
+export function toStatus(raw: string | null | undefined): SessionStatus {
+  return (STATUSES as readonly string[]).includes(raw ?? "") ? (raw as SessionStatus) : "ready";
+}
+
+export function toMeta(row: SessionRow): SessionMeta {
   return {
     id: row.id,
     title: row.title,
@@ -51,6 +64,10 @@ function toMeta(row: SessionRow): SessionMeta {
     srcLang: row.src_lang,
     tgtLang: row.tgt_lang,
     groupId: row.group_id ?? null,
+    status: toStatus(row.status),
+    statusDetail: row.status_detail ?? null,
+    refinedAt: row.refined_at ?? null,
+    jobId: row.job_id ?? null,
   };
 }
 

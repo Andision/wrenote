@@ -18,7 +18,29 @@
     "stop": "停止"
   },
   "session": {
-    "new": "新建会话"
+    "new": "新建会话",
+    "status": {
+      "processing": "处理中",
+      "processingHint": "正在用完整录音重新转写；完成后会替换当前文本。",
+      "failed": "处理失败",
+      "failedHint": "录制后的整理未能完成。录制时的文本仍然保留 — 打开会话可以重试。"
+    },
+    "processing": {
+      "title": "正在用完整录音重新转写…",
+      "body": "当前显示的是实时转写结果，稍后会替换为更准确的版本。"
+    },
+    "failed": {
+      "title": "录制后的整理失败",
+      "body": "实时转写结果已原样保留。",
+      "retry": "重试"
+    },
+    "refuse": {
+      "busy": "这个会话已有其他任务在运行。",
+      "recording": "请先停止录制。",
+      "no_recording": "这个会话没有保存录音。",
+      "unsupported_backend": "当前的语音引擎不支持整段文件转写。",
+      "no_model": "尚未配置语音模型。"
+    }
   },
   "lang": {
     "auto": "自动检测",
@@ -77,6 +99,16 @@
       "confirmAll": "所有片段都已有译文 — 这会全部覆盖。",
       "confirmRetranslate": "重新翻译",
       "jobLabel": "翻译：{title}"
+    },
+    "refine": {
+      "tooltip": "用完整录音重新转写（后台运行）",
+      "tooltipAgain": "再次用完整录音重新转写（会替换当前文本）",
+      "running": "正在用完整录音转写…（见进度条）",
+      "blocking": "录音转写进行中 — 请等待完成",
+      "confirmTitle": "用完整录音重新转写？",
+      "confirmBody": "整段录音会重新经过语音引擎，转写结果将被替换。对当前文本的修改会丢失；说话人名称会保留。",
+      "confirmRun": "重新转写",
+      "jobLabel": "转写录音：{title}"
     }
   },
   "preflight": {
@@ -223,7 +255,9 @@
     "translatePartials": "翻译中间结果",
     "translatePartialsHint": "对中间转写结果也进行翻译（比原文稍慢一拍）。",
     "nextSessionNote": "部分改动会在下一个会话生效。",
-    "enginesEmpty": "开始一个会话后即可看到正在使用的引擎。"
+    "enginesEmpty": "开始一个会话后即可看到正在使用的引擎。",
+    "refineAfterStop": "录制结束后重新转写",
+    "refineAfterStopHint": "录制停止后，把整段录音再过一遍语音引擎，替换实时转写结果。更准确；长会议会多花一点时间。"
   },
   "setup": {
     "step": "第 {current} 步，共 {total} 步",

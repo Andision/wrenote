@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, Loader2, Merge, Mic, Pause, Pencil, Play, Scissors } from "lucide-react";
 
+import { ProcessingBanner } from "@/components/SessionStatus";
 import { TimelineMinimap } from "@/components/TimelineMinimap";
+import { useRefineAction } from "@/hooks/useRefineAction";
 import { useAutoScroll } from "@/hooks/useAutoScroll";
 import { usePlaybackControls } from "@/hooks/playbackContext";
 import {
@@ -58,6 +60,7 @@ export function Transcript() {
   // `pinned`/`scrollToBottom` aren't read — the hook still keeps us stuck to
   // the bottom on new content; we just don't surface a jump-to-latest button.
   const { ref } = useAutoScroll<HTMLDivElement>([ordered]);
+  const runRefine = useRefineAction();
 
   // Auto-follow the playing segment without hijacking the user's scroll.
   // Always follow when playback first starts (prev === null). On continuous
@@ -100,6 +103,9 @@ export function Transcript() {
       transition={{ duration: 0.24, ease: [0.22, 0.61, 0.36, 1] }}
       className="absolute inset-0 flex flex-col overflow-hidden"
     >
+      {/* Post-recording pass in progress / failed — the rows below stay
+          readable; the strip says what is about to happen to them. */}
+      <ProcessingBanner onRetry={() => void runRefine({ confirm: false })} />
       <TimelineMinimap scrollRef={ref} segments={ordered} />
       <div ref={ref} className="flex-1 overflow-y-auto">
         {/* Extra right padding keeps card borders clear of the timeline rail

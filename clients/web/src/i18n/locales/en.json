@@ -18,7 +18,29 @@
     "stop": "Stop"
   },
   "session": {
-    "new": "New session"
+    "new": "New session",
+    "status": {
+      "processing": "Processing",
+      "processingHint": "The recording is being transcribed again as a whole; the transcript will be replaced when it finishes.",
+      "failed": "Failed",
+      "failedHint": "The post-recording pass failed. The transcript as recorded is still here — open the session to retry."
+    },
+    "processing": {
+      "title": "Transcribing the full recording…",
+      "body": "What you see is the live transcript; it will be replaced with a more accurate one in a moment."
+    },
+    "failed": {
+      "title": "The post-recording pass failed",
+      "body": "The live transcript is kept as it was.",
+      "retry": "Retry"
+    },
+    "refuse": {
+      "busy": "Another job is already running on this session.",
+      "recording": "Stop the recording first.",
+      "no_recording": "There is no recording on file for this session.",
+      "unsupported_backend": "The current speech engine can't transcribe whole files.",
+      "no_model": "No speech model is configured."
+    }
   },
   "lang": {
     "auto": "Auto detect",
@@ -77,6 +99,16 @@
       "confirmAll": "Every segment already has a translation — this will replace them all.",
       "confirmRetranslate": "Re-translate",
       "jobLabel": "Translate: {title}"
+    },
+    "refine": {
+      "tooltip": "Re-transcribe from the recording (runs in background)",
+      "tooltipAgain": "Re-transcribe from the recording again (replaces the transcript)",
+      "running": "Transcribing the full recording… (see the progress bar)",
+      "blocking": "The recording is being transcribed — wait for it to finish",
+      "confirmTitle": "Re-transcribe from the recording?",
+      "confirmBody": "The whole recording is run through the speech engine again and the transcript is replaced. Edits to the current text are lost; speaker names are kept.",
+      "confirmRun": "Re-transcribe",
+      "jobLabel": "Transcribe recording: {title}"
     }
   },
   "preflight": {
@@ -223,7 +255,9 @@
     "translatePartials": "Translate partials",
     "translatePartialsHint": "Stream translations of partial transcripts (a beat after the text).",
     "nextSessionNote": "Some changes only take effect on the next session.",
-    "enginesEmpty": "Start a session to see the active backends."
+    "enginesEmpty": "Start a session to see the active backends.",
+    "refineAfterStop": "Re-transcribe after recording",
+    "refineAfterStopHint": "When a recording stops, run the whole file through the speech engine once more and replace the live transcript. More accurate; takes a moment on long meetings."
   },
   "setup": {
     "step": "Step {current} of {total}",
