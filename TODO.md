@@ -169,7 +169,12 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       mixed 中/English in one line. Not verified: accuracy on a real
       meeting against Whisper's partials, and how the endpoint rules feel
       (trailing silence = the "min silence" setting, cap = "max segment").
-      Whisper remains the default until that comparison is made.
+      Whisper remains the default until that comparison is made — except
+      on a machine with no accelerator, where the wizard now recommends the
+      Zipformer (`defaults.stt_cpu`): whisper-small measured at half real
+      time on four CPU cores with no partial ever finishing, against the
+      Zipformer's real time and ~1 s to first text, at similar accuracy on
+      the same four clips.
 - [x] **FunASR streaming Paraformer (bilingual zh-en, int8, ~240 MB)** as
       a second streaming option, same backend. On the four bilingual test
       clips both models ship, fed in real time through the live pipeline

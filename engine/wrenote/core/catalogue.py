@@ -250,6 +250,18 @@ class ModelCatalogue:
         budget = _memory_budget_mb(hw)
         kind = SLOT_KIND.get(slot, slot)
         specs = sorted(self.for_kind(kind), key=lambda m: TIERS.index(m.tier))
+        # The live slot on a machine with no accelerator: Whisper can't keep
+        # up in real time on a CPU alone (whisper-small ran at half real time
+        # on four cores), so the catalogue's streaming pick is what to
+        # recommend there. Whole recordings (stt_offline) can take their time
+        # and stay with Whisper.
+        cpu_pick = self._defaults.get("stt_cpu") if slot == "stt" else None
+        if cpu_pick and cpu_pick in self._by_id and not _accelerated(hw):
+            spec = self._by_id[cpu_pick]
+            if spec.kind == kind:
+                specs = [m for m in specs if m.id != spec.id]
+                specs.insert(0, spec)  # listed first: it is the one for this machine
+                target, reason, params = spec.tier, "cpu_streaming", {"cpus": str(hw.cpu_count)}
 
         def fits(spec: ModelSpec) -> tuple[bool, str, dict[str, str]]:
             need = spec.requires.get("ram_mb", 0)
@@ -259,7 +271,9 @@ class ModelCatalogue:
 
         usable = [m for m in specs if fits(m)[0]]
         at_or_below = [m for m in usable if TIERS.index(m.tier) <= TIERS.index(target)]
-        if at_or_below:
+        if reason == "cpu_streaming" and usable and usable[0].id == cpu_pick:
+            pick = usable[0]
+        elif at_or_below:
             pick = at_or_below[-1]  # the largest we aim at
         elif usable:
             pick = usable[0]  # the catalogue offers nothing that small
@@ -326,6 +340,13 @@ def _memory_budget_mb(hw: HardwareInfo) -> int:
     """
     vram = sum(g.vram_mb or 0 for g in hw.gpus if not g.unified_memory)
     return (hw.ram_mb or 0) + vram
+
+
+def _accelerated(hw: HardwareInfo) -> bool:
+    """Whether any runtime variant beyond the CPU could run here (Metal, CUDA,
+    Vulkan …). A candidate list, not an installed pack: a machine that could
+    install one is treated as accelerated, and the wizard offers the pack."""
+    return any(a != "cpu" for a in hw.accelerators)
 
 
 def _target_tier(hw: HardwareInfo) -> tuple[str, str, dict[str, str]]:

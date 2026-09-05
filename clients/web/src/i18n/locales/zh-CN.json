@@ -303,7 +303,8 @@
       "ample_ram": "{ram} 内存 —— 可以用最好的模型",
       "moderate_ram": "{ram} 内存",
       "limited_ram": "{ram} 内存 —— 建议选轻量的",
-      "gpu_headroom": "{gpu} —— 显存足够跑更大的模型"
+      "gpu_headroom": "{gpu} —— 显存足够跑更大的模型",
+      "cpu_streaming": "没有 GPU 加速（{cpus} 核 CPU）— 流式模型才能让实时字幕跟上；录制后仍由 Whisper 整理"
     },
     "blocked": {
       "needs_ram": "大约需要 {need} 内存"

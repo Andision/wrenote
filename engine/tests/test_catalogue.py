@@ -476,3 +476,22 @@ def test_select_refuses_while_an_explicit_path_is_pinned(client):
     client.app.state.config.stt.params["model_path"] = "/my/own.bin"
     r = client.post("/v1/models/select", json={"kind": "stt", "model": "whisper-base-q5"})
     assert r.status_code == 409 and "model_path" in r.json()["detail"]
+
+
+def test_cpu_only_machine_is_pointed_at_the_streaming_model(tmp_path):
+    """No accelerator → the live slot recommends the catalogue's streaming
+    pick and lists it first; the offline slot keeps recommending Whisper."""
+    cat = ModelCatalogue.load(user=Path("/nonexistent"))
+    cpu_only = _hw(16)  # accelerators=("cpu",)
+    live = cat.options("stt", cpu_only, models_dir=tmp_path)
+    assert live.reason_code == "cpu_streaming" and live.reason_params == {"cpus": "8"}
+    assert live.options[0].id == "zipformer-zh-en-streaming" and live.options[0].recommended
+    assert sum(o.recommended for o in live.options) == 1
+    offline = cat.options("stt_offline", cpu_only, models_dir=tmp_path)
+    assert [o.id for o in offline.options if o.recommended] == ["whisper-large-v3-turbo-q5"]
+
+    fast = HardwareInfo(os="darwin", arch="arm64", cpu_count=10, ram_mb=16 * 1024, gpus=(),
+                        npu=None, accelerators=("metal", "cpu"))
+    live = cat.options("stt", fast, models_dir=tmp_path)
+    assert live.reason_code == "ample_ram"
+    assert [o.id for o in live.options if o.recommended] == ["whisper-large-v3-turbo-q5"]

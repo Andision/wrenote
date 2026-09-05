@@ -345,7 +345,10 @@ in as it arrives, a decoded prefix never changes, and the model says when
 the utterance ended. So there are two STT slots in the config:
 
 * **`stt` — what a live session hears.** Whisper by default; Settings →
-  Models can put the streaming model there. When the backend offers a
+  Models can put the streaming model there, and on a machine with no
+  accelerator the recommendation is the streaming model (`defaults.stt_cpu`
+  in the catalogue): whisper-small ran at half real time on four CPU cores,
+  the Zipformer at real time with a second's latency. When the backend offers a
   stream (`STTBackend.open_stream`), the pipeline runs `_stream_loop`
   instead of `_vad_loop`: every chunk is fed, partials are the recogniser's
   growing text, the endpoint makes the final, and the utterance's audio is

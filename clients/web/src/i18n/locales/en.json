@@ -304,7 +304,8 @@
       "ample_ram": "{ram} RAM — the best models fit",
       "moderate_ram": "{ram} RAM",
       "limited_ram": "{ram} RAM — keeping it light",
-      "gpu_headroom": "{gpu} — room for a bigger model"
+      "gpu_headroom": "{gpu} — room for a bigger model",
+      "cpu_streaming": "No GPU acceleration ({cpus} CPU cores) — a streaming model keeps live captions real-time; Whisper still does the pass after recording"
     },
     "blocked": {
       "needs_ram": "Needs about {need} of memory"

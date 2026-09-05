@@ -31,6 +31,10 @@ schema: 1
 defaults:
   stt: whisper-large-v3-turbo-q5
   stt_offline: whisper-large-v3-turbo-q5
+  # What the live slot recommends on a machine with no GPU acceleration:
+  # Whisper cannot keep up in real time on a CPU alone, a streaming model
+  # can. Only a recommendation — the config's own choice still wins.
+  stt_cpu: zipformer-zh-en-streaming
   translator: hy-mt2-1.8b-q4
   chat: qwen3-4b-instruct-q4
   speaker: ecapa-voxceleb
