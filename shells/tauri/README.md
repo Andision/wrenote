@@ -112,6 +112,13 @@ the target OS. Tick these before switching the release pipeline over:
       dylibs) with the entitlements above before notarizing.
 - [ ] **Windows installer:** NSIS per-user install; system-audio capture still
       works from the installed location (COM init on the loopback thread).
+      The installer carries the WebView2 bootstrapper (`webviewInstallMode:
+      embedBootstrapper`); the runtime itself is still downloaded when a
+      machine lacks it. **Windows Sandbox** is such a machine and also has
+      no browser and no Store, so anything that opens a link there shows
+      "You'll need a new app to open this" — check WebView2 is present
+      (`C:\Program Files (x86)\Microsoft\EdgeWebView\Application`) before
+      reading anything else into a failure there.
 
 Until every box is ticked, `shells/electron/` stays the shipping shell and
 `build.yml` keeps packaging it.
