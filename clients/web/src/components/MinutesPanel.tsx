@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   AlertTriangle,
@@ -80,19 +80,6 @@ export function MinutesBody({ sessionId }: { sessionId: string | null }) {
   const [lang, setLang] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const refresh = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const next = await getMinutes(sessionId);
-      setState(next);
-      // A job GET told us about (a reload mid-generation): follow it.
-      if (next.jobId && !useJobsStore.getState().jobs[next.jobId]) {
-        trackJob({ jobId: next.jobId, label: next.jobLang ?? "", kind: "minutes", sessionId });
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    }
-  }, [sessionId, trackJob]);
 
   // The job writing minutes right now: ours (tracked) or one found via GET.
   const jobId = state?.jobId ?? null;
@@ -108,9 +95,24 @@ export function MinutesBody({ sessionId }: { sessionId: string | null }) {
   // Fetch on mount, and again once the job we watched ends.
   const runningId = running?.id ?? null;
   useEffect(() => {
-    if (runningId) return;
-    void refresh();
-  }, [runningId, refresh]);
+    if (runningId || !sessionId) return;
+    let cancelled = false;
+    getMinutes(sessionId)
+      .then((next) => {
+        if (cancelled) return;
+        setState(next);
+        // A job GET told us about (a reload mid-generation): follow it.
+        if (next.jobId && !useJobsStore.getState().jobs[next.jobId]) {
+          trackJob({ jobId: next.jobId, label: next.jobLang ?? "", kind: "minutes", sessionId });
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) toast.error(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runningId, sessionId, trackJob]);
 
   const srcLang = meta?.srcLang ?? settings.srcLang;
   const tgtLang = meta?.tgtLang ?? settings.tgtLang;
