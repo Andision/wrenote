@@ -275,6 +275,10 @@ jobs:
     name: index + publish
     needs: pack
     runs-on: ubuntu-latest
+    # The publish step creates/updates the "runtimes" release with the default
+    # GITHUB_TOKEN, which is read-only unless the job says otherwise.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

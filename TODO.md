@@ -128,6 +128,21 @@ start until it is done.
       profiles are a small addition to machinery that already exists.
 - [ ] **`switch_lang`.** `ws.py:370` logs "requested but not implemented";
       changing the target language mid-session means stopping and restarting.
+- [ ] **Per-app audio capture** — "record Zoom, not the browser". System audio
+      today is the whole output mix (macOS: an SCK display filter with no
+      exclusions in `syscap.swift`; Windows: WASAPI endpoint loopback via
+      `soundcard`). Both OSes can do per-process. macOS: the same
+      ScreenCaptureKit filter with `including: [app]` (13+, which is already
+      the helper's floor) — an `--app <bundle-id>` flag on `syscap`; Core Audio
+      process taps (14.2+) are the alternative that needs no screen-recording
+      permission. Windows: WASAPI process loopback
+      (`AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`, include-process-tree so
+      Zoom's helpers count; Windows 10 2004+ / 11 — confirm the floor on a
+      real machine), which `soundcard` can't reach, so a small native helper
+      exe on the `syscap` pattern under `packaging/windows/`. PreFlight
+      already enumerates windows/apps for the screen picker; the audio-source
+      picker reuses that list, and the choice travels in the WS `start` config
+      as `audio_source: {type: "system" | "app", id}`. Linux stays mic-only.
 - [x] **Update notice.** The engine reads `latest.json` from the latest GitHub
       Release (`core/update.py`, `GET /v1/update`), the client raises one toast
       and shows the state in Settings → General, and Download opens the
