@@ -14,8 +14,6 @@ from __future__ import annotations
 from fastapi.routing import APIRoute
 from starlette.routing import Mount, WebSocketRoute
 
-import wrenote.server as server
-
 # Frozen snapshot of the route surface (contract v1: everything under /v1
 # except the shell's /health probe and the static/SPA mounts).
 # (method, path) for every API route, plus WS and mounts. Captured from the
@@ -86,9 +84,9 @@ def _walk_routes(routes, prefix: str = ""):
             yield r, prefix + (getattr(r, "path", "") or "")
 
 
-def _current_routes() -> set[tuple[str, str]]:
+def _current_routes(app) -> set[tuple[str, str]]:
     rows: set[tuple[str, str]] = set()
-    for r, path in _walk_routes(server.app.routes):
+    for r, path in _walk_routes(app.routes):
         if isinstance(r, APIRoute):
             for m in r.methods - {"HEAD", "OPTIONS"}:
                 rows.add((m, path))
@@ -99,13 +97,18 @@ def _current_routes() -> set[tuple[str, str]]:
     return rows
 
 
-def test_route_surface_snapshot():
+def test_route_surface_snapshot(client):
     """The full (method, path) surface must match the frozen baseline exactly.
 
     This is the cheapest guard against a route silently moving or vanishing in
     the refactor. Adding a route is also a deliberate act — update the snapshot.
+
+    Against the app the fixture builds, not the module-global ``server.app``:
+    that one is constructed at import, so whether it has the SPA mount depended
+    on whether ``npm run build`` had ever been run — which made this snapshot
+    pass or fail for a reason that has nothing to do with the routes.
     """
-    assert _current_routes() == EXPECTED_ROUTES
+    assert _current_routes(client.app) == EXPECTED_ROUTES
 
 
 def test_health(client):
@@ -194,8 +197,10 @@ def test_api_route_not_swallowed_by_spa(client):
 
 
 def test_spa_served_at_root(client):
-    """With the SPA built (APP_DIR present), '/' serves index.html, not JSON."""
-    assert server.APP_DIR.exists(), "test assumes a built SPA; run `npm run build`"
+    """'/' serves index.html, not JSON. The conftest mounts a stub SPA, so this
+    holds in a checkout that has never run `npm run build` — that the *real*
+    build ends up inside the shipped bundle is checked by the frozen-engine
+    smoke test in .github/actions/build-engine."""
     r = client.get("/")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")

@@ -47,11 +47,24 @@ def _mock_config(runtimes_dir=None) -> Config:
 
 
 def _isolate_paths(monkeypatch, tmp_path) -> None:
-    """Point the SQLite DB, recordings and the user config file at a per-test
-    tmp dir (the app otherwise hard-codes ``~/.wrenote``)."""
+    """Point the SQLite DB, recordings, the user config file and the SPA dir at
+    a per-test tmp dir (the app otherwise hard-codes ``~/.wrenote`` and the
+    vite build output)."""
     monkeypatch.setattr(store_mod, "DEFAULT_DB_PATH", tmp_path / "data.db")
     monkeypatch.setattr(recording_mod, "DEFAULT_DIR", tmp_path / "recordings")
     monkeypatch.setattr(config_mod, "USER_CONFIG", tmp_path / "config.yaml")
+    # A stub SPA, so the mount at "/" exists whether or not anyone ran
+    # `npm run build`. Skipping those tests when the real build is absent was
+    # the alternative, and a test that quietly stops running is worse than one
+    # that never existed: CI has no node in this job, so they'd never run
+    # there, which is precisely where they'd catch a regression.
+    app_dir = tmp_path / "spa"
+    app_dir.mkdir()
+    (app_dir / "index.html").write_text(
+        '<!doctype html><html><body><div id="root"></div></body></html>',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(server, "APP_DIR", app_dir)
 
 
 @pytest.fixture
