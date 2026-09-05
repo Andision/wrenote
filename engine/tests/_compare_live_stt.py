@@ -72,7 +72,7 @@ def _stt(name: str, models_dir: Path):
         candidates = sorted(models_dir.glob("ggml-*.bin"))
         if not candidates:
             raise SystemExit(f"no ggml-*.bin in {models_dir}")
-        return WhisperCppBackend(model_path=str(candidates[-1]))
+        return WhisperCppBackend(model_path=str(candidates[-1]), n_threads=4)
     raise SystemExit(f"unknown model {name}")
 
 

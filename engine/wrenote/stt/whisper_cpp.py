@@ -85,9 +85,8 @@ class WhisperCppBackend(STTBackend):
         # threading.Lock (cancelled-but-still-running threads, GC of return
         # values, etc.). A single dedicated worker thread eliminates the
         # whole class of bugs: every C call runs on this one thread, in order.
-        self._executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="whisper"
-        )
+        # Made in load(), so a backend can be loaded again after unload().
+        self._executor: concurrent.futures.ThreadPoolExecutor | None = None
 
     async def load(self) -> None:
         if self._model is not None:
@@ -95,7 +94,6 @@ class WhisperCppBackend(STTBackend):
         path = Path(self._model_path)
         if not path.exists():
             raise FileNotFoundError(f"Whisper model not found at {self._model_path}")
-
         def _load() -> Model:
             # Imported here, not at module top: the native binding is part of
             # the (swappable) compute runtime and must not be a hard import
@@ -112,7 +110,7 @@ class WhisperCppBackend(STTBackend):
 
         log.info("Loading whisper.cpp model from %s (n_threads=%d)", self._model_path, self._n_threads)
         loop = asyncio.get_event_loop()
-        self._model = await loop.run_in_executor(self._executor, _load)
+        self._model = await loop.run_in_executor(self._worker, _load)
         log.info("Whisper model loaded")
 
     async def unload(self) -> None:
@@ -120,13 +118,15 @@ class WhisperCppBackend(STTBackend):
         # touches whisper.cpp from the same thread that allocated it.
         def _drop() -> None:
             self._model = None
-        if self._model is not None:
+        ex, self._executor = self._executor, None
+        if self._model is not None and ex is not None:
             try:
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(self._executor, _drop)
+                await loop.run_in_executor(ex, _drop)
             except RuntimeError:
                 self._model = None
-        self._executor.shutdown(wait=False)
+        if ex is not None:
+            ex.shutdown(wait=False)
 
     async def transcribe_segment(
         self,
@@ -192,7 +192,7 @@ class WhisperCppBackend(STTBackend):
         # so partial / final / next-segment-partial run strictly serially —
         # no concurrent access to the Model or its Metal context.
         loop = asyncio.get_event_loop()
-        segments = await loop.run_in_executor(self._executor, _transcribe)
+        segments = await loop.run_in_executor(self._worker, _transcribe)
         text = " ".join(s.text.strip() for s in segments if s.text.strip())
 
         return TranscriptEvent(
@@ -230,7 +230,7 @@ class WhisperCppBackend(STTBackend):
 
         loop = asyncio.get_event_loop()
         try:
-            lang, prob, all_probs = await loop.run_in_executor(self._executor, _detect)
+            lang, prob, all_probs = await loop.run_in_executor(self._worker, _detect)
         except Exception:
             log.exception("auto_detect_language failed; falling back")
             return (fallback, 0.0)
@@ -251,6 +251,14 @@ class WhisperCppBackend(STTBackend):
             lang, prob, fallback,
         )
         return (fallback, prob)
+
+    @property
+    def _worker(self) -> concurrent.futures.ThreadPoolExecutor:
+        if self._executor is None:
+            self._executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="whisper"
+            )
+        return self._executor
 
     def set_initial_prompt(self, prompt: str) -> None:
         self._initial_prompt = prompt or ""
