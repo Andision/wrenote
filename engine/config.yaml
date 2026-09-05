@@ -1,0 +1,103 @@
+# Wrenote default config
+# Per design.v1.1 §6
+# User overrides go in ~/.wrenote/config.yaml
+# Env vars: WRENOTE_<SECTION>__<PARAMS>__<KEY>=...
+
+compute:
+  # Which native runtime build the STT / translator / chat backends run on.
+  # auto = rank by detected hardware (see GET /api/compute/status), or pin one
+  # of: cpu | metal | cuda | vulkan. The app bundle ships one built-in runtime
+  # (metal on Apple Silicon, cpu elsewhere); accelerated packs are fetched into
+  # runtimes_dir on demand. Takes effect on the next launch.
+  accelerator: auto
+  gpu_layers: null          # null = derive n_gpu_layers from the VRAM budget; int forces it
+  vram_budget_mb: null      # null = 90% of the largest discrete GPU; unified memory = unbudgeted
+  runtimes_dir: ""          # "" = <data.dir>/runtimes
+  # Index of published packs; set to a mirror if GitHub is unreachable, or "" to disable installs.
+  runtimes_index_url: https://github.com/Andision/wrenote/releases/download/runtimes/runtimes.json
+
+# Whether to ask, once per launch, if a newer Wrenote has been released. The
+# request fetches one small JSON file from the release index and sends nothing
+# about you or this machine; set check: false to never ask automatically
+# (Settings → General has the same switch, and a "check now" that works
+# regardless). index_url: a mirror if GitHub is unreachable, or "" to disable.
+update:
+  check: true
+  index_url: https://github.com/Andision/wrenote/releases/latest/download/latest.json
+
+server:
+  host: 127.0.0.1           # default localhost-only; do not change unless you accept LAN exposure
+  port: 8000
+  log_level: info
+
+# Where the app keeps what it writes for you. `dir` is the root; each of the
+# others is "" = under that root, or an explicit path to put just that
+# elsewhere (models and recordings are the gigabytes). This file's own
+# location (~/.wrenote/config.yaml) is fixed — it is where `dir` is read from.
+data:
+  dir: ~/.wrenote
+  db_path: ""               # "" = <dir>/data.db — the session library
+  recordings_dir: ""        # "" = <dir>/recordings — per-session WAVs (~115 MB/hour)
+
+models:
+  dir: ""                   # "" = <data.dir>/models — where weights are downloaded to
+  catalogue_url: ""         # reserved: a published catalogue, so new models need no app release
+
+# Each backend picks its weights by catalogue id (see engine/models.yaml and
+# `GET /v1/models/status`). Setting params.model_path instead pins an explicit
+# file — the escape hatch for a model we don't ship an entry for; nothing can be
+# downloaded for it.
+stt:
+  backend: whisper_cpp
+  model: whisper-large-v3-turbo-q5
+  params:
+    device: auto              # Metal on Mac, CUDA on Win, CPU fallback — whisper.cpp auto-detects
+    language: null            # null = per-segment auto-detect (recommended). Pin to "en"/"zh"/… to force.
+
+# Speech recognition for whole recordings — the pass after a recording
+# stops, and uploads. Whisper is the right tool there (it decodes 30 s
+# windows offline with context between them). `stt` above is what a live
+# session hears; Settings → Models can put a streaming model there
+# (zipformer-zh-en-streaming) while this stays Whisper.
+stt_offline:
+  backend: whisper_cpp
+  model: whisper-large-v3-turbo-q5
+
+vad:
+  backend: silero
+  params:
+    threshold: 0.5
+
+translator:
+  backend: llama_cpp
+  model: hy-mt2-1.8b-q4
+  params:
+    n_ctx: 4096
+    n_gpu_layers: -1          # offload all layers to Metal/CUDA; set 0 to force CPU
+    temperature: 0.0
+
+speaker:
+  # ECAPA-TDNN, exported from SpeechBrain to a torch-free ONNX (downloaded from
+  # HuggingFace on first run, like the other models). Offline diarization only.
+  backend: ecapa
+  model: ecapa-voxceleb
+  params: {}
+
+chat:
+  # Qwen3-4B-Instruct-2507 (July 2025) — pure transformer, fully supported by
+  # current llama-cpp-python. Qwen3.5 uses a hybrid Mamba+Transformer arch
+  # (ssm_conv1d weights) that pre-0.4 llama.cpp can't load; revisit once the
+  # binding catches up. Model is lazy-loaded on first chat request.
+  # Swap backend: mock for frontend dev without paying the model cost.
+  backend: llama_cpp
+  model: qwen3-4b-instruct-q4
+  params:
+    # 32K covers ~30-min meetings comfortably. Model was trained at 262K
+    # native, so raising this further is safe — KV cache grows linearly
+    # (~50 MB / 8K at this model size).
+    n_ctx: 32768
+    n_gpu_layers: -1
+
+session:
+  default_src_lang: auto    # "auto" = detect per segment; or pin to "en", "zh", …
+  default_tgt_lang: zh

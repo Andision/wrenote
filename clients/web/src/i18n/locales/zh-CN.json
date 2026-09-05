@@ -1,0 +1,443 @@
+{
+  "$meta": {
+    "name": "简体中文"
+  },
+  "common": {
+    "cancel": "取消",
+    "close": "关闭",
+    "closeEsc": "关闭（Esc）",
+    "continue": "继续",
+    "delete": "删除",
+    "dismiss": "忽略",
+    "pause": "暂停",
+    "refresh": "刷新",
+    "remove": "移除",
+    "rename": "重命名",
+    "resume": "继续",
+    "save": "保存",
+    "stop": "停止"
+  },
+  "session": {
+    "new": "新建会话",
+    "status": {
+      "processing": "处理中",
+      "processingHint": "正在用完整录音重新转写；完成后会替换当前文本。",
+      "failed": "处理失败",
+      "failedHint": "录制后的整理未能完成。录制时的文本仍然保留 — 打开会话可以重试。"
+    },
+    "processing": {
+      "title": "正在用完整录音重新转写…",
+      "body": "当前显示的是实时转写结果，稍后会替换为更准确的版本。"
+    },
+    "failed": {
+      "title": "录制后的整理失败",
+      "body": "实时转写结果已原样保留。",
+      "retry": "重试"
+    },
+    "refuse": {
+      "busy": "这个会话已有其他任务在运行。",
+      "recording": "请先停止录制。",
+      "no_recording": "这个会话没有保存录音。",
+      "unsupported_backend": "当前的语音引擎不支持整段文件转写。",
+      "no_model": "尚未配置语音模型。"
+    }
+  },
+  "lang": {
+    "auto": "自动检测",
+    "from": "源语言",
+    "language": "语言",
+    "source": "源语言",
+    "target": "目标语言",
+    "to": "译为",
+    "alsoSpoken": "也会说：",
+    "alsoSpokenHint": "会话中可能出现的其他语言。只有在听得很确定时，某一段才会被当作这些语言；否则按主语言处理。"
+  },
+  "theme": {
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统",
+    "toggle": "主题：{current} — 点击切换到{next}"
+  },
+  "sidebar": {
+    "recent": "最近",
+    "empty": "还没有会话。点击「{action}」开始。",
+    "allGrouped": "所有会话都已归入分组。",
+    "collapse": "收起侧栏",
+    "expand": "展开侧栏",
+    "lockedLoad": "先停止当前会话，才能载入其他会话",
+    "lockedNew": "请先停止当前会话",
+    "downloadRecording": "下载录音",
+    "deleteSession": "删除会话",
+    "deleteSessionTitle": "删除这个会话？",
+    "deleteSessionBody": "「{title}」及其录音将被永久删除。",
+    "renameGroup": "双击重命名",
+    "deleteGroup": "删除分组",
+    "deleteGroupTitle": "删除这个分组？",
+    "deleteGroupBody": "「{name}」将被删除。组内会话会保留，并移出该分组。",
+    "lockedNote": "录制期间不能切换会话。",
+    "newGroup": "新建分组",
+    "dragHere": "把会话拖到这里。",
+    "loadMore": "加载更早的会话",
+    "loadingMore": "加载中…"
+  },
+  "topbar": {
+    "rename": "双击重命名",
+    "overlay": "悬浮字幕（置顶显示实时转写）",
+    "connecting": "连接中",
+    "download": "下载完整录音（.wav）",
+    "chat": "就本次会话提问",
+    "diarize": {
+      "tooltip": "识别说话人（后台运行）",
+      "running": "正在识别说话人…（见进度条）",
+      "blocking": "说话人识别进行中 — 请等待完成",
+      "confirmTitle": "重新识别说话人？",
+      "confirmRenames": "这会重置所有说话人的自定义名称（例如「张伟」会变回「Speaker 1」）。",
+      "confirmExisting": "该会话已有说话人标注。",
+      "confirmRerun": "重新识别",
+      "confirmAnyway": "仍然重新识别",
+      "jobLabel": "识别说话人：{title}"
+    },
+    "translate": {
+      "tooltip": "翻译未翻译的片段（后台运行）",
+      "tooltipAll": "重新翻译全部片段（后台运行）",
+      "running": "正在翻译…（见进度条）",
+      "blocking": "翻译进行中 — 请等待完成",
+      "confirmTitle": "重新翻译全部片段？",
+      "confirmAll": "所有片段都已有译文 — 这会全部覆盖。",
+      "confirmRetranslate": "重新翻译",
+      "jobLabel": "翻译：{title}"
+    },
+    "refine": {
+      "tooltip": "用完整录音重新转写（后台运行）",
+      "tooltipAgain": "再次用完整录音重新转写（会替换当前文本）",
+      "running": "正在用完整录音转写…（见进度条）",
+      "blocking": "录音转写进行中 — 请等待完成",
+      "confirmTitle": "用完整录音重新转写？",
+      "confirmBody": "整段录音会重新经过语音引擎，转写结果将被替换。对当前文本的修改会丢失；说话人名称会保留。",
+      "confirmRun": "重新转写",
+      "jobLabel": "转写录音：{title}"
+    },
+    "minutes": "会议纪要"
+  },
+  "preflight": {
+    "translateOn": "边说边译",
+    "translateOff": "仅转写 · 不翻译",
+    "microphone": "麦克风",
+    "defaultMic": "系统默认麦克风",
+    "unnamedMic": "麦克风（{id}…）",
+    "test": "测试",
+    "systemAudio": "系统声音",
+    "screen": "屏幕",
+    "captureTarget": "要录制的屏幕或窗口",
+    "fullScreen": "全屏",
+    "displays": "显示器",
+    "windows": "窗口",
+    "refresh": "刷新采集目标",
+    "refreshHint": "刷新窗口列表（需先授予「屏幕录制」权限）",
+    "start": "开始录制",
+    "starting": "启动中",
+    "privacy": "本地运行 · 音频不会离开你的设备"
+  },
+  "transcript": {
+    "preparing": "准备中…",
+    "preparingHint": "首次启动需要片刻，正在加载 Whisper 和翻译模型。",
+    "listening": "聆听中…",
+    "listeningHint": "开始说话，识别结果会实时出现在这里。",
+    "playSegment": "播放这一段",
+    "merge": "与下一段合并",
+    "editHint": "回车保存 · Esc 取消",
+    "editHintShort": "双击编辑",
+    "save": "保存（或按回车）",
+    "nameSpeaker": "给这位说话人命名",
+    "speakerUnknown": "未识别 — 点击命名（仅作用于本段）",
+    "speakerRename": "点击重命名 — 作用于该说话人的所有片段"
+  },
+  "player": {
+    "play": "从头播放",
+    "pause": "暂停",
+    "resume": "继续播放",
+    "scrollTo": "在转写中定位到该片段",
+    "loopSegment": "循环当前片段",
+    "abOn": "A–B 循环已开启 — 点击清除",
+    "abSetA": "A–B 循环 — 点击设定 A 点",
+    "abSetB": "点击设定 B 点",
+    "speed": "播放速度"
+  },
+  "chat": {
+    "switch": "切换对话",
+    "history": "对话历史",
+    "newConversation": "新建对话",
+    "newChat": "新对话",
+    "clear": "清空",
+    "clearTip": "清空当前对话",
+    "clearTitle": "清空当前对话？",
+    "clearBody": "该对话中的所有消息都会被删除。",
+    "deleteTitle": "删除这个对话？",
+    "deleteBody": "「{title}」及其全部消息都会被删除。",
+    "startFailed": "无法创建对话。",
+    "loading": "正在加载对话…",
+    "noSessionTitle": "请先开始一个会话",
+    "noSessionHint": "对话依附于正在进行的录制。点击录制开始。",
+    "readyTitle": "随时可以开始",
+    "readyHint": "开始说话吧 — 之后可以就采集到的内容提问。",
+    "askTitle": "问点什么",
+    "askHint": "摘要、待办、结论、谁说了什么 — 都可以试试。",
+    "placeholder": "就本次会话提问…",
+    "placeholderNoSession": "开始一个会话后即可对话",
+    "send": "发送（回车）"
+  },
+  "export": {
+    "tooltip": "导出转写",
+    "format": {
+      "md": "Markdown（.md）",
+      "txt": "纯文本（.txt）",
+      "srt": "字幕（.srt）",
+      "vtt": "字幕（.vtt）"
+    },
+    "original": "原文",
+    "translation": "译文",
+    "both": "双语",
+    "copied": "转写已复制",
+    "failed": "导出失败",
+    "withMinutes": "附上会议纪要（{lang}）"
+  },
+  "upload": {
+    "title": "从文件转写",
+    "drop": "拖入文件，或点击选择",
+    "dropHint": "音频或视频 · 支持 ffmpeg 能处理的任意格式 · 多个文件将按列出顺序拼接",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "titleField": "标题（可选）",
+    "untitled": "上传",
+    "titleMore": "{base} 等 {count} 个文件",
+    "translate": "翻译",
+    "background": "处理会在后台继续 — 可以关闭本窗口。",
+    "start": "开始转写",
+    "startN": "开始转写（{count}）",
+    "jobLabel": "转写：{title}"
+  },
+  "glossary": {
+    "title": "术语表 · 自定义词汇",
+    "termPlaceholder": "术语（例如 Kubernetes、张伟）",
+    "translationPlaceholder": "译法（可选）",
+    "removeTerm": "移除该术语"
+  },
+  "progress": {
+    "starting": "开始中…",
+    "complete": "已完成",
+    "failed": "失败",
+    "showLog": "展开日志",
+    "hideLog": "收起日志"
+  },
+  "overlay": {
+    "compact": "精简条",
+    "expand": "展开字幕",
+    "close": "关闭悬浮窗"
+  },
+  "settings": {
+    "title": "设置",
+    "cat": {
+      "general": "通用",
+      "segmentation": "分段",
+      "realtime": "实时",
+      "glossary": "术语表",
+      "engines": "引擎",
+      "compute": "算力"
+    },
+    "language": "界面语言",
+    "languageHint": "界面显示的语言。「自动」跟随系统设置。",
+    "languageAuto": "自动",
+    "appearance": "外观",
+    "appearanceHint": "浅色、深色，或跟随系统。",
+    "speakerLive": "实时说话人识别",
+    "speakerLiveHint": "实验性功能 — 通话中并不可靠。会后用「识别说话人」按钮效果好得多。",
+    "continuousPlayback": "连续播放",
+    "continuousPlaybackHint": "播放某一片段时越过其边界继续播放。关闭则在该片段结束时暂停。",
+    "levelMeters": "显示电平表",
+    "levelMetersHint": "底部状态栏中的麦克风和扬声器音量条。觉得干扰可以关掉。",
+    "minSilence": "最短静音",
+    "minSilenceHint": "说话人停顿多久才结束一个片段。日常对话 800ms 左右比较合适。",
+    "maxSegment": "最长片段",
+    "maxSegmentHint": "硬上限。Whisper 的上下文限制是 30 秒，留些余量。",
+    "partialInterval": "中间结果间隔",
+    "partialIntervalHint": "多久输出一次中间转写结果。越小越跟手，但更吃 GPU。",
+    "translatePartials": "翻译中间结果",
+    "translatePartialsHint": "对中间转写结果也进行翻译（比原文稍慢一拍）。",
+    "nextSessionNote": "部分改动会在下一个会话生效。",
+    "enginesEmpty": "开始一个会话后即可看到正在使用的引擎。",
+    "refineAfterStop": "录制结束后重新转写",
+    "refineAfterStopHint": "录制停止后，把整段录音再过一遍语音引擎，替换实时转写结果。更准确；长会议会多花一点时间。"
+  },
+  "setup": {
+    "step": "第 {current} 步，共 {total} 步",
+    "computeTitle": "选择 Wrenote 的运行方式",
+    "computeBlurb": "全部在本机运行。选择与你硬件匹配的版本 — 之后随时可在设置中更改。",
+    "modelsTitle": "设置 Wrenote",
+    "modelsBlurb": "完全在本机运行。首次需要下载语音识别与翻译模型。",
+    "recommended": "推荐",
+    "installing": "安装中…",
+    "skip": "跳过 — 使用内置的 CPU 版本",
+    "download": "下载 {size}",
+    "downloadFailed": "下载失败",
+    "retry": "重试下载",
+    "modelsHint": "保存到 ~/.wrenote/models · 中断后可续传",
+    "restart": "完成后重启 Wrenote 即可启用新的运行时。"
+  },
+  "models": {
+    "kind": {
+      "stt": "语音识别（实时）",
+      "translator": "翻译",
+      "chat": "对话",
+      "speaker": "说话人识别",
+      "stt_offline": "语音识别（录制后整理、导入文件）"
+    },
+    "onDisk": "已下载",
+    "sizeMb": "{mb} MB",
+    "loading": "正在加载模型列表…",
+    "missing_other": "需下载 {count} 个文件 · {mb} MB",
+    "downloadMissing": "下载",
+    "nextSession": "新模型将在下一个会话生效。",
+    "statusFailed": "无法获取模型列表",
+    "selectFailed": "无法保存模型选择",
+    "reason": {
+      "ample_ram": "{ram} 内存 —— 可以用最好的模型",
+      "moderate_ram": "{ram} 内存",
+      "limited_ram": "{ram} 内存 —— 建议选轻量的",
+      "gpu_headroom": "{gpu} —— 显存足够跑更大的模型",
+      "cpu_streaming": "没有 GPU 加速（{cpus} 核 CPU）— 流式模型才能让实时字幕跟上；录制后仍由 Whisper 整理"
+    },
+    "blocked": {
+      "needs_ram": "大约需要 {need} 内存"
+    },
+    "note": {
+      "stt_fast_rough": "最快，准确度最低 —— 单一语种、口齿清晰时够用",
+      "stt_balanced": "多数机器上的均衡选择",
+      "stt_best": "最准，尤其是口音和中英混说的场景",
+      "mt_default": "翻译专用模型",
+      "chat_light": "更轻量，适合内存较小的机器",
+      "chat_default": "长转写稿上的回答质量更好",
+      "speaker_default": "用于区分不同说话人的声纹模型",
+      "stt_streaming": "流式：边说边出字、已出的字不回改；文字较糙，录制后由 Whisper 替换。纯 CPU，不需要算力包。"
+    }
+  },
+  "compute": {
+    "hardware": "硬件",
+    "platform": "平台",
+    "platformValue": "{tag} · {threads} 个 CPU 线程 · {ram} 内存",
+    "gpu": "显卡",
+    "noGpu": "未检测到",
+    "npu": "NPU",
+    "npuValue": "{npu}（已检测到，暂未用于推理）",
+    "runtime": "运行时",
+    "active": "当前",
+    "preference": "优先顺序",
+    "vramBudget": "显存预算",
+    "skipped": "已跳过",
+    "accelerator": "加速方案",
+    "auto": "自动",
+    "autoHint": "「自动」按检测到的硬件排序，并回退到内置运行时。选定的加速方案需要先在下方安装。",
+    "packs": "运行时包",
+    "install": "安装运行时包",
+    "remove": "移除运行时包",
+    "unavailable": "不可用",
+    "blocked": "{name} 不可用 — {reason}",
+    "indexUnreachable": "无法访问运行时包索引 — 离线状态下无法安装。",
+    "restart": "重启 Wrenote 以启用新的运行时。",
+    "detecting": "正在检测硬件…",
+    "installed": "{name} 运行时已安装",
+    "removed": "{name} 运行时已移除",
+    "installFailed": "运行时安装失败",
+    "removeFailed": "运行时移除失败",
+    "selectFailed": "无法保存加速方案设置",
+    "statusFailed": "无法获取算力状态",
+    "streamLost": "进度流已断开",
+    "state": {
+      "builtin": "内置",
+      "installed": "已安装",
+      "available": "可安装",
+      "unpublished": "尚未为该机型发布"
+    },
+    "selection": {
+      "pinned": "手动指定",
+      "hardware": "按硬件匹配",
+      "builtin": "内置",
+      "fallback": "回退"
+    },
+    "reason": {
+      "gpu_ready": "{gpu}",
+      "gpu_ready_driver": "{gpu} · 驱动 {driver}",
+      "no_driver": "检测到 {gpu}，但未安装驱动",
+      "driver_too_old": "{gpu} · 驱动 {driver} 低于 CUDA 12 所需的 {min} — 更新驱动后即可使用 CUDA",
+      "low_vram": "{gpu} 显存不足 {gb} GB",
+      "no_vulkan_loader": "检测到 {gpu}，但未安装 Vulkan 驱动",
+      "metal_builtin": "{gpu} · Metal，已内置",
+      "intel_mac": "Intel Mac — 未提供 Metal 版本",
+      "cpu_always": "始终可用",
+      "cpu_no_gpu": "未检测到可用的 GPU"
+    },
+    "note": {
+      "builtin": "已内置于应用 · 无需下载",
+      "installed": "已安装",
+      "download": "需下载 {mb} MB",
+      "unavailable": "本机无法使用",
+      "unpublished": "尚未为该机型发布",
+      "size_unknown": "需要先检查运行时包索引才能得知体积"
+    },
+    "tradeoff": {
+      "cuda": "N 卡上更快，但体积大得多"
+    }
+  },
+  "update": {
+    "version": "Wrenote {version}",
+    "checkNow": "检查更新",
+    "checking": "正在检查…",
+    "upToDate": "已是最新版本。",
+    "checkedAt": "上次检查：{when}。",
+    "available": "Wrenote {version} 已发布",
+    "toastHint": "方便时下载安装即可，不影响当前使用。",
+    "download": "下载",
+    "whatsNew": "更新内容",
+    "off": "已关闭自动检查。",
+    "auto": "自动检查更新",
+    "autoHint": "每次启动时读取一次发布索引，看是否有新版本。不会发送任何关于你或这台设备的信息。",
+    "error": {
+      "unreachable": "无法连接发布索引，请检查网络后重试。",
+      "bad_index": "发布索引无法读取，请稍后再试。",
+      "no_index": "未配置发布索引（update.index_url）。"
+    }
+  },
+  "minutes": {
+    "title": "纪要",
+    "generate": "生成纪要",
+    "regenerate": "重新生成",
+    "writing": "正在整理纪要…",
+    "loading": "加载中…",
+    "emptyTitle": "还没有纪要",
+    "emptyHint": "由本地模型根据转写内容整理：摘要、决定事项、谁负责什么。",
+    "waitForStop": "录制结束后可用。",
+    "noSessionTitle": "还没有可整理的内容",
+    "noSessionHint": "纪要根据已结束会话的转写内容生成。",
+    "stale": "生成纪要后转写内容有过变动。重新生成可以更新。",
+    "generatedAt": "生成于 {when}",
+    "busy": "这个会话的纪要正在生成中。",
+    "noTranscript": "这个会话没有可整理的转写内容。",
+    "copy": "复制为 Markdown",
+    "copied": "纪要已复制",
+    "download": "下载（.md）",
+    "section": {
+      "summary": "摘要",
+      "keyPoints": "要点",
+      "decisions": "决定事项",
+      "actionItems": "待办事项",
+      "openQuestions": "待定问题"
+    }
+  },
+  "search": {
+    "placeholder": "搜索转写内容…",
+    "clear": "清除搜索",
+    "searching": "搜索中…",
+    "empty": "没有匹配「{query}」的内容。",
+    "sessions": "会话",
+    "lines_other": "{count} 条"
+  }
+}

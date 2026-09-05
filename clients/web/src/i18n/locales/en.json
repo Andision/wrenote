@@ -1,0 +1,445 @@
+{
+  "$meta": {
+    "name": "English"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "closeEsc": "Close (Esc)",
+    "continue": "Continue",
+    "delete": "Delete",
+    "dismiss": "Dismiss",
+    "pause": "Pause",
+    "refresh": "Refresh",
+    "remove": "Remove",
+    "rename": "Rename",
+    "resume": "Resume",
+    "save": "Save",
+    "stop": "Stop"
+  },
+  "session": {
+    "new": "New session",
+    "status": {
+      "processing": "Processing",
+      "processingHint": "The recording is being transcribed again as a whole; the transcript will be replaced when it finishes.",
+      "failed": "Failed",
+      "failedHint": "The post-recording pass failed. The transcript as recorded is still here — open the session to retry."
+    },
+    "processing": {
+      "title": "Transcribing the full recording…",
+      "body": "What you see is the live transcript; it will be replaced with a more accurate one in a moment."
+    },
+    "failed": {
+      "title": "The post-recording pass failed",
+      "body": "The live transcript is kept as it was.",
+      "retry": "Retry"
+    },
+    "refuse": {
+      "busy": "Another job is already running on this session.",
+      "recording": "Stop the recording first.",
+      "no_recording": "There is no recording on file for this session.",
+      "unsupported_backend": "The current speech engine can't transcribe whole files.",
+      "no_model": "No speech model is configured."
+    }
+  },
+  "lang": {
+    "auto": "Auto detect",
+    "from": "From",
+    "language": "Language",
+    "source": "Source language",
+    "target": "Target language",
+    "to": "to",
+    "alsoSpoken": "Also spoken:",
+    "alsoSpokenHint": "Other languages that may come up. A segment is taken as one of these only when it is clearly heard; otherwise it is the main language."
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "toggle": "Theme: {current} — switch to {next}"
+  },
+  "sidebar": {
+    "recent": "Recent",
+    "empty": "No sessions yet. Hit {action} to start.",
+    "allGrouped": "Everything's filed into groups.",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "lockedLoad": "Stop the current session before loading another",
+    "lockedNew": "Stop the current session first",
+    "downloadRecording": "Download recording",
+    "deleteSession": "Delete session",
+    "deleteSessionTitle": "Delete session?",
+    "deleteSessionBody": "\"{title}\" and its recording will be permanently deleted.",
+    "renameGroup": "Double-click to rename",
+    "deleteGroup": "Delete group",
+    "deleteGroupTitle": "Delete group?",
+    "deleteGroupBody": "\"{name}\" will be removed. Its sessions are kept and moved out of the group.",
+    "lockedNote": "Switching sessions is disabled while recording.",
+    "newGroup": "New group",
+    "dragHere": "Drag sessions here.",
+    "loadMore": "Load older sessions",
+    "loadingMore": "Loading…"
+  },
+  "topbar": {
+    "rename": "Double-click to rename",
+    "overlay": "Floating subtitles (always-on-top live transcript)",
+    "connecting": "Connecting",
+    "download": "Download the full recording (.wav)",
+    "chat": "Chat about this session",
+    "diarize": {
+      "tooltip": "Identify speakers (runs in background)",
+      "running": "Identifying speakers… (see the progress bar)",
+      "blocking": "Speaker identification is running — wait for it to finish",
+      "confirmTitle": "Re-run speaker identification?",
+      "confirmRenames": "This will reset any speaker renames (e.g. Alice → Speaker 1).",
+      "confirmExisting": "This session already has speaker labels.",
+      "confirmRerun": "Re-run",
+      "confirmAnyway": "Re-run anyway",
+      "jobLabel": "Identify speakers: {title}"
+    },
+    "translate": {
+      "tooltip": "Translate untranslated segments (runs in background)",
+      "tooltipAll": "Re-translate all segments (runs in background)",
+      "running": "Translating… (see the progress bar)",
+      "blocking": "Translation is running — wait for it to finish",
+      "confirmTitle": "Re-translate all segments?",
+      "confirmAll": "Every segment already has a translation — this will replace them all.",
+      "confirmRetranslate": "Re-translate",
+      "jobLabel": "Translate: {title}"
+    },
+    "refine": {
+      "tooltip": "Re-transcribe from the recording (runs in background)",
+      "tooltipAgain": "Re-transcribe from the recording again (replaces the transcript)",
+      "running": "Transcribing the full recording… (see the progress bar)",
+      "blocking": "The recording is being transcribed — wait for it to finish",
+      "confirmTitle": "Re-transcribe from the recording?",
+      "confirmBody": "The whole recording is run through the speech engine again and the transcript is replaced. Edits to the current text are lost; speaker names are kept.",
+      "confirmRun": "Re-transcribe",
+      "jobLabel": "Transcribe recording: {title}"
+    },
+    "minutes": "Meeting minutes"
+  },
+  "preflight": {
+    "translateOn": "Translate as I speak",
+    "translateOff": "Transcribe only · no translation",
+    "microphone": "Microphone",
+    "defaultMic": "System default microphone",
+    "unnamedMic": "Microphone ({id}…)",
+    "test": "Test",
+    "systemAudio": "System audio",
+    "screen": "Screen",
+    "captureTarget": "Screen or window to record",
+    "fullScreen": "Full screen",
+    "displays": "Displays",
+    "windows": "Windows",
+    "refresh": "Refresh capture targets",
+    "refreshHint": "Refresh the window list (grant Screen Recording first)",
+    "start": "Start recording",
+    "starting": "Starting",
+    "privacy": "Running locally · no audio leaves your device"
+  },
+  "transcript": {
+    "preparing": "Preparing…",
+    "preparingHint": "First start takes a moment while Whisper and the translator load.",
+    "listening": "Listening…",
+    "listeningHint": "Start speaking. Words will appear here as they're recognised.",
+    "playSegment": "Play this segment",
+    "merge": "Merge with the next segment",
+    "editHint": "Enter to save · Esc to cancel",
+    "editHintShort": "Double-click to edit",
+    "save": "Save (or press Enter)",
+    "nameSpeaker": "Name this speaker",
+    "speakerUnknown": "Unidentified — click to name this speaker (this segment only)",
+    "speakerRename": "Click to rename — applies to all segments by this speaker"
+  },
+  "player": {
+    "play": "Play from start",
+    "pause": "Pause",
+    "resume": "Resume",
+    "scrollTo": "Scroll to this segment in the transcript",
+    "loopSegment": "Loop the current segment",
+    "abOn": "A–B loop on — click to clear",
+    "abSetA": "A–B loop — click to set point A",
+    "abSetB": "Click to set point B",
+    "speed": "Playback speed"
+  },
+  "chat": {
+    "switch": "Switch conversation",
+    "history": "Conversation history",
+    "newConversation": "New conversation",
+    "newChat": "New chat",
+    "clear": "Clear",
+    "clearTip": "Clear this conversation",
+    "clearTitle": "Clear this conversation?",
+    "clearBody": "All messages in this conversation will be removed.",
+    "deleteTitle": "Delete this conversation?",
+    "deleteBody": "\"{title}\" and all its messages will be removed.",
+    "startFailed": "Couldn't start a conversation.",
+    "loading": "Loading chat…",
+    "noSessionTitle": "Start a session first",
+    "noSessionHint": "Chat is anchored to the active recording. Hit Record to begin.",
+    "readyTitle": "Ready when you are",
+    "readyHint": "Start talking — your questions can reference whatever gets captured.",
+    "askTitle": "Ask anything",
+    "askHint": "Summaries, action items, decisions, who-said-what — try it.",
+    "placeholder": "Ask about this session…",
+    "placeholderNoSession": "Start a session to chat",
+    "send": "Send (Enter)"
+  },
+  "export": {
+    "tooltip": "Export transcript",
+    "format": {
+      "md": "Markdown (.md)",
+      "txt": "Plain text (.txt)",
+      "srt": "Subtitles (.srt)",
+      "vtt": "Subtitles (.vtt)"
+    },
+    "original": "Original",
+    "translation": "Translation",
+    "both": "Both",
+    "copied": "Transcript copied",
+    "failed": "Export failed",
+    "withMinutes": "Include minutes ({lang})"
+  },
+  "upload": {
+    "title": "Transcribe from file",
+    "drop": "Drop files or click to choose",
+    "dropHint": "Audio or video · any format ffmpeg supports · multiple files will be concatenated in the listed order",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "titleField": "Title (optional)",
+    "untitled": "Upload",
+    "titleMore": "{base} + {count} more",
+    "translate": "Translate",
+    "background": "Processing continues in the background — you can close this.",
+    "start": "Transcribe",
+    "startN": "Transcribe ({count})",
+    "jobLabel": "Transcribe: {title}"
+  },
+  "glossary": {
+    "title": "Glossary · custom vocabulary",
+    "termPlaceholder": "Term (e.g. Kubernetes, 张伟)",
+    "translationPlaceholder": "Translation (optional)",
+    "removeTerm": "Remove term"
+  },
+  "progress": {
+    "starting": "Starting…",
+    "complete": "Complete",
+    "failed": "Failed",
+    "showLog": "Show log",
+    "hideLog": "Hide log"
+  },
+  "overlay": {
+    "compact": "Compact bar",
+    "expand": "Expand subtitles",
+    "close": "Close overlay"
+  },
+  "settings": {
+    "title": "Settings",
+    "cat": {
+      "general": "General",
+      "segmentation": "Segmentation",
+      "realtime": "Real-time",
+      "glossary": "Glossary",
+      "engines": "Engines",
+      "compute": "Compute"
+    },
+    "language": "Language",
+    "languageHint": "The interface language. Auto follows your system.",
+    "languageAuto": "Auto",
+    "appearance": "Appearance",
+    "appearanceHint": "Light, dark, or follow your system.",
+    "speakerLive": "Speaker identification (live)",
+    "speakerLiveHint": "Experimental — unreliable mid-call. The post-process Identify speakers button is much better.",
+    "continuousPlayback": "Continuous playback",
+    "continuousPlaybackHint": "When you hit play on a segment, keep playing past its boundary. Off = pause when the segment ends.",
+    "levelMeters": "Show level meters",
+    "levelMetersHint": "Tiny mic + speaker volume bars in the bottom status bar. Turn off if you find them distracting.",
+    "minSilence": "Min silence",
+    "minSilenceHint": "How long the speaker must pause before closing a segment. ~800ms suits conversation.",
+    "maxSegment": "Max segment",
+    "maxSegmentHint": "Hard cap. Whisper's context limit is 30s; leave a buffer.",
+    "partialInterval": "Partial interval",
+    "partialIntervalHint": "How often partial transcripts are emitted. Lower = snappier but more GPU.",
+    "translatePartials": "Translate partials",
+    "translatePartialsHint": "Stream translations of partial transcripts (a beat after the text).",
+    "nextSessionNote": "Some changes only take effect on the next session.",
+    "enginesEmpty": "Start a session to see the active backends.",
+    "refineAfterStop": "Re-transcribe after recording",
+    "refineAfterStopHint": "When a recording stops, run the whole file through the speech engine once more and replace the live transcript. More accurate; takes a moment on long meetings."
+  },
+  "setup": {
+    "step": "Step {current} of {total}",
+    "computeTitle": "Choose how Wrenote runs",
+    "computeBlurb": "Everything runs on your device. Pick the build that matches your hardware — you can change this later in Settings.",
+    "modelsTitle": "Set up Wrenote",
+    "modelsBlurb": "Runs fully on your device. One-time download of the speech & translation models.",
+    "recommended": "recommended",
+    "installing": "Installing…",
+    "skip": "Skip — use the built-in CPU build",
+    "download": "Download {size}",
+    "downloadFailed": "download failed",
+    "retry": "Retry download",
+    "modelsHint": "Saved to ~/.wrenote/models · resumes if interrupted",
+    "restart": "Restart Wrenote afterwards to use the new runtime."
+  },
+  "models": {
+    "kind": {
+      "stt": "Speech recognition (live)",
+      "translator": "Translation",
+      "chat": "Chat",
+      "speaker": "Speaker identification",
+      "stt_offline": "Speech recognition (after recording, uploads)"
+    },
+    "onDisk": "on disk",
+    "sizeMb": "{mb} MB",
+    "loading": "Loading models…",
+    "missing_one": "1 file to download · {mb} MB",
+    "missing_other": "{count} files to download · {mb} MB",
+    "downloadMissing": "Download",
+    "nextSession": "The new model applies to your next session.",
+    "statusFailed": "could not load the model list",
+    "selectFailed": "could not save the model choice",
+    "reason": {
+      "ample_ram": "{ram} RAM — the best models fit",
+      "moderate_ram": "{ram} RAM",
+      "limited_ram": "{ram} RAM — keeping it light",
+      "gpu_headroom": "{gpu} — room for a bigger model",
+      "cpu_streaming": "No GPU acceleration ({cpus} CPU cores) — a streaming model keeps live captions real-time; Whisper still does the pass after recording"
+    },
+    "blocked": {
+      "needs_ram": "Needs about {need} of memory"
+    },
+    "note": {
+      "stt_fast_rough": "Fastest, least accurate — fine for clear speech in one language",
+      "stt_balanced": "A good balance for most machines",
+      "stt_best": "Most accurate, especially with accents and mixed languages",
+      "mt_default": "Translation-specific model",
+      "chat_light": "Lighter, for machines with less memory",
+      "chat_default": "Better answers over long transcripts",
+      "speaker_default": "Voice embeddings for telling speakers apart",
+      "stt_streaming": "Streaming: text appears as you speak and never rewrites itself; rougher wording, replaced by Whisper after the recording. CPU only, no runtime pack."
+    }
+  },
+  "compute": {
+    "hardware": "Hardware",
+    "platform": "Platform",
+    "platformValue": "{tag} · {threads} CPU threads · {ram} RAM",
+    "gpu": "GPU",
+    "noGpu": "none detected",
+    "npu": "NPU",
+    "npuValue": "{npu} (detected; not used for inference yet)",
+    "runtime": "Runtime",
+    "active": "Active",
+    "preference": "Preference",
+    "vramBudget": "VRAM budget",
+    "skipped": "Skipped",
+    "accelerator": "Accelerator",
+    "auto": "Auto",
+    "autoHint": "Auto ranks by detected hardware and falls back to the built-in runtime. A pinned accelerator must be installed below.",
+    "packs": "Runtime packs",
+    "install": "Install pack",
+    "remove": "Remove pack",
+    "unavailable": "Not available",
+    "blocked": "{name} unavailable — {reason}",
+    "indexUnreachable": "Pack index unreachable — installs are unavailable offline.",
+    "restart": "Restart Wrenote to apply the new compute runtime.",
+    "detecting": "Detecting hardware…",
+    "installed": "{name} runtime installed",
+    "removed": "{name} runtime removed",
+    "installFailed": "runtime install failed",
+    "removeFailed": "runtime remove failed",
+    "selectFailed": "could not save the accelerator",
+    "statusFailed": "could not load compute status",
+    "streamLost": "lost the progress stream",
+    "state": {
+      "builtin": "Built in",
+      "installed": "Installed",
+      "available": "Available",
+      "unpublished": "Not published for this machine"
+    },
+    "selection": {
+      "pinned": "pinned",
+      "hardware": "matched to your hardware",
+      "builtin": "built in",
+      "fallback": "fallback"
+    },
+    "reason": {
+      "gpu_ready": "{gpu}",
+      "gpu_ready_driver": "{gpu} · driver {driver}",
+      "no_driver": "{gpu} found, but no driver",
+      "driver_too_old": "{gpu} · driver {driver} is older than the {min} CUDA 12 needs — update it to use CUDA",
+      "low_vram": "{gpu} has under {gb} GB of VRAM",
+      "no_vulkan_loader": "{gpu} found, but no Vulkan driver",
+      "metal_builtin": "{gpu} · Metal, built in",
+      "intel_mac": "Intel Mac — no Metal build is shipped",
+      "cpu_always": "Always available",
+      "cpu_no_gpu": "No usable GPU detected"
+    },
+    "note": {
+      "builtin": "Built into the app · nothing to download",
+      "installed": "Installed",
+      "download": "{mb} MB download",
+      "unavailable": "Not available on this machine",
+      "unpublished": "Not published for this machine yet",
+      "size_unknown": "Download size unknown until the pack index is checked"
+    },
+    "tradeoff": {
+      "cuda": "Faster on NVIDIA, much larger"
+    }
+  },
+  "update": {
+    "version": "Wrenote {version}",
+    "checkNow": "Check for updates",
+    "checking": "Checking…",
+    "upToDate": "You're on the latest version.",
+    "checkedAt": "Checked {when}.",
+    "available": "Wrenote {version} is available",
+    "toastHint": "Download it when convenient — you can keep working.",
+    "download": "Download",
+    "whatsNew": "What's new",
+    "off": "Automatic checks are off.",
+    "auto": "Check for updates automatically",
+    "autoHint": "Once per launch, Wrenote fetches the release index to see whether a newer version exists. Nothing about you or this machine is sent.",
+    "error": {
+      "unreachable": "Couldn't reach the release index. Check your connection and try again.",
+      "bad_index": "The release index couldn't be read. Try again later.",
+      "no_index": "No release index is configured (update.index_url)."
+    }
+  },
+  "minutes": {
+    "title": "Minutes",
+    "generate": "Write minutes",
+    "regenerate": "Write again",
+    "writing": "Writing the minutes…",
+    "loading": "Loading…",
+    "emptyTitle": "No minutes yet",
+    "emptyHint": "A summary, the decisions and who took on what, written from the transcript by the on-device model.",
+    "waitForStop": "Available once the recording has stopped.",
+    "noSessionTitle": "Nothing to summarise yet",
+    "noSessionHint": "Minutes are written from a finished session's transcript.",
+    "stale": "The transcript changed after these minutes were written. Write them again to bring them up to date.",
+    "generatedAt": "Written {when}",
+    "busy": "Minutes are already being written for this session.",
+    "noTranscript": "This session has no transcript to summarise.",
+    "copy": "Copy as Markdown",
+    "copied": "Minutes copied",
+    "download": "Download (.md)",
+    "section": {
+      "summary": "Summary",
+      "keyPoints": "Key points",
+      "decisions": "Decisions",
+      "actionItems": "Action items",
+      "openQuestions": "Open questions"
+    }
+  },
+  "search": {
+    "placeholder": "Search transcripts…",
+    "clear": "Clear search",
+    "searching": "Searching…",
+    "empty": "Nothing matches “{query}”.",
+    "sessions": "Sessions",
+    "lines_one": "{count} line",
+    "lines_other": "{count} lines"
+  }
+}

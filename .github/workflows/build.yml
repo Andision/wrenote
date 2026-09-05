@@ -1,4 +1,4 @@
-name: build
+name: build (electron)
 
 on:
   workflow_dispatch:
@@ -17,65 +17,20 @@ jobs:
           - os: macos-14 # Apple Silicon
             artifact: Wrenote-macos-arm64
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/metal
-            dist_glob: electron/release/mac-arm64
+            dist_glob: shells/electron/release/mac-arm64
           - os: windows-latest
             artifact: Wrenote-windows-x64
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
-            dist_glob: electron/release/*.exe
+            dist_glob: shells/electron/release/*.exe
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/build-engine
         with:
-          python-version: "3.11"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Build frontend SPA
-        working-directory: frontend
-        run: |
-          npm install --no-audit --no-fund
-          npm run build
-
-      - name: Install backend + packaging deps
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[desktop]"
-          pip install pywhispercpp pyinstaller imageio-ffmpeg
-          # Pin llama-cpp-python: the upstream 0.3.29 *metal* wheel on GitHub
-          # Pages is corrupted at the source (BadZipFile / Bad CRC-32 on
-          # ggml-config.cmake), so every download fails regardless of caching.
-          # 0.3.28 is verified intact on both the metal and cpu indexes.
-          # --no-cache-dir guards against a corrupt wheel getting cached and
-          # re-hit on reruns; --retries covers transient network blips.
-          pip install --no-cache-dir --retries 5 "llama-cpp-python==0.3.28" --extra-index-url ${{ matrix.llama_index }}
-
-      - name: Install Windows-only deps (WebView2 + WASAPI loopback)
-        if: runner.os == 'Windows'
-        run: pip install pythonnet soundcard
-
-      - name: Smoke-import backend (catch syntax/import errors before freezing)
-        working-directory: backend
-        run: python -c "import wrenote.server, wrenote.run_server; print('import OK')"
-
-      - name: Compile macOS capture helpers (system-audio + screen/window)
-        if: runner.os == 'macOS'
-        working-directory: backend/packaging/macos
-        run: |
-          swiftc -O -o syscap syscap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia
-          swiftc -O -o screencap screencap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework AppKit
-
-      # Freeze the pure FastAPI server (no pywebview) into dist/wrenote-server/.
-      # electron-builder picks it up via extraResources (../backend/dist/wrenote-server).
-      - name: Freeze backend sidecar (PyInstaller)
-        working-directory: backend
-        run: pyinstaller packaging/wrenote_server.spec --noconfirm --distpath dist --workpath packaging/build
+          llama_index: ${{ matrix.llama_index }}
 
       - name: Build Electron desktop app (electron-builder)
-        working-directory: electron
+        working-directory: shells/electron
         env:
           # No code signing in CI: ad-hoc on macOS (identity:null), unsigned on
           # Windows. Disable auto-discovery so the mac build doesn't probe the
@@ -86,7 +41,7 @@ jobs:
           npm run dist
 
       - name: List output
-        working-directory: electron/release
+        working-directory: shells/electron/release
         run: ls -R . || dir
 
       - uses: actions/upload-artifact@v4

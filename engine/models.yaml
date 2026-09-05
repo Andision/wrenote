@@ -1,0 +1,223 @@
+# Model catalogue — what Wrenote can run, as data.
+#
+# `core/models.py` used to hard-code four models in a dict keyed by filename,
+# which the config then had to match by writing that same filename into a path.
+# Here a model has an id, and the config picks it by that id.
+#
+# `size` and `sha256` are not typed by hand:
+#     python packaging/models/refresh_catalogue.py
+# asks HuggingFace and writes them back (an LFS object id *is* the sha256 of the
+# file's contents). `--check` fails on drift, so a model quietly replaced
+# upstream is caught here rather than downloaded.
+#
+# Users extend this in ~/.wrenote/models.yaml; entries merge by id, so the same
+# id overrides a shipped one and a new id adds to it.
+#
+# Fields
+#   id        stable identifier, referenced by config as `stt.model: <id>`
+#   kind      stt | translator | chat | speaker
+#   backend   which registered backend can run it (core/registry.py)
+#   tier      small | medium | large — what the hardware recommendation ranks
+#   requires  the floor for offering it: ram_mb (and vram_mb where GPU-only)
+#   files     one or more downloads; `param` names the backend argument the
+#             local path is passed as
+#   params    extra backend arguments this model needs (optional)
+
+schema: 1
+
+# Used when the config names no model for a kind. Deliberately the mid-range
+# choice rather than the best one: a first run should work on a normal laptop,
+# and Settings → Models can trade up.
+defaults:
+  stt: whisper-large-v3-turbo-q5
+  stt_offline: whisper-large-v3-turbo-q5
+  # What the live slot recommends on a machine with no GPU acceleration:
+  # Whisper cannot keep up in real time on a CPU alone, a streaming model
+  # can. Only a recommendation — the config's own choice still wins.
+  stt_cpu: zipformer-zh-en-streaming
+  translator: hy-mt2-1.8b-q4
+  chat: qwen3-4b-instruct-q4
+  speaker: ecapa-voxceleb
+
+models:
+  # ---------- speech to text, streaming (sherpa-onnx) ----------
+  # Built for live audio: text comes out as the audio comes in and the model
+  # decides where utterances end. CPU-only, no runtime pack. English comes
+  # out unpunctuated; the post-recording pass replaces it with Whisper's.
+
+  - id: zipformer-zh-en-streaming
+    kind: stt
+    backend: sherpa_onnx
+    tier: small
+    name: Zipformer 中英 streaming (int8)
+    note_code: stt_streaming
+    requires: { ram_mb: 2048 }
+    files:
+      - param: encoder_path
+        filename: zipformer-zh-en-encoder.int8.onnx
+        repo: csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+        path: encoder-epoch-99-avg-1.int8.onnx
+        size: 181895032
+        sha256: 8fa764187a261844f859d7143ebaa563af5d10adfece4c18a8f414c88cba2a9b
+      - param: decoder_path
+        filename: zipformer-zh-en-decoder.onnx
+        repo: csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+        path: decoder-epoch-99-avg-1.onnx
+        size: 13876452
+        sha256: 2e3b5ec371f8899ee6acd829fd753ba45772df57a91bdf37cde3136354e7db7d
+      - param: joiner_path
+        filename: zipformer-zh-en-joiner.int8.onnx
+        repo: csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+        path: joiner-epoch-99-avg-1.int8.onnx
+        size: 3228404
+        sha256: 1ed689c5ed19dbaa725d9d191bb4822b5f4855a39e1ffd28cbc1f340d25b2ee0
+      - param: tokens_path
+        filename: zipformer-zh-en-tokens.txt
+        repo: csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+        path: tokens.txt
+        size: 75756
+        sha256: 59aba8873a2ed1e122c25fee421e25f283b63290efbde85c1f01a853d83cb6e6
+
+  - id: paraformer-zh-en-streaming
+    kind: stt
+    backend: sherpa_onnx
+    tier: medium
+    name: Paraformer 中英 streaming (FunASR, int8)
+    note_code: stt_streaming
+    requires: { ram_mb: 2048 }
+    files:
+      - param: encoder_path
+        filename: paraformer-zh-en-encoder.int8.onnx
+        repo: csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en
+        path: encoder.int8.onnx
+        size: 165462184
+        sha256: 81a70226a8934e6ed92aa1d4fc486b428b5398e2f2619ed4897b7294cab90e9a
+      - param: decoder_path
+        filename: paraformer-zh-en-decoder.int8.onnx
+        repo: csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en
+        path: decoder.int8.onnx
+        size: 71664561
+        sha256: f3cca9f77bb9d93c8fcbfb63ae617b6b1ee96818df3aa3b151c40658fe38594f
+      - param: tokens_path
+        filename: paraformer-zh-en-tokens.txt
+        repo: csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en
+        path: tokens.txt
+        size: 75756
+        sha256: 59aba8873a2ed1e122c25fee421e25f283b63290efbde85c1f01a853d83cb6e6
+
+  # ---------- speech to text (whisper.cpp ggml) ----------
+
+  - id: whisper-base-q5
+    kind: stt
+    backend: whisper_cpp
+    tier: small
+    name: Whisper base (Q5)
+    note_code: stt_fast_rough
+    requires: { ram_mb: 2048 }
+    files:
+      - param: model_path
+        filename: ggml-base-q5_1.bin
+        repo: ggerganov/whisper.cpp
+        path: ggml-base-q5_1.bin
+        size: 59707625
+        sha256: 422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898
+
+  - id: whisper-small-q5
+    kind: stt
+    backend: whisper_cpp
+    tier: medium
+    name: Whisper small (Q5)
+    note_code: stt_balanced
+    requires: { ram_mb: 4096 }
+    files:
+      - param: model_path
+        filename: ggml-small-q5_1.bin
+        repo: ggerganov/whisper.cpp
+        path: ggml-small-q5_1.bin
+        size: 190085487
+        sha256: ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb
+
+  - id: whisper-large-v3-turbo-q5
+    kind: stt
+    backend: whisper_cpp
+    tier: large
+    name: Whisper large-v3 turbo (Q5)
+    note_code: stt_best
+    requires: { ram_mb: 6144 }
+    files:
+      - param: model_path
+        filename: ggml-large-v3-turbo-q5_0.bin
+        repo: ggerganov/whisper.cpp
+        path: ggml-large-v3-turbo-q5_0.bin
+        size: 574041195
+        sha256: 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
+
+  # ---------- translation ----------
+  # Hy-MT2 is a translation-specific 1.8B — already small enough for anything
+  # that can run the app at all, so there is no smaller tier worth offering.
+
+  - id: hy-mt2-1.8b-q4
+    kind: translator
+    backend: llama_cpp
+    tier: medium
+    name: Hunyuan MT2 1.8B (Q4_K_M)
+    note_code: mt_default
+    requires: { ram_mb: 4096 }
+    files:
+      - param: model_path
+        filename: Hy-MT2-1.8B-Q4_K_M.gguf
+        repo: tencent/Hy-MT2-1.8B-GGUF
+        path: Hy-MT2-1.8B-Q4_K_M.gguf
+        size: 1133080448
+        sha256: dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699
+
+  # ---------- chat over a transcript ----------
+
+  - id: qwen3-1.7b-instruct-q4
+    kind: chat
+    backend: llama_cpp
+    tier: small
+    name: Qwen3 1.7B (Q4_K_M)
+    note_code: chat_light
+    requires: { ram_mb: 4096 }
+    files:
+      - param: model_path
+        filename: Qwen_Qwen3-1.7B-Q4_K_M.gguf
+        repo: bartowski/Qwen_Qwen3-1.7B-GGUF
+        path: Qwen_Qwen3-1.7B-Q4_K_M.gguf
+        size: 1282439584
+        sha256: 72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb
+
+  - id: qwen3-4b-instruct-q4
+    kind: chat
+    backend: llama_cpp
+    tier: medium
+    name: Qwen3 4B Instruct (Q4_K_M)
+    note_code: chat_default
+    requires: { ram_mb: 8192 }
+    files:
+      - param: model_path
+        filename: Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+        repo: bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF
+        path: Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+        size: 2497280736
+        sha256: 2fde00ce69dd4899c70d020845e2638353015bba0fdf161b3eb965f2bca4464e
+
+  # ---------- speaker embedding (diarization) ----------
+  # Not a choice: one export, used by the ecapa backend. Listed so it downloads
+  # and verifies through the same path as everything else.
+
+  - id: ecapa-voxceleb
+    kind: speaker
+    backend: ecapa
+    tier: small
+    name: ECAPA-TDNN (VoxCeleb)
+    note_code: speaker_default
+    requires: { ram_mb: 2048 }
+    files:
+      - param: model_path
+        filename: spkrec-ecapa-voxceleb.onnx
+        repo: Andision/wrenote-models
+        path: spkrec-ecapa-voxceleb.onnx
+        size: 84083886
+        sha256: c3a1fd7bf9133d30f3a5182c650a752e4b184730f9d344d47c39067175627ee3

@@ -1,0 +1,315 @@
+name: build runtimes
+
+# Builds the downloadable compute runtime packs (see packaging/runtimes/ and
+# engine/wrenote/core/runtimes.py) and publishes them, with runtimes.json, to
+# the rolling "runtimes" GitHub release that the engine's default
+# compute.runtimes_index_url points at.
+#
+# Windows only for now: macOS arm64 ships Metal built in, and the Windows app
+# ships the CPU build built in, so the packs that matter are the accelerated
+# Windows ones. Python must match the frozen engine (3.11).
+#
+# NOTE: the CUDA and Vulkan jobs compile llama.cpp / whisper.cpp from source
+# on the runner (no upstream accelerated wheels exist for pywhispercpp, and
+# none at all for Vulkan). Expect 30-60 min each. Run manually via
+# workflow_dispatch; not wired to push.
+on:
+  # Push trigger scoped to this workflow file so the first run registers it
+  # with GitHub (the API refuses to dispatch a never-run workflow that is not
+  # on the default branch). Remove once merged to the default branch.
+  push:
+    branches: ["claude/wrenote-repo-review-rurfrj"]
+    paths: [".github/workflows/build-runtimes.yml"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Pack version (default = today's date)
+        required: false
+        default: ""
+      publish:
+        description: Publish to the "runtimes" release (else artifacts only)
+        type: boolean
+        default: false
+
+env:
+  LLAMA_CPP_PYTHON: "0.3.28"
+  PYWHISPERCPP: "1.4.1"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  pack:
+    name: pack (${{ matrix.variant }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cpu
+            runner: windows-latest
+            llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
+          - variant: vulkan
+            runner: windows-latest
+            cmake_args: -DGGML_VULKAN=on
+            no_binary: source  # build pywhispercpp from the sdist (see Build pack)
+            # whisper.cpp's ggml builds its Vulkan shader generator as a nested
+            # CMake project without forwarding the compiler; under the Visual
+            # Studio generator that nested configure runs inside MSBuild and
+            # can't identify cl.exe. Ninja finds it on PATH (msvc-dev-cmd).
+            cmake_generator: Ninja
+          - variant: cuda
+            # CUDA 12.4's Visual Studio integration (the "CUDA toolset" MSBuild
+            # needs) only installs into VS 2022; windows-latest ships VS 2026.
+            runner: windows-2022
+            llama_index: https://abetlen.github.io/llama-cpp-python/whl/cu124
+            cmake_args: -DGGML_CUDA=on
+            no_binary: source  # build pywhispercpp from the sdist (see Build pack)
+            # Ninja compiles the CUDA kernels in parallel (MSBuild serialises
+            # nvcc per project) and drives nvcc directly, so the VS "CUDA
+            # toolset" integration isn't even needed.
+            cmake_generator: Ninja
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          v="${{ inputs.version }}"
+          [ -z "$v" ] && v="$(date -u +%Y.%m.%d)"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      # --- accelerator toolchains -------------------------------------------
+
+      - name: Install Vulkan SDK
+        if: matrix.variant == 'vulkan'
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          # llama.cpp's Vulkan backend needs the SPIRV-Headers CMake package,
+          # which older SDKs (1.3.290) don't ship; keep the full SDK layout.
+          vulkan_version: latest
+          install_runtime: true
+          cache: true
+          stripdown: false
+
+      - name: Install CUDA toolkit
+        if: matrix.variant == 'cuda'
+        id: cuda
+        uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: "12.4.1"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
+
+      # whisper.cpp's Vulkan shader generator is a nested CMake project that
+      # needs cl.exe on PATH (the VS generator alone doesn't provide it).
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # The nested ggml build dirs exceed MAX_PATH even under D:\t. cl.exe,
+      # cmake and ninja are long-path aware once Windows allows it.
+      - name: Enable Windows long paths
+        shell: pwsh
+        run: |
+          New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
+            -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force | Out-Null
+          git config --system core.longpaths true
+
+      # --- build the pack ----------------------------------------------------
+
+      - name: Build pack
+        shell: bash
+        env:
+          # llama-cpp-python: prebuilt wheel from the extra index when one
+          # exists (cpu, cuda); Vulkan is built from source with CMAKE_ARGS.
+          # pywhispercpp: always from source; it reads GGML_* env flags.
+          CMAKE_ARGS: ${{ matrix.cmake_args }}
+          GGML_VULKAN: ${{ matrix.variant == 'vulkan' && '1' || '' }}
+          GGML_CUDA: ${{ matrix.variant == 'cuda' && '1' || '' }}
+          CUDA_PATH: ${{ steps.cuda.outputs.CUDA_PATH }}
+          # No GPU on the runner, so CMake can't resolve "native". Real code
+          # for Pascal (GTX 10xx), Turing, Ampere and Ada, plus Ada PTX so newer
+          # GPUs (Blackwell) JIT it — "all-major" doubled the build time for
+          # datacenter parts nobody runs this app on. (CMake reads CUDAARCHS.)
+          CUDAARCHS: 61-real;75-real;86-real;89-real;89-virtual
+          # DLLs delvewheel must not vendor into pywhispercpp's wheel (see
+          # packaging/runtimes/patch_pywhispercpp.py; ':'-delimited): the
+          # NVIDIA driver (absent on the runner, provided by the user's
+          # driver), the CUDA runtime (shipped once in the pack's bin/ for
+          # llama.cpp and whisper.cpp alike) and the Vulkan loader (driver).
+          WRENOTE_DELVEWHEEL_EXCLUDE: nvcuda.dll:cudart64_12.dll:cublas64_12.dll:cublasLt64_12.dll:vulkan-1.dll
+        run: |
+          set -euo pipefail
+          # pywhispercpp's source build nests deep under pip's temp dir; on
+          # Windows that blows past MAX_PATH and MSBuild's FileTracker fails
+          # with FTK1011. Point every temp dir at a short root for this step.
+          mkdir -p /d/t
+          export TMP='D:\t' TEMP='D:\t' TMPDIR='D:\t'
+          if [ -n "${{ matrix.cmake_generator }}" ]; then
+            export CMAKE_GENERATOR="${{ matrix.cmake_generator }}"
+          fi
+          python -m pip install --upgrade pip
+          extra=()
+          if [ -n "${{ matrix.llama_index }}" ]; then
+            extra+=(--extra-index-url "${{ matrix.llama_index }}")
+          fi
+          bins=()
+          if [ "${{ matrix.variant }}" = "cuda" ]; then
+            # The cu12x wheels link against the CUDA runtime but do not ship it;
+            # bundle the redistributable runtime DLLs so users need only a driver.
+            for f in cudart64_12.dll cublas64_12.dll cublasLt64_12.dll; do
+              p="$(find "$CUDA_PATH/bin" -iname "$f" | head -n1)"
+              [ -n "$p" ] && bins+=(--bin "$p")
+            done
+          fi
+          # Accelerated variants compile pywhispercpp from source. Do it from a
+          # short in-tree checkout of the exact PyPI sdist rather than pip's
+          # deeply nested temp dir: the ggml sub-builds add ~150 chars of their
+          # own and MSVC has to be able to open every object path.
+          pw_spec="pywhispercpp==${PYWHISPERCPP}"
+          if [ -n "${{ matrix.no_binary }}" ]; then
+            python -m pip download --no-binary :all: --no-deps "pywhispercpp==${PYWHISPERCPP}" -d /d/t/src
+            mkdir -p /d/t/pw
+            tar -xzf /d/t/src/pywhispercpp-*.tar.gz -C /d/t/pw --strip-components=1
+            # Ninja output layout + skip vendoring driver/runtime DLLs (see script).
+            python packaging/runtimes/patch_pywhispercpp.py /d/t/pw
+            pw_spec="D:/t/pw"
+          fi
+          python packaging/runtimes/build_pack.py \
+            --variant "${{ matrix.variant }}" \
+            --version "${{ steps.ver.outputs.version }}" \
+            --spec "llama-cpp-python==${LLAMA_CPP_PYTHON}" \
+            --spec "$pw_spec" \
+            --out dist/runtimes "${extra[@]}" "${bins[@]}"
+
+      - name: Smoke-import the pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Packs are built --no-deps; the frozen engine ships these. Mirror
+          # that here so the import check sees the same environment.
+          # delvewheel reads each binary's import table for the audit below.
+          python -m pip install --quiet numpy typing_extensions diskcache jinja2 delvewheel
+          zip="$(ls dist/runtimes/wrenote-runtime-*.zip)"
+          python - "$zip" <<'EOF'
+          import importlib, json, os, pathlib, subprocess, sys, tempfile, zipfile
+
+          d = pathlib.Path(tempfile.mkdtemp())
+          zipfile.ZipFile(sys.argv[1]).extractall(d)
+          m = json.loads((d / "MANIFEST.json").read_text())
+          print(json.dumps(m, indent=1))
+          sys.path.insert(0, str(d / "site-packages"))
+
+          # Where a DLL may come from other than the pack. Taken before the pack's
+          # own bin/ goes on PATH, and with the accelerator SDKs left out: those
+          # are installed on this runner but not on a user's machine, so a pack
+          # that forgot to ship cudart must still fail the audit below.
+          _win = pathlib.Path(os.environ.get("SystemRoot") or "C:/Windows")
+          system_dirs = [_win / "System32", _win / "SysWOW64", pathlib.Path(sys.base_prefix)]
+          system_dirs += [pathlib.Path(e) for e in os.environ.get("PATH", "").split(os.pathsep)
+                          if e.strip() and not any(
+                              t in e.lower() for t in ("cuda", "vulkan"))]
+
+          bin_dir = d / "bin"
+          if bin_dir.is_dir():
+              # Mirror RuntimeManager.activate(): add_dll_directory covers .pyd
+              # loads, PATH covers ctypes winmode=0 loads (llama-cpp-python).
+              os.add_dll_directory(str(bin_dir))
+              os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+
+          # A pack for an accelerator this runner has no driver for cannot be
+          # imported here at all: ggml-cuda.dll imports nvcuda.dll, which only
+          # an NVIDIA driver installs. So the gate is a static audit — every
+          # DLL the pack's binaries import must ship in the pack, exist on the
+          # system, or be one of those driver libraries — and the import is
+          # best-effort on top of it.
+          def needed(f):
+              r = subprocess.run([sys.executable, "-m", "delvewheel", "needed", str(f)],
+                                 capture_output=True, text=True)
+              if r.returncode != 0:
+                  print(f"::warning::delvewheel needed {f.name}: {r.stderr.strip()}")
+                  return []
+              return [line.strip() for line in r.stdout.splitlines() if line.strip()]
+
+          DRIVER = {"nvcuda.dll", "nvml.dll", "vulkan-1.dll", "opencl.dll"}
+          in_pack = {p.name.lower() for p in d.rglob("*.dll")}
+          unresolved: dict[str, list[str]] = {}
+          for f in sorted([*d.rglob("*.dll"), *d.rglob("*.pyd")]):
+              for dep in needed(f):
+                  low = dep.lower()
+                  # shutil.which is no help here: on Windows it appends PATHEXT
+                  # to any name whose extension isn't in it, so it never finds a
+                  # .dll. Look the name up in the directories directly.
+                  if (low in in_pack or low in DRIVER
+                          or low.startswith(("api-ms-win-", "ext-ms-"))
+                          or any((sd / dep).is_file() for sd in system_dirs)):
+                      continue
+                  unresolved.setdefault(dep, []).append(f.name)
+          for dep, users in sorted(unresolved.items()):
+              print(f"::error::{dep} is imported by {users} but ships nowhere")
+
+          bad = [f"unresolved DLL dependencies: {', '.join(sorted(unresolved))}"] if unresolved else []
+          for mod in m["modules"]:
+              try:
+                  importlib.import_module(mod); print("import", mod, "OK")
+              except ModuleNotFoundError as e:
+                  bad.append(f"{mod}: {e}")  # packaging error: the pack is wrong
+              except Exception as e:
+                  print(f"::warning::import {mod} needs a GPU driver on this runner: {e}")
+          if bad:
+              sys.exit("packaging errors: " + "; ".join(bad))
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ matrix.variant }}
+          path: dist/runtimes/*
+          if-no-files-found: error
+
+  index:
+    name: index + publish
+    needs: pack
+    runs-on: ubuntu-latest
+    # The publish step creates/updates the "runtimes" release with the default
+    # GITHUB_TOKEN, which is read-only unless the job says otherwise.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-*
+          path: dist/runtimes
+          merge-multiple: true
+      - name: Write runtimes.json
+        run: |
+          python packaging/runtimes/make_index.py --dir dist/runtimes \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/runtimes"
+          cat dist/runtimes/runtimes.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtimes-index
+          path: dist/runtimes/runtimes.json
+      - name: Publish to the rolling "runtimes" release
+        if: inputs.publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: runtimes
+          name: Compute runtime packs
+          body: >-
+            Downloadable accelerator builds of llama.cpp / whisper.cpp for Wrenote.
+            The app fetches these on demand (Settings → Compute); you do not need
+            to download them by hand. Index: runtimes.json.
+          prerelease: true
+          files: |
+            dist/runtimes/*.zip
+            dist/runtimes/*.sha256
+            dist/runtimes/runtimes.json

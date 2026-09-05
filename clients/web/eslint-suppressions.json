@@ -1,0 +1,80 @@
+{
+  "src/App.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "src/components/ChatPanel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/GlossaryEditor.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "src/components/LanguageSelect.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/components/ThemeToggle.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/TimelineMinimap.tsx": {
+    "react-hooks/refs": {
+      "count": 10
+    }
+  },
+  "src/components/TopBar.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/Transcript.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/UploadDialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/ui/badge.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/components/ui/button.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/hooks/playbackContext.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/hooks/useMicrophone.ts": {
+    "preserve-caught-error": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePlayback.ts": {
+    "react-hooks/immutability": {
+      "count": 1
+    }
+  },
+  "src/store/jobsStore.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  }
+}

@@ -1,0 +1,113 @@
+[project]
+name = "wrenote"
+version = "0.1.0"
+description = "Local real-time speech transcription and translation"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-only" }
+authors = [
+    { name = "andision" },
+]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+    "soundfile>=0.12",
+    "python-multipart>=0.0.20",
+    "aiosqlite>=0.20",
+    "onnxruntime>=1.20",
+    # CA bundle for HTTPS model downloads — the frozen app has no system certs,
+    # so we point urllib at certifi's bundle (see core/models._ssl_context).
+    "certifi",
+]
+
+[project.optional-dependencies]
+# Native, platform-specific ML/runtime deps (pywhispercpp, llama-cpp-python,
+# torch for offline diarization) are pinned per-platform for packaging; see the
+# per-OS requirements files. They are intentionally not listed here.
+desktop = [
+    "pywebview>=5",
+]
+# The streaming-native live recogniser (stt/sherpa_onnx.py). Pure CPU via
+# ONNX Runtime, so one wheel serves every platform — no runtime pack.
+streaming = [
+    "sherpa-onnx>=1.12",
+]
+dev = [
+    "pytest>=8.0",
+    # fastapi.testclient -> starlette.testclient, which needs an HTTP client it
+    # doesn't depend on itself. Undeclared until CI ran on a clean environment
+    # and found the whole suite unable to import its conftest.
+    "httpx2>=2.0",
+    "pytest-asyncio>=0.24",
+    "pytest-timeout>=2.3",
+    # Pinned, not floating: a lint gate whose rule set changes under you is
+    # worse than none. The first checks.yml run failed on a rule that only
+    # exists in a newer ruff than the one on the developer's PATH.
+    "ruff==0.16.5",
+    "mypy>=1.13",
+    "websockets>=13.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["wrenote*"]
+
+[tool.setuptools.package-data]
+# Ship the bundled Silero VAD ONNX model with the package.
+wrenote = ["vad/assets/*.onnx"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# tests/_spike_*.py, _smoke_*.py and _compare_wer.py are research scripts kept
+# for provenance, not code we maintain: they are run by hand, never imported,
+# and pytest doesn't collect them (leading underscore). Linting them only
+# produces findings nobody will act on.
+extend-exclude = ["tests/_*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF", "SIM"]
+ignore = [
+    "E501",
+    # Ambiguous-unicode: this app is about Chinese ↔ English, so full-width
+    # punctuation (！？。) and × in comments and strings are correct, not typos.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # contextlib.suppress instead of try/except/pass: the except blocks in the
+    # async cleanup paths carry comments explaining *why* the failure is
+    # ignored, and suppress() has nowhere to put them.
+    "SIM105",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's DI/parameter callables are *designed* to be used as argument
+# defaults (Depends/File/Form/Query/...), so they are not B008 mutable-default
+# footguns. Without this, every `x = Depends(...)` would be a false positive.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Query",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+timeout = 30
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true

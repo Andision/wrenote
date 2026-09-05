@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Merged into the app's Info.plist by Tauri. Usage strings are required for
+       macOS to even show the permission prompts. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Wrenote transcribes speech from your microphone, locally on your device.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Wrenote records a chosen window or screen alongside your audio when you enable screen capture.</string>
+</dict>
+</plist>
