@@ -23,7 +23,8 @@ wrenote/
 ├── shells/
 │   ├── tauri/              desktop host (system WebView): spawns the engine, windows, overlay
 │   └── electron/           the shipping host until the Tauri checklist is green
-├── packaging/              PyInstaller specs, macOS Swift capture helpers, entitlements
+├── packaging/              PyInstaller specs, macOS Swift capture helpers, entitlements,
+│                           model/runtime index builders, release/ (version + latest.json)
 ├── docs/plans/             historical design/migration plans (paths pre-date this layout)
 └── .github/workflows/      CI: builds the SPA, freezes the engine, packages the shell
 ```
@@ -218,6 +219,69 @@ speaker model stay on CPU (ONNX Runtime) by design.
   build, because a missing key is invisible to whoever speaks the language the
   app was written in.
 
+## Data (`core/config.py`, `core/store.py`)
+
+Everything the app writes for the user is one SQLite file plus directories of
+large files, and it is the user's only copy.
+
+* **One root.** `data.dir` (default `~/.wrenote`) is where it all goes;
+  `data.db_path`, `data.recordings_dir`, `models.dir` and
+  `compute.runtimes_dir` default to subpaths of it and can each be pointed
+  elsewhere — a small system drive is the usual reason, and models and
+  recordings are the gigabytes. An empty key means "under the root", an
+  explicit one wins, so every pre-existing config keeps its meaning. The
+  resolution happens once, in a validator on `Config`, so consumers read
+  absolute paths and `GET /v1/info` (`paths`) shows what the process uses.
+  `~/.wrenote/config.yaml` itself cannot move: it is where `data.dir` is read
+  from. Nothing carries a module-level default path any more — `Store` and the
+  recording writer take theirs as a required argument, so a forgotten one is
+  a TypeError rather than a file written next to the user's real library.
+* **The schema is versioned.** `PRAGMA user_version` says what a file has.
+  `SCHEMA` is the current shape and is what a new file gets outright; an
+  existing file goes through `MIGRATIONS`, an ordered list of
+  `(version, step)`. Each step runs in its own transaction with the version
+  stamped inside it, so a crash mid-migration rolls back to the previous
+  version instead of leaving a half-rebuilt table; a `.v<N>.bak` copy (via the
+  backup API, so WAL content is included) is taken before the first step
+  touches an existing file; a file newer than the code refuses to open. The
+  only migration is the pre-versioning catch-up — a version-0 file may be in
+  any of the shapes the old probe-and-patch code produced — and it is the last
+  one that probes. From here on a schema change is one appended entry, and
+  `test_store_migrations` holds a migrated file to the same columns and
+  indexes as a fresh one.
+
+## Updates and releases (`core/update.py`, `packaging/release/`)
+
+* **The engine reports, the shell installs, the client renders.** On launch
+  the client asks `GET /v1/update`; the engine fetches `latest.json` from the
+  latest GitHub Release (at most once per six hours, and not at all while
+  `update.check` is off — `POST /v1/update/check` is the user asking and
+  ignores both), compares versions itself (semver-ish; an unparsable index is
+  never "newer", so a typo upstream cannot nag every user), and answers with
+  facts and codes: current, latest, `available`, this machine's installer
+  URL, the release page, `error` as `unreachable` | `bad_index` | `no_index`.
+  Nothing about the machine is sent; it is the same GET a model download
+  makes. The client raises one toast and shows the state in Settings →
+  General; Download leaves the WebView through `wrenoteDesktop.openExternal`
+  (Electron `shell.openExternal`, Tauri `tauri-plugin-opener`, both scoped to
+  web URLs), because a link would navigate the app itself away.
+* **`latest.json` is the updater plugin's format** (`version`, `pub_date`,
+  `platforms.<target>.{url,signature}`) plus `release_url`, so the in-place
+  installer, when it comes, reads the same file — see `TODO.md`. A `.sig`
+  next to an installer fills `signature`; until builds are signed it is empty
+  and ignored.
+* **A `v*` tag is a release.** `build-tauri.yml` checks the tag against the
+  manifests *before* the build, builds both platforms, then a `release` job
+  writes the index with `packaging/release/make_latest.py` (each installer
+  placed by the name Tauri gives it; an empty or ambiguous set refused) and
+  creates the Release. The rolling runtime-pack release is a prerelease so it
+  never becomes "latest".
+* **The version is written in six manifests** because each toolchain reads
+  its own. `packaging/release/version.py set X.Y.Z` rewrites them all and
+  `--check` (run by `checks.yml`) fails when one is left behind: an app that
+  reports 0.1.0 over a release named 0.2.0 would tell every user to update to
+  what they already run.
+
 ## The contract (`engine/contract/`)
 
 * `openapi.json` — generated by `python -m wrenote.contract`; a test fails when
@@ -231,8 +295,8 @@ speaker model stay on CPU (ONNX Runtime) by design.
 ## Checks (`.github/workflows/checks.yml`)
 
 Everything that can fail without a Mac, a Windows box or a 40-minute compile
-runs on every push: engine lint + 182 tests + the API-contract drift check, and
-for the client types, lint, locale parity, 48 tests and the build. The
+runs on every push: engine lint + 248 tests + the API-contract drift check, and
+for the client types, lint, locale parity, 55 tests and the build. The
 platform-specific packaging workflows stay slow and separate.
 
 * **The frozen engine is smoke-tested** in `.github/actions/build-engine`: a
@@ -246,6 +310,9 @@ platform-specific packaging workflows stay slow and separate.
   gate (React 19's new hook rules, in components this work didn't touch).
   Anything new fails; the file only shrinks. It is a debt list, not an
   exemption — `TODO.md` tracks it.
+* **Every manifest agrees on the version** (`packaging/release/version.py
+  --check`), and a release build also checks its tag against them before
+  spending twenty minutes compiling.
 * **Ruff runs clean**, with three categories disabled and a reason in
   `pyproject.toml`: ambiguous-unicode (this app is *about* CJK text), SIM105
   (the `except` blocks carry comments `suppress()` has nowhere to put), and the
@@ -264,6 +331,11 @@ platform-specific packaging workflows stay slow and separate.
    engine sends codes and facts, not sentences.
 5. A route or event change is a contract change: regenerate `openapi.json`,
    update `ws-protocol.md`, and the tests will hold you to it.
+6. A schema change is one appended entry in `MIGRATIONS` plus the matching
+   edit to `SCHEMA`; never edit or reorder a step that has shipped. The user's
+   library is the only copy, and the migration tests hold you to it.
+7. Paths come from `Config`, never from a module constant; the tests are
+   isolated the way a user would move their data — by setting `data.dir`.
 
 ## Roadmap (agreed direction)
 

@@ -32,8 +32,8 @@ that same question.
 - [x] Model catalogue in data (`engine/models.yaml`), not a dict in the module,
       with `size`/`sha256` generated from upstream and verified on download
 - [x] Config picks a model by id; `params.model_path` stays as the escape hatch
-- [ ] `models.dir` is configurable now — do the same for recordings and the DB
-      (see "Data directory" below)
+- [x] `data.dir` roots everything — DB, recordings, models, runtime packs —
+      with a key per item to move just that (see "Data directory" below)
 - [x] Tiers (small / medium / large) recommended from the probed hardware,
       offered in `SetupGate` and in Settings → Models
 - [ ] Adapters for common third-party APIs (OpenAI-compatible chat/completions,
@@ -67,16 +67,17 @@ wizard may skip the runtime step) with nothing holding them.
 
 ### Data safety
 
-- [ ] **Migrations.** `core/store.py` migrates with ad-hoc `_migrate_chat()` /
-      `_migrate_groups()` — `try ALTER TABLE except`, plus a full table rebuild.
-      No `user_version`, no ordering, no rollback. Two are survivable; the fifth
-      is an incident. This is a local-first app: the user's only copy of their
-      data is this file. Switch to `PRAGMA user_version` + an ordered migration
-      list while there are still only two.
-- [ ] **Data directory.** `~/.wrenote/` is hard-coded for models
-      (`core/models.py`), recordings (`core/recording.py:22`) and the DB
-      (`core/store.py:24`); only `runtimes_dir` is configurable. Users with a
-      small system drive can't move several GB elsewhere.
+- [x] **Migrations.** `PRAGMA user_version` + an ordered `MIGRATIONS` list in
+      `core/store.py`: one transaction per step, a `.v<N>.bak` copy before the
+      first step touches an existing file, a newer file refused rather than
+      guessed at. The one migration (0 → 1) is the pre-versioning catch-up; a
+      new table or column is now one appended entry, and a test holds a
+      migrated file to the same shape as a fresh one.
+- [x] **Data directory.** `data.dir` in the config (default `~/.wrenote`);
+      `data.db_path`, `data.recordings_dir`, `models.dir`, `compute.runtimes_dir`
+      each default under it and can point elsewhere. `~/.wrenote/config.yaml`
+      itself stays: it is where `data.dir` is read from. No UI for it yet —
+      Settings could show `GET /v1/info`'s `paths` with "open folder" buttons.
 - [ ] **Library export/import.** Only per-session export exists
       (`GET /v1/sessions/{id}/export`). Local-first software owes the user a
       way to take everything with them.
@@ -99,9 +100,20 @@ wizard may skip the runtime step) with nothing holding them.
       profiles are a small addition to machinery that already exists.
 - [ ] **`switch_lang`.** `ws.py:370` logs "requested but not implemented";
       changing the target language mid-session means stopping and restarting.
-- [ ] **App auto-update.** Models and runtime packs each have an index,
-      resumable download and checksum verification; the app itself has none.
-      Tauri's updater plugin over the existing GitHub release channel.
+- [x] **Update notice.** The engine reads `latest.json` from the latest GitHub
+      Release (`core/update.py`, `GET /v1/update`), the client raises one toast
+      and shows the state in Settings → General, and Download opens the
+      installer in the system browser through the shell. A `v*` tag now
+      publishes the Release and the index (`build-tauri.yml`).
+- [ ] **In-place install.** The index is already in the updater plugin's
+      format, so this is the shell side: `npx tauri signer generate` for a
+      minisign keypair, `TAURI_SIGNING_PRIVATE_KEY` (+ `_PASSWORD`) as repo
+      secrets so `tauri build` writes `.sig` files (`make_latest.py` already
+      carries them), `tauri-plugin-updater` with `plugins.updater.pubkey` and
+      the `endpoints` URL in `tauri.conf.json`, and one more `wrenoteDesktop`
+      call the client's Download button prefers when present. On macOS the
+      replaced app must be signed and notarized first — see "Waiting on
+      hardware".
 
 ### Engineering
 

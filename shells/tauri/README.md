@@ -59,6 +59,32 @@ cd shells/tauri && npm run build    # = tauri build --config src-tauri/tauri.rel
 
 CI does both in `.github/workflows/build-tauri.yml`.
 
+## Updates
+
+The engine finds out a newer release exists (`GET /v1/update`, reading
+`latest.json` from the latest GitHub Release) and the web client shows it;
+the shell's part today is `plugin:opener|open_url`, which the client's
+Download button reaches as `window.wrenoteDesktop.openExternal` to open the
+installer or release page in the system browser. `capabilities/default.json`
+grants `opener:default`, which is scoped to `http(s)`, `mailto` and `tel`.
+
+In-place installation is the next step and needs signing first:
+
+1. `npx tauri signer generate -w ~/.tauri/wrenote.key` → a minisign keypair;
+   the private key and password go in the repo secrets
+   `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, at which
+   point `tauri build` writes a `.sig` next to each installer and
+   `packaging/release/make_latest.py` carries it into `latest.json`.
+2. `tauri-plugin-updater` in `Cargo.toml` + `.plugin(tauri_plugin_updater::Builder::new().build())`,
+   `plugins.updater.pubkey` and `endpoints: ["https://github.com/Andision/wrenote/releases/latest/download/latest.json"]`
+   in `tauri.conf.json`, and `updater:default` in the capability.
+3. One more bridge call (`checkAndInstall`) in `src/lib.rs` and
+   `clients/web/src/lib/desktop.ts`, which the client's Download button
+   prefers when present.
+
+On macOS the replaced `.app` must be signed and notarized, so this waits on
+the checklist below.
+
 ## Validation checklist (needs real machines)
 
 The Rust side compiles against Tauri 2 and the engine handshake is the same one
