@@ -86,6 +86,9 @@ async def test_new_file_is_created_at_the_current_version(tmp_path):
     assert set(_shape(s.path)) == {
         "sessions", "session_groups", "segments", "chat_conversations",
         "chat_messages", "glossary", "session_minutes",
+        # The full-text index and the shadow tables FTS5 keeps for it.
+        "segments_fts", "segments_fts_config", "segments_fts_content",
+        "segments_fts_data", "segments_fts_docsize", "segments_fts_idx",
     }
     # Nothing to protect yet, so nothing to copy.
     assert _backups(s.path) == []
@@ -194,6 +197,29 @@ async def test_pre_versioning_file_that_was_already_patched(tmp_path):
     finally:
         await s.close()
     assert _version(s.path) == SCHEMA_VERSION
+
+
+async def test_v3_file_gets_its_transcript_indexed(tmp_path):
+    """3 → 4 builds the index from the rows already on file, and from then
+    on the triggers keep it current."""
+    path = _patched_file(tmp_path / "data.db", version=1)
+    with sqlite3.connect(path) as c:
+        c.execute(
+            "INSERT INTO segments (session_id, segment_id, ord, started_at, ended_at, orig_text) "
+            "VALUES ('s1', 'a', 0, 0.0, 1.0, 'the quarterly budget review')"
+        )
+    s = Store(path)
+    await s.open()
+    try:
+        hits = await s.search_segments('"budget"')
+        assert [h["segment_id"] for h in hits] == ["a"]
+        await s.update_segment_text("s1", "a", orig_text="something else entirely")
+        assert await s.search_segments('"budget"') == []
+        assert [h["segment_id"] for h in await s.search_segments('"else"')] == ["a"]
+        await s.replace_segments("s1", [])
+        assert await s.search_segments('"else"') == []
+    finally:
+        await s.close()
 
 
 async def test_v1_file_sessions_come_up_ready(tmp_path):

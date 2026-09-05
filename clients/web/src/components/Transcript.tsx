@@ -67,6 +67,22 @@ export function Transcript() {
   // auto-advance, only scroll to the next segment if the one we're leaving
   // is still in view — i.e. the user is watching the playhead. If they've
   // scrolled away to read elsewhere, leave their position where it is.
+  // A search hit: scroll there once, then forget it.
+  const focusId = useSessionStore((s) => s.focusSegmentId);
+  const setFocusSegment = useSessionStore((s) => s.setFocusSegment);
+  useEffect(() => {
+    if (!focusId) return;
+    const target = document.querySelector<HTMLElement>(`[data-segment-ids~="${focusId}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.classList.add("ring-2", "ring-brand-500/60");
+    const timer = window.setTimeout(() => {
+      target.classList.remove("ring-2", "ring-brand-500/60");
+      setFocusSegment(null);
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [focusId, setFocusSegment, ordered]);
+
   const playingId = useSessionStore((s) => s.playingSegmentId);
   const prevPlayingIdRef = useRef<string | null>(null);
   useEffect(() => {

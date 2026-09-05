@@ -126,9 +126,14 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       on a real model: how well Qwen3-4B keeps to the JSON shape and how
       long an hour's transcript takes — the lenient parse and the
       per-part fallback exist for exactly that.
-- [ ] **2 (search half). FTS5 over segments** plus pagination on the list
-      (see "Findability" below); feed the chat model the matching segments
-      instead of the whole transcript on long sessions.
+- [x] **2 (search half). FTS5 over segments** (schema v4, trigram so
+      Chinese works; short queries fall back to LIKE), a search box at the
+      top of the sidebar with hits grouped by session that open the session
+      at the line, a paged session list (keyset cursor, "load older"), and
+      the chat pulls the lines matching the question from the trimmed part
+      of a long transcript. Untested at scale: FTS write cost on a very
+      long live session (one trigger per upsert; partials rewrite the row
+      every ~800 ms).
 - [ ] **8. Mixed Chinese/English.** Pin a main language per session and let
       per-segment detection override only with confidence; a UI for it.
 - [ ] **9. Long meetings.** Memory and DB growth over two hours: the
@@ -158,10 +163,7 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
 
 ### Findability
 
-- [ ] **Search.** `store.list_sessions()` is `SELECT ... ORDER BY created_at
-      DESC` with no limit and no filter, and there is no search route at all.
-      After a couple of hundred meetings the only way to find anything is to
-      scroll titles. SQLite FTS5 over `segments`, plus pagination on the list.
+- [x] **Search.** FTS5 over `segments` and a paged list — see item 2 above.
 
 ### Product
 

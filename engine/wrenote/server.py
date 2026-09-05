@@ -34,6 +34,7 @@ from .api import (
     models,
     recordings,
     refine,
+    search,
     segments,
     sessions,
     translate,
@@ -70,7 +71,7 @@ API_PREFIX = "/v1"
 # Resource routers, registered in this order before the SPA catch-all.
 _ROUTERS = (
     sessions, groups, recordings, jobs, models,
-    upload, translate, diarize, refine, minutes, segments, chat, capture, glossary, compute, update, ws,
+    upload, translate, diarize, refine, minutes, search, segments, chat, capture, glossary, compute, update, ws,
 )
 
 

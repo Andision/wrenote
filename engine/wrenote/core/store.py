@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 
 # Bump together with an entry in MIGRATIONS. A new file is created at this
 # version straight from SCHEMA; test_store_migrations holds the two equal.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # sessions.status — where a session is in its life:
 #   recording   the WS session is live; segments arrive as the user speaks
@@ -53,7 +53,7 @@ SESSION_STATUSES = ("recording", "processing", "ready", "failed")
 # and executescript() would commit that transaction first. Every statement is
 # idempotent (IF NOT EXISTS) because the pre-versioning catch-up below runs
 # them against files that may already have any subset.
-_BASE_TABLES: tuple[str, ...] = (
+_CORE_TABLES: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS sessions (
         id           TEXT PRIMARY KEY,
@@ -119,10 +119,12 @@ _BASE_TABLES: tuple[str, ...] = (
         position    INTEGER NOT NULL DEFAULT 0
     )
     """,
-    # Meeting minutes the chat model wrote for a session, one row per language.
-    # `content` is the JSON document core/minutes.py defines; `transcript_hash`
-    # is what it was written from, so a changed transcript shows as stale.
-    """
+)
+
+# Meeting minutes the chat model wrote for a session, one row per language.
+# `content` is the JSON document core/minutes.py defines; `transcript_hash`
+# is what it was written from, so a changed transcript shows as stale.
+_MINUTES_TABLE = """
     CREATE TABLE IF NOT EXISTS session_minutes (
         session_id      TEXT NOT NULL,
         lang            TEXT NOT NULL,
@@ -133,8 +135,47 @@ _BASE_TABLES: tuple[str, ...] = (
         PRIMARY KEY (session_id, lang),
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     )
+"""
+
+# Full-text index over the transcript. Its own table rather than an
+# external-content one: segments has a composite key, and rowid-based
+# external content is a rebuild waiting to happen. The triggers keep it in
+# step with every write path (live upserts, replace_segments, text edits), so
+# no code path has to remember. The trigram tokenizer is what makes Chinese
+# searchable at all — unicode61 sees a run of CJK as one word — at the cost
+# of needing three characters per query term (see core/search.py).
+_SEARCH_TABLES: tuple[str, ...] = (
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS segments_fts USING fts5(
+        session_id UNINDEXED,
+        segment_id UNINDEXED,
+        orig_text,
+        trans_text,
+        tokenize = 'trigram'
+    )
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS segments_fts_ai AFTER INSERT ON segments BEGIN
+        INSERT INTO segments_fts (session_id, segment_id, orig_text, trans_text)
+        VALUES (new.session_id, new.segment_id, new.orig_text, new.trans_text);
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS segments_fts_ad AFTER DELETE ON segments BEGIN
+        DELETE FROM segments_fts
+        WHERE session_id = old.session_id AND segment_id = old.segment_id;
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS segments_fts_au AFTER UPDATE OF orig_text, trans_text ON segments BEGIN
+        UPDATE segments_fts SET orig_text = new.orig_text, trans_text = new.trans_text
+        WHERE session_id = new.session_id AND segment_id = new.segment_id;
+    END
     """,
 )
+
+# Every idempotent statement a fresh file needs, in dependency order.
+_BASE_TABLES: tuple[str, ...] = (*_CORE_TABLES, _MINUTES_TABLE, *_SEARCH_TABLES)
 
 # Kept apart from _BASE_TABLES: the pre-versioning catch-up has to look at an
 # existing chat_messages before deciding whether to create or rebuild it.
@@ -228,7 +269,7 @@ async def _migrate_1_pre_versioning(db: aiosqlite.Connection) -> None:
     those idempotent moves, once. It is the last migration that has to probe:
     from here on ``user_version`` says what a file has.
     """
-    for stmt in _BASE_TABLES:
+    for stmt in _CORE_TABLES:
         await db.execute(stmt)
     chat_cols = await _columns(db, "chat_messages")
     if not chat_cols:
@@ -256,7 +297,17 @@ async def _migrate_2_session_status(db: aiosqlite.Connection) -> None:
 
 async def _migrate_3_minutes(db: aiosqlite.Connection) -> None:
     """2 → 3: a table for the minutes the chat model writes (see core/minutes.py)."""
-    await db.execute(_BASE_TABLES[-1])
+    await db.execute(_MINUTES_TABLE)
+
+
+async def _migrate_4_search(db: aiosqlite.Connection) -> None:
+    """3 → 4: the full-text index, filled from the segments already on file."""
+    for stmt in _SEARCH_TABLES:
+        await db.execute(stmt)
+    await db.execute(
+        "INSERT INTO segments_fts (session_id, segment_id, orig_text, trans_text) "
+        "SELECT session_id, segment_id, orig_text, trans_text FROM segments"
+    )
 
 
 # Ordered. Each step takes a file at the previous version to its own; the
@@ -266,6 +317,7 @@ MIGRATIONS: tuple[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]],
     (1, _migrate_1_pre_versioning),
     (2, _migrate_2_session_status),
     (3, _migrate_3_minutes),
+    (4, _migrate_4_search),
 )
 
 
@@ -448,13 +500,82 @@ class Store:
             )
             await db.commit()
 
-    async def list_sessions(self) -> list[dict[str, Any]]:
+    async def list_sessions(
+        self,
+        *,
+        limit: int | None = None,
+        before: tuple[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Newest first. ``before`` = (created_at, id) of the last row the
+        caller has — a keyset cursor, so a session created meanwhile shifts
+        nothing. ``limit`` None = everything."""
+        sql = f"SELECT {_SESSION_COLUMNS} FROM sessions"
+        params: list[Any] = []
+        if before is not None:
+            sql += " WHERE (created_at, id) < (?, ?)"
+            params += [before[0], before[1]]
+        sql += " ORDER BY created_at DESC, id DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(int(limit))
         async with self._conn() as db:
-            cur = await db.execute(
-                f"SELECT {_SESSION_COLUMNS} FROM sessions ORDER BY created_at DESC"
-            )
+            cur = await db.execute(sql, params)
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    async def search_segments(
+        self,
+        match: str,
+        *,
+        limit: int = 50,
+        session_id: str | None = None,
+        like: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Segments whose text matches, best first, with their full text.
+
+        ``match`` is an FTS5 query (see core/search.py); ``like`` is the
+        plain pattern used instead when the query is too short for the
+        trigram index. No snippets: with trigram tokens a snippet is a
+        window of characters that cuts words in half, and segments are
+        short — the caller highlights the query it asked with.
+        """
+        params: list[Any] = []
+        if like is not None:
+            where = "(s.orig_text LIKE ? ESCAPE '\\' OR s.trans_text LIKE ? ESCAPE '\\')"
+            params += [like, like]
+            select = "0 AS rank"
+            source = "segments s"
+        else:
+            where = "segments_fts MATCH ?"
+            params.append(match)
+            select = "segments_fts.rank AS rank"
+            source = (
+                "segments_fts JOIN segments s "
+                "ON s.session_id = segments_fts.session_id AND s.segment_id = segments_fts.segment_id"
+            )
+        if session_id is not None:
+            where += " AND s.session_id = ?"
+            params.append(session_id)
+        sql = (
+            f"SELECT s.session_id, s.segment_id, s.ord, s.started_at, s.ended_at, s.speaker, "
+            f"s.orig_text, s.trans_text, {select}, "
+            f"ss.title AS session_title, ss.created_at AS session_created_at "
+            f"FROM {source} JOIN sessions ss ON ss.id = s.session_id "
+            f"WHERE {where} ORDER BY rank, s.session_id, s.ord LIMIT ?"
+        )
+        params.append(int(limit))
+        async with self._conn() as db:
+            cur = await db.execute(sql, params)
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def search_session_titles(self, like: str, *, limit: int = 20) -> list[dict[str, Any]]:
+        async with self._conn() as db:
+            cur = await db.execute(
+                f"SELECT {_SESSION_COLUMNS} FROM sessions WHERE title LIKE ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (like, int(limit)),
+            )
+            return [dict(r) for r in await cur.fetchall()]
 
     # ---------- Session groups ----------
 

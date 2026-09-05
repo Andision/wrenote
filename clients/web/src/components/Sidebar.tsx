@@ -8,10 +8,13 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Search,
   Settings,
   Trash2,
+  X,
 } from "lucide-react";
 
+import { SearchResults } from "@/components/SearchResults";
 import { StatusBadge } from "@/components/SessionStatus";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -46,7 +49,11 @@ export function Sidebar() {
   const renameGroup = useSessionStore((s) => s.renameGroup);
   const deleteGroup = useSessionStore((s) => s.deleteGroup);
   const moveSessionToGroup = useSessionStore((s) => s.moveSessionToGroup);
+  const sessionsCursor = useSessionStore((s) => s.sessionsCursor);
+  const loadMoreSessions = useSessionStore((s) => s.loadMoreSessions);
 
+  const [query, setQuery] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [groupDraft, setGroupDraft] = useState("");
@@ -254,7 +261,7 @@ export function Sidebar() {
           <div className="ml-3 space-y-0.5 border-l border-border pl-1">
             {members.length === 0 ? (
               <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
-                Drag sessions here.
+                {t("sidebar.dragHere")}
               </p>
             ) : (
               members.map(renderSession)
@@ -305,12 +312,40 @@ export function Sidebar() {
 
           {locked && (
             <div className="px-3 pb-1 text-[11px] text-muted-foreground">
-              Switching sessions is disabled while recording.
+              {t("sidebar.lockedNote")}
             </div>
           )}
 
-          {/* Sessions + groups */}
+          {/* Search across every session's transcript and titles. */}
+          <div className="px-2 pb-2">
+            <div className="flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2 focus-within:ring-2 focus-within:ring-brand-500/30">
+              <Search className="size-3.5 shrink-0 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Escape" && setQuery("")}
+                placeholder={t("search.placeholder")}
+                aria-label={t("search.placeholder")}
+                className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label={t("search.clear")}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Sessions + groups, or the search results while there is a query */}
           <ScrollArea className="flex-1">
+            {query.trim() ? (
+              <SearchResults query={query} locked={locked} />
+            ) : (
             <div className="space-y-0.5 p-2">
               {/* New group action */}
               <button
@@ -318,7 +353,7 @@ export function Sidebar() {
                 className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <FolderPlus className="size-4" />
-                New group
+                {t("sidebar.newGroup")}
               </button>
 
               {groups.map(renderGroup)}
@@ -347,7 +382,22 @@ export function Sidebar() {
                   ungrouped.map(renderSession)
                 )}
               </div>
+
+              {sessionsCursor && (
+                <button
+                  type="button"
+                  disabled={loadingMore}
+                  onClick={() => {
+                    setLoadingMore(true);
+                    void loadMoreSessions().finally(() => setLoadingMore(false));
+                  }}
+                  className="mt-1 flex w-full items-center justify-center rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+                >
+                  {loadingMore ? t("sidebar.loadingMore") : t("sidebar.loadMore")}
+                </button>
+              )}
             </div>
+            )}
           </ScrollArea>
 
           {/* Settings — height-matched to the status bar (h-10) so the bottom
@@ -358,7 +408,7 @@ export function Sidebar() {
               className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <Settings className="size-4" />
-              Settings
+              {t("settings.title")}
             </button>
           </div>
         </div>

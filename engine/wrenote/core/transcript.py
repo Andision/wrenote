@@ -61,9 +61,34 @@ def build_transcript_snapshot(segments: list[dict[str, Any]]) -> tuple[str, bool
     return "\n".join(kept), True
 
 
-def build_chat_system_prompt(segments: list[dict[str, Any]]) -> str:
+_EXCERPTS_NOTE = (
+    "\n\nThe transcript is long. Lines that look relevant to the user's "
+    "latest question were pulled from the trimmed part and are listed first, "
+    "each with its time; the most recent portion follows in full."
+)
+
+
+def is_truncated(segments: list[dict[str, Any]]) -> bool:
+    _snapshot, truncated = build_transcript_snapshot(segments)
+    return truncated
+
+
+def build_chat_system_prompt(
+    segments: list[dict[str, Any]],
+    excerpts: list[dict[str, Any]] | None = None,
+) -> str:
     """Assemble the system message that frames the transcript for the chat
-    model, including the truncation note when the snapshot was trimmed."""
+    model, including the truncation note when the snapshot was trimmed.
+
+    ``excerpts`` are segments retrieved for the user's question from the
+    part a trimmed snapshot dropped (see core/search.py); they go ahead of
+    the snapshot so a question about the first hour of a two-hour meeting
+    still has something to be answered from.
+    """
     transcript, truncated = build_transcript_snapshot(segments)
     trunc_note = _TRUNC_NOTE if truncated else ""
+    if truncated and excerpts:
+        lines, _ = build_transcript_snapshot(excerpts)
+        transcript = f"=== RELEVANT EXCERPTS ===\n{lines}\n=== RECENT TRANSCRIPT ===\n{transcript}"
+        trunc_note += _EXCERPTS_NOTE
     return _CHAT_SYSTEM_TEMPLATE.format(transcript=transcript, trunc_note=trunc_note)

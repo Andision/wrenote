@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
 from ..core import export as export_mod
@@ -14,7 +14,7 @@ from ..core.jobs import JobRegistry
 from ..core.recording import resolve_recording_path
 from ..core.store import Store
 from ..deps import get_jobs, get_recordings_dir, get_store
-from ._common import safe_session_id
+from ._common import SAFE_SESSION_ID, safe_session_id
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,11 +28,34 @@ def _with_job(row: dict[str, Any], jobs: JobRegistry) -> dict[str, Any]:
     return row
 
 
+def _decode_cursor(cursor: str) -> tuple[str, str]:
+    """``<created_at>|<id>`` of the last row the client has."""
+    created_at, sep, sid = cursor.rpartition("|")
+    if not sep or not created_at or not SAFE_SESSION_ID.match(sid):
+        raise HTTPException(status_code=400, detail="invalid cursor")
+    return created_at, sid
+
+
 @router.get("/sessions")
 async def list_sessions(
-    store: Store = Depends(get_store), jobs: JobRegistry = Depends(get_jobs)
+    limit: int = Query(0, ge=0, le=500),
+    cursor: str | None = None,
+    store: Store = Depends(get_store),
+    jobs: JobRegistry = Depends(get_jobs),
 ) -> dict[str, Any]:
-    return {"sessions": [_with_job(r, jobs) for r in await store.list_sessions()]}
+    """Newest first. ``limit`` 0 = all (the default, for older clients);
+    otherwise a page, with ``next_cursor`` to pass back for the one after —
+    null when this was the last."""
+    before = _decode_cursor(cursor) if cursor else None
+    if limit == 0:
+        rows = await store.list_sessions(before=before)
+        next_cursor = None
+    else:
+        rows = await store.list_sessions(limit=limit + 1, before=before)
+        more = len(rows) > limit
+        rows = rows[:limit]
+        next_cursor = f"{rows[-1]['created_at']}|{rows[-1]['id']}" if more and rows else None
+    return {"sessions": [_with_job(r, jobs) for r in rows], "next_cursor": next_cursor}
 
 
 @router.get("/sessions/{session_id}")

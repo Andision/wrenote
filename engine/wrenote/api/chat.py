@@ -10,8 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ..chat.base import ChatMessage
+from ..core import search as search_mod
 from ..core.store import Store
-from ..core.transcript import build_chat_system_prompt, build_transcript_snapshot
+from ..core.transcript import (
+    build_chat_system_prompt,
+    build_transcript_snapshot,
+    is_truncated,
+)
 from ..deps import get_models, get_store
 from ..model_manager import ModelManager
 from ._common import (
@@ -131,9 +136,12 @@ async def post_conversation_chat(
     # Lazy-load the model on first chat in this server's lifetime.
     backend = await models.ensure_chat_loaded()
 
+    segments = session.get("segments", [])
     system_msg = ChatMessage(
         role="system",
-        content=build_chat_system_prompt(session.get("segments", [])),
+        content=build_chat_system_prompt(
+            segments, await _excerpts_for(store, sid, segments, text)
+        ),
     )
     history = [ChatMessage(role=r["role"], content=r["content"]) for r in history_rows]
     user_msg = ChatMessage(role="user", content=text)
@@ -179,6 +187,24 @@ async def post_conversation_chat(
                     log.exception("failed to persist assistant message")
 
     return StreamingResponse(stream(), media_type="text/plain; charset=utf-8")
+
+
+async def _excerpts_for(
+    store: Store, sid: str, segments: list[dict[str, Any]], question: str
+) -> list[dict[str, Any]]:
+    """Lines from a too-long transcript that the question seems to be about.
+    Nothing when the whole transcript fits (the model sees it all anyway)."""
+    if not is_truncated(segments):
+        return []
+    query = search_mod.terms_query(question)
+    if query is None:
+        return []
+    try:
+        hits = await store.search_segments(query, limit=20, session_id=sid)
+    except Exception:
+        log.exception("retrieval failed; answering from the recent transcript only")
+        return []
+    return search_mod.pick_excerpts(hits, segments)
 
 
 _TITLE_SYSTEM = (

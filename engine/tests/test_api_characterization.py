@@ -41,6 +41,7 @@ EXPECTED_ROUTES = {
     ("GET", "/v1/jobs/{job_id}"),
     ("GET", "/v1/jobs/{job_id}/stream"),
     ("GET", "/v1/recordings/{session_id}.wav"),
+    ("GET", "/v1/search"),
     ("GET", "/v1/sessions"),
     ("GET", "/v1/sessions/{session_id}"),
     ("GET", "/v1/sessions/{session_id}/export"),
@@ -144,7 +145,7 @@ def test_info(client):
 def test_sessions_empty_on_fresh_db(client):
     r = client.get("/v1/sessions")
     assert r.status_code == 200
-    assert r.json() == {"sessions": []}
+    assert r.json() == {"sessions": [], "next_cursor": None}
 
 
 def test_groups_empty_on_fresh_db(client):

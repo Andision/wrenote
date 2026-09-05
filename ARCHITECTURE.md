@@ -305,6 +305,26 @@ changed since" — the post-recording pass does exactly that. The document
 renders to Markdown with headings in its own language, on its own
 (`/minutes/markdown`) or ahead of the transcript (`/export?minutes=<lang>`).
 
+## Search (`core/search.py`, `segments_fts`)
+
+After a few hundred meetings the only way to find anything was to scroll
+titles. A full-text index over the segments (schema v4) fixes that. It is a
+plain FTS5 table kept current by triggers on `segments`, so every write
+path — live upserts, the post-recording pass, edits — is covered without
+knowing. The tokenizer is `trigram`: the one that makes Chinese searchable
+without a word segmenter (any three-character window is a token, in any
+script), at the price that a one- or two-character query cannot use the
+index and falls back to a `LIKE` scan, which at a personal library's size
+is fine. `GET /v1/search` returns matching lines best-first with their
+full text — the client highlights the query itself; trigram snippets cut
+words in half — plus sessions whose title matches. The session list is
+paged with a keyset cursor (`GET /v1/sessions?limit&cursor`), so a session
+created meanwhile shifts nothing. The chat uses the same index: when a
+transcript is too long to show the model whole, the user's question is
+turned into terms, the matching lines (with a neighbour each side) go in
+ahead of the recent tail, and a question about the first hour of a
+two-hour meeting has something to be answered from.
+
 ## Updates and releases (`core/update.py`, `packaging/release/`)
 
 * **The engine reports, the shell installs, the client renders.** On launch

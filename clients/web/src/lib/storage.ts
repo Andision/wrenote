@@ -94,17 +94,29 @@ function toSegment(row: SegmentRow): Segment {
 }
 
 export async function loadAllSessions(): Promise<SessionMeta[]> {
+  return (await loadSessions()).sessions;
+}
+
+/** One page of the library, newest first. `cursor` is what the previous
+ *  page handed back; `limit` 0 asks for everything. */
+export async function loadSessions(
+  opts: { limit?: number; cursor?: string | null } = {},
+): Promise<{ sessions: SessionMeta[]; nextCursor: string | null }> {
+  const params = new URLSearchParams();
+  if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.cursor) params.set("cursor", opts.cursor);
+  const qs = params.toString();
   try {
-    const res = await fetch(`${BASE}/sessions`);
+    const res = await fetch(`${BASE}/sessions${qs ? `?${qs}` : ""}`);
     if (!res.ok) {
-      console.warn("loadAllSessions: HTTP", res.status);
-      return [];
+      console.warn("loadSessions: HTTP", res.status);
+      return { sessions: [], nextCursor: null };
     }
-    const json = (await res.json()) as { sessions: SessionRow[] };
-    return json.sessions.map(toMeta);
+    const json = (await res.json()) as { sessions: SessionRow[]; next_cursor?: string | null };
+    return { sessions: json.sessions.map(toMeta), nextCursor: json.next_cursor ?? null };
   } catch (e) {
-    console.warn("loadAllSessions: network failure", e);
-    return [];
+    console.warn("loadSessions: network failure", e);
+    return { sessions: [], nextCursor: null };
   }
 }
 

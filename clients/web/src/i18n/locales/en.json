@@ -71,7 +71,12 @@
     "renameGroup": "Double-click to rename",
     "deleteGroup": "Delete group",
     "deleteGroupTitle": "Delete group?",
-    "deleteGroupBody": "\"{name}\" will be removed. Its sessions are kept and moved out of the group."
+    "deleteGroupBody": "\"{name}\" will be removed. Its sessions are kept and moved out of the group.",
+    "lockedNote": "Switching sessions is disabled while recording.",
+    "newGroup": "New group",
+    "dragHere": "Drag sessions here.",
+    "loadMore": "Load older sessions",
+    "loadingMore": "Loading…"
   },
   "topbar": {
     "rename": "Double-click to rename",
@@ -422,5 +427,14 @@
       "actionItems": "Action items",
       "openQuestions": "Open questions"
     }
+  },
+  "search": {
+    "placeholder": "Search transcripts…",
+    "clear": "Clear search",
+    "searching": "Searching…",
+    "empty": "Nothing matches “{query}”.",
+    "sessions": "Sessions",
+    "lines_one": "{count} line",
+    "lines_other": "{count} lines"
   }
 }

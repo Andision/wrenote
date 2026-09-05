@@ -10,6 +10,7 @@ import {
   listGroups,
   mergeSegment as mergeSegmentOnBackend,
   loadAllSessions,
+  loadSessions,
   loadSession as loadSessionFromBackend,
   newSessionId,
   renameGroup as renameGroupRemote,
@@ -103,8 +104,13 @@ interface State {
 
   // History
   pastSessions: SessionMeta[];
+  /** Where the next page of the library starts; null once it is all here. */
+  sessionsCursor: string | null;
   /** Sidebar folders. Membership lives on each session's groupId. */
   groups: SessionGroup[];
+  /** A segment the transcript should scroll to once (a search hit); the
+   *  transcript clears it after scrolling. */
+  focusSegmentId: string | null;
 
   // Settings
   settings: SessionSettings;
@@ -165,6 +171,11 @@ interface Actions {
   loadSession: (id: string) => Promise<void>;
   deletePastSession: (id: string) => Promise<void>;
   refreshPastSessions: () => Promise<void>;
+  /** Append the next page of the library to `pastSessions`. */
+  loadMoreSessions: () => Promise<void>;
+  /** Open `sessionId` and scroll its transcript to `segmentId`. */
+  openSessionAt: (sessionId: string, segmentId: string | null) => Promise<void>;
+  setFocusSegment: (segmentId: string | null) => void;
   // Session groups (sidebar folders)
   refreshGroups: () => Promise<void>;
   createGroup: (name?: string) => Promise<void>;
@@ -223,6 +234,9 @@ declare global {
     __WRENOTE_STORE__?: typeof useSessionStore;
   }
 }
+
+/** Sessions per page of the sidebar list. */
+const SESSIONS_PAGE = 50;
 
 // Sidebar open/closed is a UI preference — persist it so a refresh keeps
 // the panel where the user left it.
@@ -292,7 +306,9 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
 
   // Filled in on app mount via refreshPastSessions() — async fetch from backend.
   pastSessions: [],
+  sessionsCursor: null,
   groups: [],
+  focusSegmentId: null,
 
   settings: { ...DEFAULT_SETTINGS },
   settingsOpen: false,
@@ -409,23 +425,30 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
   loadSession: async (id) => {
     const target = await loadSessionFromBackend(id);
     if (!target) return;
+    const { segments: rows, ...meta } = target;
     const segmentsById: Record<string, Segment> = {};
     const order: string[] = [];
-    for (const seg of target.segments) {
+    for (const seg of rows) {
       segmentsById[seg.segmentId] = seg;
       order.push(seg.segmentId);
     }
-    set({
+    set((s) => ({
       sessionId: target.id,
       sessionTitle: target.title,
       // Loaded sessions keep their stored title. Reloading the one on screen
       // (a job rewrote it) keeps whether it is still waiting for a title.
-      titleIsAuto: target.id === get().sessionId ? get().titleIsAuto : false,
+      titleIsAuto: target.id === s.sessionId ? s.titleIsAuto : false,
       sessionStartedAt: target.createdAt,
       segmentOrder: order,
       segments: segmentsById,
       speakerColors: loadSpeakerColors(target.id),
-    });
+      focusSegmentId: null,
+      // A session opened from a search hit may sit past the pages loaded
+      // so far; the list is where its status is read from, so it goes in.
+      pastSessions: s.pastSessions.some((p) => p.id === target.id)
+        ? s.pastSessions.map((p) => (p.id === target.id ? { ...p, ...meta } : p))
+        : [...s.pastSessions, meta],
+    }));
   },
 
   deletePastSession: async (id) => {
@@ -436,9 +459,34 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
   },
 
   refreshPastSessions: async () => {
-    const list = await loadAllSessions();
-    set({ pastSessions: list });
+    // The first page, plus anything the user had paged in already, so a
+    // refresh (after a job, say) never makes the list shorter than it was.
+    const have = get().pastSessions.length;
+    const { sessions, nextCursor } = await loadSessions({
+      limit: Math.max(SESSIONS_PAGE, have),
+    });
+    set({ pastSessions: sessions, sessionsCursor: nextCursor });
   },
+
+  loadMoreSessions: async () => {
+    const cursor = get().sessionsCursor;
+    if (!cursor) return;
+    const { sessions, nextCursor } = await loadSessions({ limit: SESSIONS_PAGE, cursor });
+    set((s) => {
+      const known = new Set(s.pastSessions.map((p) => p.id));
+      return {
+        pastSessions: [...s.pastSessions, ...sessions.filter((p) => !known.has(p.id))],
+        sessionsCursor: nextCursor,
+      };
+    });
+  },
+
+  openSessionAt: async (sessionId, segmentId) => {
+    await get().loadSession(sessionId);
+    if (get().sessionId === sessionId) set({ focusSegmentId: segmentId });
+  },
+
+  setFocusSegment: (focusSegmentId) => set({ focusSegmentId }),
 
   refreshGroups: async () => {
     set({ groups: await listGroups() });
