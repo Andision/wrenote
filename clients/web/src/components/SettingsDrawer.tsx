@@ -19,6 +19,7 @@ import { useTheme } from "next-themes";
 import { ComputePanel } from "@/components/ComputePanel";
 import { GlossaryEditor } from "@/components/GlossaryEditor";
 import { ModelsPanel } from "@/components/ModelsPanel";
+import { UpdatePanel } from "@/components/UpdatePanel";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -163,6 +164,9 @@ export function SettingsDrawer() {
                       hint={t("settings.levelMetersHint")}
                       onChange={(v) => updateSettings({ showLevelMeters: v })}
                     />
+                    <div className="border-t border-border pt-5">
+                      <UpdatePanel />
+                    </div>
                   </div>
                 )}
 

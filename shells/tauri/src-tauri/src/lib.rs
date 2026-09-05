@@ -6,7 +6,8 @@
 //! 1. spawn the engine as a loopback sidecar and hand it a per-launch token;
 //! 2. open the main window at the engine's URL once `/health` answers;
 //! 3. manage the always-on-top subtitle overlay window (three IPC commands);
-//! 4. single instance + clean engine shutdown on exit.
+//! 4. single instance + clean engine shutdown on exit;
+//! 5. open an external URL in the system browser (the update download).
 //!
 //! Everything else — the UI, the API, permissions to the microphone — is the
 //! web client's and the engine's business. The shell knows no API routes.
@@ -105,6 +106,9 @@ pub fn run() {
         .manage(Shell::default())
         // Second launch → focus the existing main window (replaces the engine
         // side's lock file; Electron did the same with requestSingleInstanceLock).
+        // `plugin:opener|open_url` — what the web client's openExternal calls.
+        // Scoped to http(s) by the capability, so a page can't hand it a file.
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window(overlay::MAIN) {
                 if w.is_minimized().unwrap_or(false) {

@@ -40,6 +40,9 @@ declare global {
       closeOverlay: () => Promise<void>;
       /** Resize the overlay window, keeping it anchored at its bottom-center. */
       resizeOverlay: (width: number, height: number) => Promise<void>;
+      /** Open a web URL in the system browser (the update download). Older
+       *  shells lack it; lib/update.ts falls back to window.open. */
+      openExternal?: (url: string) => Promise<void>;
     };
   }
 }

@@ -341,5 +341,24 @@
     "tradeoff": {
       "cuda": "Faster on NVIDIA, much larger"
     }
+  },
+  "update": {
+    "version": "Wrenote {version}",
+    "checkNow": "Check for updates",
+    "checking": "Checking…",
+    "upToDate": "You're on the latest version.",
+    "checkedAt": "Checked {when}.",
+    "available": "Wrenote {version} is available",
+    "toastHint": "Download it when convenient — you can keep working.",
+    "download": "Download",
+    "whatsNew": "What's new",
+    "off": "Automatic checks are off.",
+    "auto": "Check for updates automatically",
+    "autoHint": "Once per launch, Wrenote fetches the release index to see whether a newer version exists. Nothing about you or this machine is sent.",
+    "error": {
+      "unreachable": "Couldn't reach the release index. Check your connection and try again.",
+      "bad_index": "The release index couldn't be read. Try again later.",
+      "no_index": "No release index is configured (update.index_url)."
+    }
   }
 }

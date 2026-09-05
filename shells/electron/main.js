@@ -13,7 +13,7 @@
 //
 // Still deliberately P1: native window frame (chrome is P3) and the dev conda
 // Python (the bundled PyInstaller binary is P2).
-const { app, BrowserWindow, ipcMain, screen, session, systemPreferences } = require("electron");
+const { app, BrowserWindow, ipcMain, screen, session, shell, systemPreferences } = require("electron");
 const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const http = require("node:http");
@@ -281,6 +281,14 @@ if (!app.requestSingleInstanceLock()) {
         width: overlaySize.width,
         height: overlaySize.height,
       });
+    });
+
+    // Web URLs only: the renderer is our own page, but a bridge that opens
+    // arbitrary schemes (file:, smb:) is a foothold nobody needs.
+    ipcMain.handle("shell:openExternal", (_e, url) => {
+      if (typeof url === "string" && /^https?:\/\//i.test(url)) return shell.openExternal(url);
+      console.warn(`[wrenote] refusing to open ${String(url).slice(0, 80)}`);
+      return undefined;
     });
 
     createWindow(baseUrl);

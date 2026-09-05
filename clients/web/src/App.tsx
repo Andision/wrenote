@@ -12,6 +12,7 @@ import { StatusBar } from "@/components/StatusBar";
 import { TooltipLayer } from "@/components/Tooltip";
 import { TopBar } from "@/components/TopBar";
 import { Transcript } from "@/components/Transcript";
+import { UpdateNotice } from "@/components/UpdateNotice";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { useMicrophone } from "@/hooks/useMicrophone";
@@ -145,6 +146,7 @@ export default function App() {
       </LayoutGroup>
       </PlaybackProvider>
       <Toaster richColors closeButton />
+      <UpdateNotice />
       <ConfirmDialog />
       <SetupGate />
       <TooltipLayer />

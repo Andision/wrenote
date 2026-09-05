@@ -2,10 +2,11 @@
 //
 // The web client talks to the shell through one tiny surface,
 // `window.wrenoteDesktop` (declared in overlayBridge.ts): toggle / close /
-// resize the floating subtitle overlay. The Electron shell injects that object
-// from its preload script. Tauri instead exposes `window.__TAURI__` (config
-// `app.withGlobalTauri`), so here we map the same three calls onto Tauri
-// commands — components never need to know which shell is hosting them.
+// resize the floating subtitle overlay, and open a URL in the system browser.
+// The Electron shell injects that object from its preload script. Tauri
+// instead exposes `window.__TAURI__` (config `app.withGlobalTauri`), so here we
+// map the same calls onto Tauri commands — components never need to know which
+// shell is hosting them.
 //
 // In a plain browser neither global exists and this is a no-op.
 
@@ -35,6 +36,8 @@ export function installDesktopBridge(): void {
     toggleOverlay: () => invoke("overlay_toggle"),
     closeOverlay: () => invoke("overlay_close"),
     resizeOverlay: (width, height) => invoke("overlay_resize", { width, height }),
+    // tauri-plugin-opener; the capability scopes it to http(s) URLs.
+    openExternal: (url) => invoke("plugin:opener|open_url", { url }),
   };
 }
 

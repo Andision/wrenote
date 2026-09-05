@@ -340,5 +340,24 @@
     "tradeoff": {
       "cuda": "N 卡上更快，但体积大得多"
     }
+  },
+  "update": {
+    "version": "Wrenote {version}",
+    "checkNow": "检查更新",
+    "checking": "正在检查…",
+    "upToDate": "已是最新版本。",
+    "checkedAt": "上次检查：{when}。",
+    "available": "Wrenote {version} 已发布",
+    "toastHint": "方便时下载安装即可，不影响当前使用。",
+    "download": "下载",
+    "whatsNew": "更新内容",
+    "off": "已关闭自动检查。",
+    "auto": "自动检查更新",
+    "autoHint": "每次启动时读取一次发布索引，看是否有新版本。不会发送任何关于你或这台设备的信息。",
+    "error": {
+      "unreachable": "无法连接发布索引，请检查网络后重试。",
+      "bad_index": "发布索引无法读取，请稍后再试。",
+      "no_index": "未配置发布索引（update.index_url）。"
+    }
   }
 }
