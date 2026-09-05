@@ -224,8 +224,11 @@ export function SetupGate() {
         initial={{ opacity: 0, y: 10, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.28, ease: [0.22, 0.61, 0.36, 1] }}
-        className="w-full max-w-md rounded-3xl border border-border/60 bg-card/80 p-8 shadow-xl"
+        className="flex max-h-[calc(100vh-3rem)] w-full max-w-md flex-col rounded-3xl border border-border/60 bg-card/80 p-8 shadow-xl"
       >
+        {/* Everything above the button scrolls when the model list is long;
+            the button itself never leaves the screen. */}
+        <div className="-mx-2 min-h-0 flex-1 overflow-y-auto px-2">
         <div className="flex items-start justify-between">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-brand-500/15 ring-1 ring-inset ring-brand-500/25">
             {onCompute ? (
@@ -335,6 +338,7 @@ export function SetupGate() {
           </div>
         )}
 
+        </div>
         {onCompute ? (
           <>
             <Button
