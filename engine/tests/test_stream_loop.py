@@ -198,3 +198,60 @@ def test_tidy_text():
     assert tidy_text("昨天是 MONDAY") == "昨天是 monday"
     assert tidy_text("I'M   OK") == "I'm ok"
     assert tidy_text("") == ""
+
+
+class TestBackendFamilies:
+    """The catalogue's files decide which sherpa-onnx loader is used."""
+
+    def _fake_module(self, monkeypatch):
+        import sys
+        import types
+
+        calls: list[tuple[str, dict]] = []
+
+        class Rec:
+            def create_stream(self):
+                return object()
+
+        class OnlineRecognizer:
+            @staticmethod
+            def from_transducer(**kw):
+                calls.append(("transducer", kw))
+                return Rec()
+
+            @staticmethod
+            def from_paraformer(**kw):
+                calls.append(("paraformer", kw))
+                return Rec()
+
+        mod = types.ModuleType("sherpa_onnx")
+        mod.OnlineRecognizer = OnlineRecognizer  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "sherpa_onnx", mod)
+        return calls
+
+    async def test_a_joiner_means_a_transducer(self, monkeypatch, tmp_path):
+        from wrenote.stt.sherpa_onnx import SherpaOnnxBackend
+
+        calls = self._fake_module(monkeypatch)
+        for n in ("e", "d", "j", "t"):
+            (tmp_path / n).write_bytes(b"x")
+        b = SherpaOnnxBackend(encoder_path=str(tmp_path / "e"), decoder_path=str(tmp_path / "d"),
+                              joiner_path=str(tmp_path / "j"), tokens_path=str(tmp_path / "t"), device="auto")
+        await b.load()
+        assert [c[0] for c in calls] == ["transducer"]
+        assert calls[0][1]["joiner"] == str(tmp_path / "j")
+        assert calls[0][1]["enable_endpoint_detection"] is True
+        assert b.info.capabilities["family"] == "transducer"
+
+    async def test_without_a_joiner_it_is_a_paraformer(self, monkeypatch, tmp_path):
+        from wrenote.stt.sherpa_onnx import SherpaOnnxBackend
+
+        calls = self._fake_module(monkeypatch)
+        for n in ("e", "d", "t"):
+            (tmp_path / n).write_bytes(b"x")
+        b = SherpaOnnxBackend(encoder_path=str(tmp_path / "e"), decoder_path=str(tmp_path / "d"),
+                              tokens_path=str(tmp_path / "t"))
+        await b.load()
+        assert [c[0] for c in calls] == ["paraformer"]
+        assert "joiner" not in calls[0][1]
+        assert b.info.capabilities["family"] == "paraformer"

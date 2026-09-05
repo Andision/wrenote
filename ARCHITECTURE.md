@@ -357,10 +357,16 @@ the utterance ended. So there are two STT slots in the config:
 
 The two are slots over one kind of catalogue model (`SLOTS` / `SLOT_KIND`
 in `core/catalogue.py`), and choosing a model on another backend switches
-the slot's backend with it. The streaming model writes English in capitals
-with no punctuation on either language; `tidy_text` makes it readable and
-the post-recording pass replaces it with Whisper's text anyway — the live
-transcript's job is to be there in time, the final one's is to be right.
+the slot's backend with it. Two streaming families share the backend, told
+apart by the files a catalogue entry names: a Zipformer transducer (k2-fsa)
+and a streaming Paraformer (FunASR); on the bilingual test clips the
+Zipformer is the better of the two (see TODO.md). Both write English in
+capitals with no punctuation on either language; `tidy_text` makes it
+readable and the post-recording pass replaces it with Whisper's text anyway
+— the live transcript's job is to be there in time, the final one's is to
+be right. `engine/tests/_compare_live_stt.py` runs the candidates on a
+folder of recordings the way a live session would and reports latency,
+flicker and error rate.
 
 ## Languages (`core/lang.py`)
 

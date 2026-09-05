@@ -1,17 +1,19 @@
-"""sherpa-onnx streaming backend — a recogniser built for live audio.
+"""sherpa-onnx streaming backend — recognisers built for live audio.
 
-Zipformer transducers (k2-fsa) decode causally: text comes out as the audio
-comes in, a decoded prefix never changes, and the recogniser itself says
-when an utterance is over. That is the whole reason this backend exists —
-the live path needs none of the segmenting, re-decoding and prompting the
-Whisper path does (see core/pipeline.py, the stream loop). Runs on the CPU
-through ONNX Runtime at several times real time; needs no compute runtime
-pack.
+Streaming models decode as the audio arrives: text comes out chunk by
+chunk, a decoded prefix (all but) never changes, and the recogniser itself
+says when an utterance is over. That is the whole reason this backend
+exists — the live path needs none of the segmenting, re-decoding and
+prompting the Whisper path does (see core/pipeline.py, the stream loop).
+Runs on the CPU through ONNX Runtime at several times real time; needs no
+compute runtime pack.
 
-The bilingual zh-en model is the default (see models.yaml). It writes
-English in capitals and no punctuation on either language; the text is
-tidied for display, and the post-recording pass replaces it with Whisper's
-anyway.
+Two model families share this code, told apart by the files a catalogue
+entry names: a **transducer** (Zipformer, k2-fsa: encoder + decoder +
+joiner) and a **streaming Paraformer** (FunASR, Alibaba: encoder +
+decoder). Both bilingual zh-en models write English in capitals and no
+punctuation on either language; the text is tidied for display, and the
+post-recording pass replaces it with Whisper's anyway.
 """
 from __future__ import annotations
 
@@ -73,8 +75,8 @@ class SherpaOnnxBackend(STTBackend):
         *,
         encoder_path: str,
         decoder_path: str,
-        joiner_path: str,
         tokens_path: str,
+        joiner_path: str | None = None,
         num_threads: int | None = None,
         provider: str = "cpu",
         decoding_method: str = "greedy_search",
@@ -85,9 +87,12 @@ class SherpaOnnxBackend(STTBackend):
         self._paths = {
             "encoder": str(Path(encoder_path).expanduser()),
             "decoder": str(Path(decoder_path).expanduser()),
-            "joiner": str(Path(joiner_path).expanduser()),
             "tokens": str(Path(tokens_path).expanduser()),
         }
+        # A joiner means a transducer; without one it is a streaming Paraformer.
+        if joiner_path:
+            self._paths["joiner"] = str(Path(joiner_path).expanduser())
+        self._family = "transducer" if joiner_path else "paraformer"
         self._num_threads = num_threads or max(1, min(4, (os.cpu_count() or 4) - 1))
         self._provider = provider
         self._decoding_method = decoding_method
@@ -95,10 +100,9 @@ class SherpaOnnxBackend(STTBackend):
         self._recognizers: dict[tuple[float, float], Any] = {}
         self._policy: LanguagePolicy | None = None
         # ONNX Runtime sessions are not to be driven from several threads at
-        # once; everything runs on this one worker, in order.
-        self._executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="sherpa"
-        )
+        # once; everything runs on this one worker, in order. Made in load()
+        # so a backend can be loaded again after unload() (the base contract).
+        self._executor: concurrent.futures.ThreadPoolExecutor | None = None
 
     # ---------- lifecycle ----------
 
@@ -106,6 +110,10 @@ class SherpaOnnxBackend(STTBackend):
         for name, path in self._paths.items():
             if not Path(path).exists():
                 raise FileNotFoundError(f"sherpa-onnx {name} not found at {path}")
+        if self._executor is None:
+            self._executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="sherpa"
+            )
         # The default endpoint setting; a session with other values gets its
         # own recogniser on first use.
         await self._recognizer(0.8, 25.0)
@@ -113,11 +121,14 @@ class SherpaOnnxBackend(STTBackend):
     async def unload(self) -> None:
         def _drop() -> None:
             self._recognizers.clear()
+        ex, self._executor = self._executor, None
+        if ex is None:
+            return
         try:
-            await asyncio.get_event_loop().run_in_executor(self._executor, _drop)
+            await asyncio.get_event_loop().run_in_executor(ex, _drop)
         except RuntimeError:
             self._recognizers.clear()
-        self._executor.shutdown(wait=False)
+        ex.shutdown(wait=False)
 
     async def _recognizer(self, trailing_silence_s: float, max_utterance_s: float) -> Any:
         key = (round(trailing_silence_s, 2), round(max_utterance_s, 1))
@@ -130,11 +141,10 @@ class SherpaOnnxBackend(STTBackend):
             # missing one should fail the backend, not the engine.
             import sherpa_onnx
 
-            return sherpa_onnx.OnlineRecognizer.from_transducer(
+            common: dict[str, Any] = dict(
                 tokens=self._paths["tokens"],
                 encoder=self._paths["encoder"],
                 decoder=self._paths["decoder"],
-                joiner=self._paths["joiner"],
                 num_threads=self._num_threads,
                 sample_rate=SAMPLE_RATE,
                 feature_dim=80,
@@ -145,14 +155,25 @@ class SherpaOnnxBackend(STTBackend):
                 decoding_method=self._decoding_method,
                 provider=self._provider,
             )
+            if self._family == "transducer":
+                return sherpa_onnx.OnlineRecognizer.from_transducer(
+                    joiner=self._paths["joiner"], **common
+                )
+            return sherpa_onnx.OnlineRecognizer.from_paraformer(**common)
 
         log.info(
-            "Loading sherpa-onnx recogniser from %s (threads=%d, endpoint %.1fs/%.0fs)",
-            self._paths["encoder"], self._num_threads, trailing_silence_s, max_utterance_s,
+            "Loading sherpa-onnx %s from %s (threads=%d, endpoint %.1fs/%.0fs)",
+            self._family, self._paths["encoder"], self._num_threads, trailing_silence_s, max_utterance_s,
         )
-        rec = await asyncio.get_event_loop().run_in_executor(self._executor, _build)
+        rec = await asyncio.get_event_loop().run_in_executor(self._worker, _build)
         self._recognizers[key] = rec
         return rec
+
+    @property
+    def _worker(self) -> concurrent.futures.ThreadPoolExecutor:
+        if self._executor is None:
+            raise RuntimeError("SherpaOnnxBackend not loaded; call load() first")
+        return self._executor
 
     # ---------- STTBackend ----------
 
@@ -185,7 +206,7 @@ class SherpaOnnxBackend(STTBackend):
                 rec.decode_stream(s)
             return rec.get_result(s)
 
-        raw = await asyncio.get_event_loop().run_in_executor(self._executor, _run)
+        raw = await asyncio.get_event_loop().run_in_executor(self._worker, _run)
         text = tidy_text(raw)
         main = self._policy.main if self._policy else (src_lang if src_lang not in (None, "", "auto") else None)
         return TranscriptEvent(
@@ -201,10 +222,10 @@ class SherpaOnnxBackend(STTBackend):
         return BackendInfo(
             name="sherpa_onnx",
             version="sherpa-onnx",
-            model=Path(self._paths["encoder"]).parent.name or Path(self._paths["encoder"]).stem,
+            model=Path(self._paths["encoder"]).name.split(".")[0],
             device=self._provider,
             supported_languages=["zh", "en"],
-            capabilities={"streaming": True, "threads": self._num_threads},
+            capabilities={"streaming": True, "family": self._family, "threads": self._num_threads},
         )
 
 
@@ -219,7 +240,7 @@ class _Stream(STTStream):
         if self._s is None:
             self._rec = await self._b._recognizer(*self._rules)
             rec = self._rec
-            self._s = await asyncio.get_event_loop().run_in_executor(self._b._executor, rec.create_stream)
+            self._s = await asyncio.get_event_loop().run_in_executor(self._b._worker, rec.create_stream)
 
     def _read(self) -> StreamUpdate:
         rec, s = self._rec, self._s
@@ -239,7 +260,7 @@ class _Stream(STTStream):
             self._s.accept_waveform(SAMPLE_RATE, audio)
             return self._read()
 
-        return await asyncio.get_event_loop().run_in_executor(self._b._executor, _run)
+        return await asyncio.get_event_loop().run_in_executor(self._b._worker, _run)
 
     async def flush(self) -> StreamUpdate:
         await self._ensure()
@@ -250,7 +271,7 @@ class _Stream(STTStream):
             upd = self._read()
             return StreamUpdate(text=upd.text, endpoint=True, start_offset_s=upd.start_offset_s)
 
-        return await asyncio.get_event_loop().run_in_executor(self._b._executor, _run)
+        return await asyncio.get_event_loop().run_in_executor(self._b._worker, _run)
 
     async def reset(self) -> None:
         if self._s is None:
@@ -260,7 +281,7 @@ class _Stream(STTStream):
         def _run() -> None:
             rec.reset(s)
 
-        await asyncio.get_event_loop().run_in_executor(self._b._executor, _run)
+        await asyncio.get_event_loop().run_in_executor(self._b._worker, _run)
 
     async def close(self) -> None:
         self._s = None

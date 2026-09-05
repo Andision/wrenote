@@ -170,6 +170,20 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       meeting against Whisper's partials, and how the endpoint rules feel
       (trailing silence = the "min silence" setting, cap = "max segment").
       Whisper remains the default until that comparison is made.
+- [x] **FunASR streaming Paraformer (bilingual zh-en, int8, ~240 MB)** as
+      a second streaming option, same backend. On the four bilingual test
+      clips both models ship, fed in real time through the live pipeline
+      (`tests/_compare_live_stt.py`), it lost to the Zipformer: English
+      runs garbled ("零八二 the day day tomororrow" for "the day after
+      tomorrow", "always o s" for "always always"), a Chinese sentence
+      turned to "一般现代式对后面它实现些些商" where the Zipformer had
+      "一般现在时对后面它时态写上", one clip split at a hesitation, and
+      no token timestamps (utterance start falls back to the first chunk).
+      Latency and speed are similar (first text ~1 s, ~10× real time).
+      So it is an option, not the default; if a streaming model becomes
+      the live default, the Zipformer is the one to measure against
+      Whisper — on a real meeting, with `_compare_live_stt.py` and a
+      reference transcript.
 - [ ] Punctuation for the streaming path (sherpa-onnx's CT-Transformer
       zh-en model, ~300 MB) so live English isn't a wall of lower case; or
       accept it, since the post-recording pass rewrites everything.

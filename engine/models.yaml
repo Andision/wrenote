@@ -71,8 +71,35 @@ models:
         filename: zipformer-zh-en-tokens.txt
         repo: csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
         path: tokens.txt
-        size: 56317
-        sha256: a8e0e4ec53810e433789b54a5c0134a7eaa2ffca595a6334d54c00da858841d3
+        size: 75756
+        sha256: 59aba8873a2ed1e122c25fee421e25f283b63290efbde85c1f01a853d83cb6e6
+
+  - id: paraformer-zh-en-streaming
+    kind: stt
+    backend: sherpa_onnx
+    tier: medium
+    name: Paraformer 中英 streaming (FunASR, int8)
+    note_code: stt_streaming
+    requires: { ram_mb: 2048 }
+    files:
+      - param: encoder_path
+        filename: paraformer-zh-en-encoder.int8.onnx
+        repo: csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en
+        path: encoder.int8.onnx
+        size: 165462184
+        sha256: 81a70226a8934e6ed92aa1d4fc486b428b5398e2f2619ed4897b7294cab90e9a
+      - param: decoder_path
+        filename: paraformer-zh-en-decoder.int8.onnx
+        repo: csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en
+        path: decoder.int8.onnx
+        size: 71664561
+        sha256: f3cca9f77bb9d93c8fcbfb63ae617b6b1ee96818df3aa3b151c40658fe38594f
+      - param: tokens_path
+        filename: paraformer-zh-en-tokens.txt
+        repo: csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en
+        path: tokens.txt
+        size: 75756
+        sha256: 59aba8873a2ed1e122c25fee421e25f283b63290efbde85c1f01a853d83cb6e6
 
   # ---------- speech to text (whisper.cpp ggml) ----------
 
