@@ -30,6 +30,9 @@ The **first** message must be a JSON text frame of type `start`; anything else
     "session_id": "…",            // client-generated, [A-Za-z0-9._-]{1,128}; else the server picks a UUID
     "title": "Daily sync",         // optional
     "src": "en", "tgt": "zh",      // languages; defaults from engine config `session.*`
+    "secondary_langs": ["zh"],     // other languages that may come up when `src` is pinned: detection
+                                   // then chooses among src + these, and one of these wins only at
+    "lang_override_confidence": 0.6, // ≥ this confidence; below it the segment is `src`. Ignored for "auto".
     "capture_system": false,       // mix system output into the mic (needs platform capability)
     "capture_screen": false,       // record screen/window video alongside audio
     "capture_target": null,        // {type: "window"|"display", id, title} from GET /v1/capture/targets; null = full screen

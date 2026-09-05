@@ -325,6 +325,21 @@ turned into terms, the matching lines (with a neighbour each side) go in
 ahead of the recent tail, and a question about the first hour of a
 two-hour meeting has something to be answered from.
 
+## Languages (`core/lang.py`)
+
+A meeting has a main language and, often, one more. "Auto" per segment
+flips on short windows — Whisper's favourite slip is Japanese for a Chinese
+speaker — and a pinned language turns the other one into a translation. So
+a session carries a `LanguagePolicy`: the main language, the secondary
+ones that may come up, and how sure detection must be before a secondary
+one takes a segment (0.6 by default). Whisper's language id runs only when
+there are secondaries, chooses only among the allowed set, and below the
+threshold the segment is the main language. After transcription the text
+itself gets a say (`text_lang_override`: CJK characters mean Chinese
+whatever the audio said), which is what routes translation. The client
+sends `src` + `secondary_langs` in the WS start; the pre-flight offers
+the secondaries as chips under the language strip.
+
 ## Updates and releases (`core/update.py`, `packaging/release/`)
 
 * **The engine reports, the shell installs, the client renders.** On launch

@@ -45,6 +45,7 @@ export function useWebSocket({ url = DEFAULT_URL }: UseWebSocketOptions = {}) {
             title: state.sessionTitle,
             created_at: state.sessionStartedAt,
             src: s.srcLang,
+            secondary_langs: s.srcLang === "auto" ? [] : s.secondaryLangs,
             tgt: s.tgtLang,
             min_silence_ms: s.minSilenceMs,
             max_segment_ms: s.maxSegmentMs,

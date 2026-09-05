@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ..core.events import AudioSegment, BackendInfo, TranscriptEvent
+from ..core.lang import LanguagePolicy, choose_language
 from ..core.registry import register_stt
 from .base import PartialCallback, STTBackend
 
@@ -76,6 +77,9 @@ class WhisperCppBackend(STTBackend):
         # Sticky fallback for short / low-confidence segments. Set after the
         # first segment that detects with confidence >= threshold.
         self._last_detected_lang: str | None = None
+        # The session's languages (core.lang); None = the caller's src_lang
+        # alone decides, as before.
+        self._policy: LanguagePolicy | None = None
         # whisper.cpp + Metal is not thread-safe. asyncio.to_thread's default
         # executor spawns multiple workers, which can race even with a
         # threading.Lock (cancelled-but-still-running threads, GC of return
@@ -138,21 +142,28 @@ class WhisperCppBackend(STTBackend):
         # int16 PCM bytes → float32 numpy in [-1, 1]
         audio = np.frombuffer(segment.pcm, dtype=np.int16).astype(np.float32) / 32768.0
 
-        # Resolve the language to feed Whisper. Three cases:
-        #   1. Caller pinned a language ("en", "zh", …) → use it as-is.
-        #   2. Caller said auto (None/"auto") AND we have a stuck-on backend
+        # Resolve the language to feed Whisper. Four cases:
+        #   1. A session policy with secondary languages → detect among the
+        #      languages it allows; a secondary one needs the policy's
+        #      confidence to win over the main one.
+        #   2. Caller pinned a language ("en", "zh", …) → use it as-is.
+        #   3. Caller said auto (None/"auto") AND we have a stuck-on backend
         #      language from config → use that.
-        #   3. Otherwise auto-detect on this audio, with sticky fallback for
+        #   4. Otherwise auto-detect on this audio, with sticky fallback for
         #      low-confidence short segments.
         requested = _normalize_lang(src_lang)
-        if requested is not None:
+        policy = self._policy
+        confidence: float | None
+        if policy is not None and policy.main is not None and policy.secondary:
+            lang, confidence = await self._detect_language(audio, policy)
+        elif requested is not None:
             lang = requested
-            confidence: float | None = None
+            confidence = None
         elif self._language is not None:
             lang = self._language
             confidence = None
         else:
-            lang, confidence = await self._detect_language(audio)
+            lang, confidence = await self._detect_language(audio, None)
 
         if audio.size < MIN_AUDIO_SAMPLES:
             # Too short to transcribe reliably; return empty final. Don't
@@ -194,29 +205,40 @@ class WhisperCppBackend(STTBackend):
             confidence=confidence,
         )
 
-    async def _detect_language(self, audio: np.ndarray) -> tuple[str, float]:
+    async def _detect_language(
+        self, audio: np.ndarray, policy: LanguagePolicy | None
+    ) -> tuple[str, float]:
         """Auto-detect language. Returns (lang, confidence).
 
-        Short / low-confidence segments fall back to the most recently
-        confidently-detected language (or "en" on cold start), to avoid the
-        UI flipping between languages on every clipped utterance.
+        With a policy: the choice is made from Whisper's whole distribution
+        by :func:`choose_language`, and a short or failed detection is the
+        main language. Without one: short / low-confidence segments fall
+        back to the most recently confidently-detected language (or "en" on
+        cold start), to avoid the UI flipping between languages on every
+        clipped utterance.
         """
         assert self._model is not None
+        fallback = policy.main if policy is not None and policy.main else (self._last_detected_lang or "en")
 
         if audio.size < MIN_AUDIO_SAMPLES:
-            return (self._last_detected_lang or "en", 0.0)
+            return (fallback, 0.0)
 
-        def _detect() -> tuple[str, float]:
+        def _detect() -> tuple[str, float, dict[str, float]]:
             assert self._model is not None
-            (lang, prob), _all = self._model.auto_detect_language(audio)
-            return (lang, float(prob))
+            (lang, prob), all_probs = self._model.auto_detect_language(audio)
+            return (lang, float(prob), {k: float(v) for k, v in dict(all_probs).items()})
 
         loop = asyncio.get_event_loop()
         try:
-            lang, prob = await loop.run_in_executor(self._executor, _detect)
+            lang, prob, all_probs = await loop.run_in_executor(self._executor, _detect)
         except Exception:
             log.exception("auto_detect_language failed; falling back")
-            return (self._last_detected_lang or "en", 0.0)
+            return (fallback, 0.0)
+
+        if policy is not None and policy.main is not None:
+            chosen, score = choose_language(all_probs, policy)
+            log.debug("lang policy: whisper said %s (p=%.2f) → %s (p=%.2f)", lang, prob, chosen, score)
+            return (chosen, score)
 
         if prob >= LANG_CONFIDENCE_THRESHOLD:
             self._last_detected_lang = lang
@@ -232,6 +254,9 @@ class WhisperCppBackend(STTBackend):
 
     def set_initial_prompt(self, prompt: str) -> None:
         self._initial_prompt = prompt or ""
+
+    def set_language_policy(self, policy: LanguagePolicy) -> None:
+        self._policy = policy
 
     @property
     def info(self) -> BackendInfo:

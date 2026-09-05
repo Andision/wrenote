@@ -134,8 +134,17 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       of a long transcript. Untested at scale: FTS write cost on a very
       long live session (one trigger per upsert; partials rewrite the row
       every ~800 ms).
-- [ ] **8. Mixed Chinese/English.** Pin a main language per session and let
-      per-segment detection override only with confidence; a UI for it.
+- [x] **8. Mixed Chinese/English.** A session has a main language and the
+      others that may come up ("Also spoken" chips under the language
+      strip; the translation target is the default). Whisper's per-segment
+      detection then chooses only among those — never Japanese for a
+      Chinese speaker — and a secondary one wins only at ≥ 0.6 confidence;
+      below that the segment is the main language. `core/lang.py
+      LanguagePolicy`, `secondary_langs` in the WS start. The threshold is
+      the smoke-test figure; a real bilingual meeting should tell whether
+      it sits right. The whole-file pass still uses one language for the
+      whole recording (whisper.cpp detects once per call); a per-chunk
+      pass there is the next step if mixed sessions come out wrong.
 - [ ] **9. Long meetings.** Memory and DB growth over two hours: the
       `_recent_finals` window is bounded, but the client keeps every segment
       in one store, and the timeline redraws all of them.

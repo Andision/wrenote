@@ -340,7 +340,7 @@ function SegmentCard({
       </header>
 
       <Row
-        lang={resolvedSrcLang}
+        lang={seg.origLang ?? resolvedSrcLang}
         text={seg.origText}
         placeholder="…"
         emphasis="primary"

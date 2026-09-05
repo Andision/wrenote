@@ -33,6 +33,9 @@ import type {
 
 export interface SessionSettings {
   srcLang: string;
+  /** Other languages spoken when `srcLang` is pinned (see lib/langPolicy.ts).
+   * Empty = the main language is forced for every segment. */
+  secondaryLangs: string[];
   tgtLang: string;
   /** When false, skip the translator entirely (transcribe-only mode).
    * Affects live sessions and uploads alike. */
@@ -67,6 +70,7 @@ const DEFAULT_SETTINGS: SessionSettings = {
   // "auto" → STT auto-detects the source language per segment. Pin to a
   // specific code ("en", "zh", …) to force a single language.
   srcLang: "auto",
+  secondaryLangs: [],
   tgtLang: "zh",
   translateEnabled: true,
   refineAfterStop: true,

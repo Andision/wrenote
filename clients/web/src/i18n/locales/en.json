@@ -48,7 +48,9 @@
     "language": "Language",
     "source": "Source language",
     "target": "Target language",
-    "to": "to"
+    "to": "to",
+    "alsoSpoken": "Also spoken:",
+    "alsoSpokenHint": "Other languages that may come up. A segment is taken as one of these only when it is clearly heard; otherwise it is the main language."
   },
   "theme": {
     "light": "Light",

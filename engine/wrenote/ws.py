@@ -33,6 +33,7 @@ from .core.events import (
     TranslationEvent,
     VADEvent,
 )
+from .core.lang import DEFAULT_OVERRIDE_CONFIDENCE, LanguagePolicy
 from .core.pipeline import Pipeline, SessionParams
 from .core.recording import WavWriter, resolve_recording_path
 from .core.registry import make_speaker, make_stt, make_translator, make_vad
@@ -152,8 +153,18 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         # so it can be used as a filename for the per-session WAV.
         raw_sid = str(session_cfg.get("session_id") or uuid.uuid4())
         session_id = raw_sid if SAFE_SESSION_ID.match(raw_sid) else uuid.uuid4().hex
-        src_lang = session_cfg.get("src", cfg.session.default_src_lang)
-        tgt_lang = session_cfg.get("tgt", cfg.session.default_tgt_lang)
+        src_lang = str(session_cfg.get("src", cfg.session.default_src_lang))
+        tgt_lang = str(session_cfg.get("tgt", cfg.session.default_tgt_lang))
+        # Other languages that may come up in a session with a main one; see
+        # core.lang.LanguagePolicy. Ignored when src is "auto".
+        secondary_langs = tuple(
+            str(x).strip().lower()
+            for x in (session_cfg.get("secondary_langs") or [])
+            if isinstance(x, str) and x.strip()
+        )
+        lang_override_confidence = float(
+            session_cfg.get("lang_override_confidence", DEFAULT_OVERRIDE_CONFIDENCE)
+        )
         capture_system = bool(session_cfg.get("capture_system"))
         capture_screen = bool(session_cfg.get("capture_screen"))
         # Optional chosen target {type: "window"|"display", id, title}. None =
@@ -189,6 +200,15 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         except ValueError as e:
             await _send_error(ws, "BAD_CONFIG", str(e), recoverable=False)
             return
+
+        main = src_lang.strip().lower()
+        stt.set_language_policy(
+            LanguagePolicy(
+                main=None if main in ("", "auto") else main,
+                secondary=secondary_langs,
+                override_confidence=lang_override_confidence,
+            )
+        )
 
         # Custom-vocabulary glossary → bias STT + pin translations for this session.
         try:

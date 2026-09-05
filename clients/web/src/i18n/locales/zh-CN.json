@@ -48,7 +48,9 @@
     "language": "语言",
     "source": "源语言",
     "target": "目标语言",
-    "to": "译为"
+    "to": "译为",
+    "alsoSpoken": "也会说：",
+    "alsoSpokenHint": "会话中可能出现的其他语言。只有在听得很确定时，某一段才会被当作这些语言；否则按主语言处理。"
   },
   "theme": {
     "light": "浅色",

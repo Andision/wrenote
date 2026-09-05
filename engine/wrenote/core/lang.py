@@ -6,6 +6,69 @@ server's translation service import this, so it must not import either.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+
+# What a language other than the main one has to score before it is
+# believed. Whisper's language id on a short window is noisy — clean
+# single-language audio scores 0.9+, the wrong language on mixed audio
+# scored ~0.57 in the smoke test — so 0.6 keeps a stray English word in a
+# Chinese sentence from flipping the whole segment, while a real switch
+# to English still gets through.
+DEFAULT_OVERRIDE_CONFIDENCE = 0.6
+
+
+@dataclass(frozen=True)
+class LanguagePolicy:
+    """How a session's source language is decided per segment.
+
+    ``main`` is what the meeting is in. ``secondary`` are the other languages
+    that may come up (a Chinese meeting with English in it). Detection
+    chooses only among ``main`` + ``secondary`` — never Japanese for a
+    Chinese speaker, a classic Whisper slip — and a secondary language wins
+    only with ``override_confidence`` or better; anything less is the main
+    language. ``main`` None means free detection, the pre-policy behaviour.
+    No secondaries means the main language is forced, no detection at all.
+    """
+
+    main: str | None = None
+    secondary: tuple[str, ...] = field(default_factory=tuple)
+    override_confidence: float = DEFAULT_OVERRIDE_CONFIDENCE
+
+    @property
+    def allowed(self) -> tuple[str, ...]:
+        if self.main is None:
+            return ()
+        return (self.main, *(s for s in self.secondary if s != self.main))
+
+    @property
+    def detects(self) -> bool:
+        """Whether language id has to run at all."""
+        return self.main is None or bool(self.secondary)
+
+
+def choose_language(
+    probs: Mapping[str, float], policy: LanguagePolicy
+) -> tuple[str, float]:
+    """Pick the segment's language from Whisper's distribution under ``policy``.
+
+    Returns (language, its probability). With no main language: the most
+    probable language, whatever it is. Otherwise: the most probable of the
+    allowed set, unless it is a secondary one scoring under the override
+    threshold, in which case the main language (with its own score).
+    """
+    if policy.main is None:
+        if not probs:
+            return ("en", 0.0)
+        lang = max(probs, key=lambda k: float(probs[k]))
+        return (lang, float(probs[lang]))
+    allowed = policy.allowed
+    scores = {lang: float(probs.get(lang, 0.0)) for lang in allowed}
+    best = max(allowed, key=lambda k: scores[k])
+    if best != policy.main and scores[best] < policy.override_confidence:
+        return (policy.main, scores[policy.main])
+    return (best, scores[best])
+
 
 def text_lang_override(text: str, audio_lang: str, tgt_lang: str) -> str:
     """Re-classify the source language from the transcribed text.

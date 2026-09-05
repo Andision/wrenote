@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 
 from ..core.events import AudioSegment, BackendInfo, TranscriptEvent
+from ..core.lang import LanguagePolicy
 from ..core.registry import register_stt
 from .base import PartialCallback, STTBackend
 
@@ -34,6 +35,10 @@ class MockSTTBackend(STTBackend):
         self._partial_count = partial_count
         self._loaded = False
         self.contexts: dict[str, str] = {}
+        self.policy: LanguagePolicy | None = None
+
+    def set_language_policy(self, policy: LanguagePolicy) -> None:
+        self.policy = policy
 
     async def load(self) -> None:
         self._loaded = True

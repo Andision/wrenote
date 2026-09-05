@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 
 from ..core.events import AudioSegment, BackendInfo, TranscriptEvent
+from ..core.lang import LanguagePolicy
 
 PartialCallback = Callable[[TranscriptEvent], Awaitable[None]]
 
@@ -60,6 +61,14 @@ class STTBackend(ABC):
         event; growing-buffer support is a P1-c upgrade.
 
         Chunking strategy is a backend-internal detail.
+        """
+
+    def set_language_policy(self, policy: LanguagePolicy) -> None:  # noqa: B027 — optional hook, no-op default
+        """Which languages this session may be in, and how sure detection
+        must be to leave the main one (see :class:`LanguagePolicy`).
+
+        Default no-op; backends that run language id (Whisper) override.
+        Set per session before :meth:`transcribe_segment`.
         """
 
     def set_initial_prompt(self, prompt: str) -> None:  # noqa: B027 — optional hook, no-op default

@@ -7,6 +7,7 @@ import {
   SOURCE_LANGUAGES,
   TARGET_LANGUAGES,
 } from "@/components/LanguageSelect";
+import { defaultSecondaryLangs, toggleSecondary } from "@/lib/langPolicy";
 import { UploadDialog } from "@/components/UploadDialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -191,7 +192,12 @@ export function PreFlight({ onStart }: PreFlightProps) {
         <LanguageSelect
           value={settings.srcLang}
           options={SOURCE_LANGUAGES}
-          onChange={(v) => updateSettings({ srcLang: v })}
+          onChange={(v) =>
+            updateSettings({
+              srcLang: v,
+              secondaryLangs: defaultSecondaryLangs(v, settings.tgtLang),
+            })
+          }
           disabled={isRecording || isBusy}
           ariaLabel={t("lang.source")}
         />
@@ -211,6 +217,41 @@ export function PreFlight({ onStart }: PreFlightProps) {
           </>
         )}
       </motion.div>
+
+      {/* With a main language pinned: which other languages may come up.
+          The engine then detects only among these, and one of them takes a
+          segment only when heard with confidence — a stray English word in
+          a Chinese sentence no longer flips the whole line. */}
+      {settings.srcLang !== "auto" && (
+        <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <span className="mr-1" data-tip={t("lang.alsoSpokenHint")}>
+            {t("lang.alsoSpoken")}
+          </span>
+          {TARGET_LANGUAGES.filter((l) => l.value !== settings.srcLang).map((l) => {
+            const on = settings.secondaryLangs.includes(l.value);
+            return (
+              <button
+                key={l.value}
+                type="button"
+                aria-pressed={on}
+                disabled={isRecording || isBusy}
+                onClick={() =>
+                  updateSettings({
+                    secondaryLangs: toggleSecondary(settings.secondaryLangs, l.value, settings.srcLang),
+                  })
+                }
+                className={
+                  on
+                    ? "rounded-full border border-brand-500/40 bg-brand-500/15 px-2.5 py-0.5 text-foreground"
+                    : "rounded-full border border-border px-2.5 py-0.5 hover:bg-accent"
+                }
+              >
+                {l.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Mode toggle: translate (default) vs transcribe-only. Sits just
           under the lang strip so it reads as "tune the row above". */}
