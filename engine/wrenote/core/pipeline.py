@@ -39,6 +39,7 @@ from .events import (
     VADEvent,
 )
 from .lang import text_lang_override
+from .segmentation import context_tail, find_cut_point
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +86,13 @@ class SessionParams:
     speaker_threshold: float = 0.65         # cosine-distance below this → known speaker
     speaker_min_audio_ms: int = 1000        # segments shorter than this skip clustering
     speaker_enabled: bool = True
+    # What the recogniser is told about the previous segment: the last N
+    # characters of its text go into Whisper's prompt, so a sentence the VAD
+    # split in two decodes as one thought (see core/segmentation.py). 0 = off.
+    stt_context_chars: int = 200
+    # How many earlier finals (same source language) the translator sees with
+    # each new one. 0 = every segment on its own.
+    translate_context_segments: int = 1
 
 
 async def _put_drop_oldest(q: asyncio.Queue[Any], item: Any) -> None:
@@ -164,6 +172,27 @@ class Pipeline:
         # to adapt the silence threshold (we wait longer to close a segment
         # whose partial doesn't end on a sentence boundary).
         self._latest_partial_text: dict[str, str] = {}
+        # What was said before the segment being recognised / translated now.
+        # Finals arrive in order (one stt loop, one translation loop), so
+        # "the previous one" is well defined in each.
+        self._last_final_text: str = ""
+        self._recent_finals: list[tuple[str, str]] = []  # (text, src_lang), oldest first
+
+    def _stt_context(self) -> str:
+        n = self.params.stt_context_chars
+        return context_tail(self._last_final_text, n) if n > 0 and self._last_final_text else ""
+
+    def _translation_context(self, src_lang: str) -> list[str]:
+        n = self.params.translate_context_segments
+        if n <= 0:
+            return []
+        same = [text for text, lang in self._recent_finals if lang == src_lang]
+        return same[-n:]
+
+    def _remember_final(self, text: str, src_lang: str) -> None:
+        self._recent_finals.append((text, src_lang))
+        # A handful is all any context window asks for.
+        del self._recent_finals[:-8]
 
     # ---------- Public lifecycle ----------
 
@@ -526,13 +555,36 @@ class Pipeline:
                 else:
                     buffer.extend(chunk.pcm)
                     if (now - seg_t0) * 1000 >= self.params.max_segment_ms:
-                        log.info("Force-closing segment %s at max length", current_segment_id)
+                        # Length cap with the speaker still going: cut at the
+                        # quietest moment of the last few seconds, not here,
+                        # and let the rest open the next segment right away.
+                        # Nothing is decoded twice and no word is split.
+                        cut = find_cut_point(bytes(buffer))
+                        head, tail = buffer[:cut], buffer[cut:]
+                        t_cut = min(now, seg_t0 + cut / 2 / 16000)
+                        log.info(
+                            "Segment %s reached max length: cutting at %.2fs, carrying %.2fs",
+                            current_segment_id, t_cut - seg_t0, len(tail) / 2 / 16000,
+                        )
                         await self._cancel_partial_task(partial_task)
                         partial_task = None
                         self._latest_partial_text.pop(current_segment_id, None)
-                        await self._close_segment(current_segment_id, buffer, seg_t0, now)
-                        current_segment_id = None
-                        buffer = bytearray()
+                        await self._close_segment(current_segment_id, head, seg_t0, t_cut)
+                        if tail:
+                            current_segment_id = str(uuid.uuid4())
+                            buffer = bytearray(tail)
+                            seg_t0 = t_cut
+                            await self._emit_client(
+                                VADEvent(type="speech_start", segment_id=current_segment_id, ts=t_cut)
+                            )
+                            if self.params.partial_interval_ms > 0:
+                                partial_task = asyncio.create_task(
+                                    self._partial_loop(current_segment_id, buffer, seg_t0),
+                                    name=f"pipeline.partial.{current_segment_id[:8]}",
+                                )
+                        else:
+                            current_segment_id = None
+                            buffer = bytearray()
                 continue
 
             # Not speaking
@@ -585,7 +637,7 @@ class Pipeline:
                 )
                 try:
                     event = await self.stt.transcribe_segment(
-                        snapshot, src_lang=self.params.src_lang
+                        snapshot, src_lang=self.params.src_lang, context=self._stt_context()
                     )
                 except asyncio.CancelledError:
                     raise
@@ -647,6 +699,7 @@ class Pipeline:
                         seg,
                         src_lang=self.params.src_lang,
                         on_partial=emit_partial,
+                        context=self._stt_context(),
                     )
                 except asyncio.CancelledError:
                     return
@@ -660,6 +713,9 @@ class Pipeline:
                         )
                     )
                     continue
+
+                if (final.text or "").strip():
+                    self._last_final_text = final.text
 
                 # Speaker identification on the final segment audio.
                 speaker_label = await self._identify_speaker(seg)
@@ -724,11 +780,14 @@ class Pipeline:
                     )
                     continue
 
+                context = self._translation_context(src_lang)
+                self._remember_final(text, src_lang)
                 try:
                     translated = await self.translator.translate(
                         text,
                         src=src_lang,
                         tgt=self.params.tgt_lang,
+                        context=context,
                     )
                 except TimeoutError:
                     await self._emit_client(

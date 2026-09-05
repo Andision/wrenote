@@ -7,6 +7,9 @@ They deliberately avoid paths that would load real STT/translator/chat models.
 """
 from __future__ import annotations
 
+import pytest
+from starlette.websockets import WebSocketDisconnect
+
 
 def test_capture_targets_returns_enumeration(client, monkeypatch):
     """GET /capture/targets returns whatever screenrec.list_targets() produces.
@@ -87,3 +90,31 @@ def test_chat_routes_resolve_to_api_not_spa(client):
     """A carved POST route must hit the router (JSON 4xx), never the SPA."""
     r = client.post("/v1/sessions/nope/diarize")
     assert r.headers["content-type"].startswith("application/json")
+
+
+def test_refine_missing_session_404(client):
+    assert client.post("/v1/sessions/nope/refine").status_code == 404
+
+
+def test_refine_without_recording_400(client):
+    sid = "no-wav"
+    with client.websocket_connect("/v1/ws") as ws:
+        ws.send_json({"type": "start", "config": {"session_id": sid}})
+        assert ws.receive_json()["type"] == "ready"
+        ws.send_json({"type": "stop"})
+        # Wait for the server to finish its cleanup (it closes the socket last).
+        with pytest.raises(WebSocketDisconnect):
+            while True:
+                ws.receive_json()
+    # The WS wrote no audio, so there is nothing to refine — and the session
+    # itself is no longer "recording" once the socket is gone.
+    sess = client.get(f"/v1/sessions/{sid}").json()
+    assert sess["status"] == "ready" and sess["job_id"] is None
+    r = client.post(f"/v1/sessions/{sid}/refine")
+    assert r.status_code == 400
+    assert r.json()["detail"] == "no_recording"
+
+
+def test_refine_rejects_non_boolean_translate(client):
+    r = client.post("/v1/sessions/x/refine", json={"translate": "yes"})
+    assert r.status_code == 400

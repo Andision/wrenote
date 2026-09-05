@@ -33,6 +33,7 @@ class MockSTTBackend(STTBackend):
         self._static_text = text
         self._partial_count = partial_count
         self._loaded = False
+        self.contexts: dict[str, str] = {}
 
     async def load(self) -> None:
         self._loaded = True
@@ -46,9 +47,13 @@ class MockSTTBackend(STTBackend):
         *,
         src_lang: str | None = None,
         on_partial: PartialCallback | None = None,
+        context: str = "",
     ) -> TranscriptEvent:
         if not self._loaded:
             raise RuntimeError("MockSTTBackend not loaded; call load() first")
+        # Remembered per segment so a test can see what context the pipeline
+        # passed for it.
+        self.contexts[segment.segment_id] = context
 
         text = self._static_text or f"[mock] {(segment.t1 - segment.t0):.2f}s"
         lang = src_lang or "en"

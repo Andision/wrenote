@@ -244,11 +244,50 @@ large files, and it is the user's only copy.
   version instead of leaving a half-rebuilt table; a `.v<N>.bak` copy (via the
   backup API, so WAL content is included) is taken before the first step
   touches an existing file; a file newer than the code refuses to open. The
-  only migration is the pre-versioning catch-up — a version-0 file may be in
+  first migration is the pre-versioning catch-up — a version-0 file may be in
   any of the shapes the old probe-and-patch code produced — and it is the last
-  one that probes. From here on a schema change is one appended entry, and
-  `test_store_migrations` holds a migrated file to the same columns and
-  indexes as a fresh one.
+  one that probes; the second (session status) is what every later one looks
+  like: three `ALTER TABLE` lines. `test_store_migrations` holds a migrated
+  file to the same columns and indexes as a fresh one.
+
+## A session's life (`core/store.py`, `core/refine.py`, `core/segmentation.py`)
+
+Live transcription is a compromise the user hears in real time: the VAD
+decides where utterances end, and Whisper sees each one on its own. The
+moment the recording stops, none of that applies — the audio is on disk in
+one file, and Whisper does its best work on exactly that. So a session has a
+lifecycle, persisted as `sessions.status` and shown by the client:
+
+    recording ──stop──► ready ──(refine_after_stop)──► processing ──► ready
+                                                              └──► failed
+
+* **`processing` is a state, not a spinner.** After a recording stops (or
+  when the user asks, `POST /v1/sessions/{id}/refine`), the whole recording
+  goes through the same pass an upload gets (`core/batch.py`, one
+  implementation for both) and the rows it produces replace the live ones —
+  in one transaction, at the very end, so the user never sees an empty
+  transcript. The list and the session carry `status`, `status_detail` (why
+  a pass failed), `refined_at` and, while processing, the `job_id` to follow;
+  the client shows a badge in the sidebar, a strip above the transcript with
+  the pass's progress, and disables the other jobs on that session. A failed
+  pass leaves the live rows and offers a retry. Speaker labels carry over by
+  time overlap (a renamed colleague survives); text edits to the live rows
+  do not — a fresh transcription is the point, and the client says so before
+  a manual re-run. Jobs don't survive a restart, so start-up settles what a
+  crash left: `recording` → `ready`, `processing` → `failed(interrupted)`.
+* **Segments are cut where it hurts least.** A live segment that reaches
+  `max_segment_ms` is cut at the quietest moment of its last few seconds
+  (`find_cut_point`), and the remainder opens the next segment right away —
+  no word is split, nothing is decoded twice. Whisper is told the tail of the
+  previous segment's text (`context_tail`, ~200 characters, before the
+  glossary in the prompt), so a sentence the VAD split still decodes as one
+  thought. The translator sees the previous segment in the same source
+  language along with each new one, in the live pipeline and in every batch
+  path (`translate_one_for_segment(context=)`), so a pronoun or a dropped
+  subject has something to refer to. Both are session parameters
+  (`stt_context_chars`, `translate_context_segments`; 0 turns them off) and
+  neither has been measured on real meetings yet — they are the standard
+  practice, not a tuned result.
 
 ## Updates and releases (`core/update.py`, `packaging/release/`)
 

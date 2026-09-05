@@ -91,7 +91,44 @@ start until it is done.
       refuses it — that is the "Waiting on hardware" checklist, so ship
       Windows in-place first if the Mac side is still open.
 
-## Next
+## Next — agreed priorities from the competitive review
+
+Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
+
+- [x] **3. Re-transcribe from the recording.** A session now has a lifecycle
+      (`recording → ready → processing → ready | failed`, persisted in
+      `sessions.status`, schema v2). After a recording stops the whole WAV
+      goes through Whisper again and replaces the live rows in one
+      transaction; the client shows a sidebar badge, a strip above the
+      transcript with progress, and a retry after a failure.
+      `POST /v1/sessions/{id}/refine` is the manual trigger; the setting is
+      "Re-transcribe after recording" (on by default). Speaker labels carry
+      over by time overlap; text edits to live rows don't. Not yet measured
+      on real hardware: how long the pass takes on an hour of audio next to
+      a warm live pipeline (two Whisper contexts in memory for a while).
+- [x] **2 (segmentation half). Cut where it hurts least.** A segment at
+      the length cap is cut at the quietest moment of its last 4 s and the
+      rest opens the next segment; Whisper gets the previous segment's tail
+      as prompt context. Both are session parameters with an off switch
+      (`stt_context_chars`, `max_segment_ms` unchanged). Wants an A/B on a
+      real meeting: the prompt is the standard trick (whisper_streaming's
+      200 chars) and can, on bad audio, make Whisper repeat itself.
+- [x] **4. Translation context.** The translator sees the previous segment
+      in the same language with each new one, live and in every batch path.
+      Hy-MT reads a `Context:` block by design; still needs a look at real
+      output for a small model translating the context along with the text.
+- [ ] **1. Meeting minutes.** Summary / decisions / action items from the
+      transcript via the chat model, bilingual, stored per session (new
+      table), exported with the transcript. The biggest single thing a
+      meeting tool does that this one doesn't.
+- [ ] **2 (search half). FTS5 over segments** plus pagination on the list
+      (see "Findability" below); feed the chat model the matching segments
+      instead of the whole transcript on long sessions.
+- [ ] **8. Mixed Chinese/English.** Pin a main language per session and let
+      per-segment detection override only with confidence; a UI for it.
+- [ ] **9. Long meetings.** Memory and DB growth over two hours: the
+      `_recent_finals` window is bounded, but the client keeps every segment
+      in one store, and the timeline redraws all of them.
 
 ### Data safety
 
@@ -99,8 +136,9 @@ start until it is done.
       `core/store.py`: one transaction per step, a `.v<N>.bak` copy before the
       first step touches an existing file, a newer file refused rather than
       guessed at. The one migration (0 → 1) is the pre-versioning catch-up; a
-      new table or column is now one appended entry, and a test holds a
-      migrated file to the same shape as a fresh one.
+      new table or column is now one appended entry (v2, session status, is
+      the first such), and a test holds a migrated file to the same shape as
+      a fresh one.
 - [x] **Data directory.** `data.dir` in the config (default `~/.wrenote`);
       `data.db_path`, `data.recordings_dir`, `models.dir`, `compute.runtimes_dir`
       each default under it and can point elsewhere. `~/.wrenote/config.yaml`

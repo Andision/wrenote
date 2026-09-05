@@ -32,6 +32,7 @@ from .api import (
     jobs,
     models,
     recordings,
+    refine,
     segments,
     sessions,
     translate,
@@ -68,7 +69,7 @@ API_PREFIX = "/v1"
 # Resource routers, registered in this order before the SPA catch-all.
 _ROUTERS = (
     sessions, groups, recordings, jobs, models,
-    upload, translate, diarize, segments, chat, capture, glossary, compute, update, ws,
+    upload, translate, diarize, refine, segments, chat, capture, glossary, compute, update, ws,
 )
 
 
@@ -112,6 +113,11 @@ def _make_lifespan(config: Config | None):
         store = Store(Path(cfg.data.db_path))
         await store.open()
         app.state.store = store
+        # Jobs don't survive a restart; sessions that were mid-job shouldn't
+        # claim otherwise forever.
+        settled = await store.recover_statuses()
+        if settled:
+            log.info("settled %d session(s) left mid-flight by a previous run", settled)
         # Chat + offline-diarize models are instantiated up-front (cheap) but
         # their weights load lazily on first use — most sessions never invoke
         # chat (~3GB) or diarization, so paying the load cost at startup is

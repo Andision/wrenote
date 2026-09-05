@@ -46,6 +46,9 @@ class Job:
     finished_at: float | None = None
     error: str | None = None
     result: dict[str, Any] | None = None
+    # The session this job rewrites, when it is about one. Lets the API tell a
+    # client which job to follow for a session it finds in ``processing``.
+    session_id: str | None = None
     # Internal: wakes anyone awaiting the next update.
     _tick: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -99,6 +102,7 @@ class Job:
             "log": list(self.log[-50:]),  # tail; full log not useful over SSE
             "error": self.error,
             "result": self.result,
+            "session_id": self.session_id,
         }
 
 
@@ -109,13 +113,15 @@ class JobRegistry:
         self._max = max_jobs
         self._lock = asyncio.Lock()
 
-    def create(self, *, kind: str, phases: list[Phase]) -> Job:
+    def create(
+        self, *, kind: str, phases: list[Phase], session_id: str | None = None
+    ) -> Job:
         if not phases:
             raise ValueError("phases must be non-empty")
         total = sum(p.weight for p in phases)
         if abs(total - 1.0) > 1e-6:
             raise ValueError(f"phase weights must sum to 1.0 (got {total:.3f})")
-        job = Job(id=uuid.uuid4().hex, kind=kind, phases=list(phases))
+        job = Job(id=uuid.uuid4().hex, kind=kind, phases=list(phases), session_id=session_id)
         self._jobs[job.id] = job
         self._order.append(job.id)
         # Evict oldest if over cap.
@@ -126,6 +132,19 @@ class JobRegistry:
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
+
+    def active_for(self, session_id: str, *, kind: str | None = None) -> Job | None:
+        """The running job on ``session_id`` (of ``kind``, if given), or None."""
+        for job_id in reversed(self._order):
+            job = self._jobs.get(job_id)
+            if (
+                job is not None
+                and job.status == "running"
+                and job.session_id == session_id
+                and (kind is None or job.kind == kind)
+            ):
+                return job
+        return None
 
     def _wake(self, job: Job) -> None:
         # Replace the event so all current waiters fire, then arm a fresh one.

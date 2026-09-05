@@ -23,6 +23,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from .api._common import SAFE_SESSION_ID
 from .auth import AUTH_COOKIE, AUTH_TOKEN, origin_allowed
 from .core import glossary, screenrec
+from .core import refine as refine_mod
 from .core.catalogue import resolve
 from .core.config import Config
 from .core.events import (
@@ -56,6 +57,41 @@ async def _send_error(
         log.exception("Failed to send error to client")
 
 
+async def _finish_session(
+    state: Any, session_id: str, *, refine: bool, recordings_dir: Path
+) -> None:
+    """Close out a session's ``recording`` status; start the refine pass if asked."""
+    store: Store | None = getattr(state, "store", None)
+    if store is None:
+        return
+    try:
+        await store.set_session_status(session_id, "ready")
+    except Exception:
+        log.exception("could not mark session %s ready", session_id)
+        return
+    if not refine:
+        return
+    try:
+        session = await store.get_session(session_id)
+        if session is None:
+            return
+        job_id = await refine_mod.launch(
+            session=session,
+            cfg=state.config,
+            catalogue=state.catalogue,
+            store=store,
+            registry=state.jobs,
+            recordings_dir=recordings_dir,
+        )
+        log.info("refine job %s started for session %s", job_id, session_id)
+    except refine_mod.RefineError as e:
+        # Not an error the user did anything about (no whisper backend, say):
+        # the live transcript simply stands.
+        log.info("no refine pass for session %s: %s", session_id, e.code)
+    except Exception:
+        log.exception("could not start refine pass for session %s", session_id)
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
     origin = ws.headers.get("origin")
@@ -85,6 +121,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     # Set in the start-config parse; finally needs them in scope.
     session_id: str | None = None
     max_ended_at: float = 0.0
+    session_row_exists = False
+    refine_after_stop = False
+    wav_bytes = 0
 
     try:
         # First message must be 'start'
@@ -130,6 +169,11 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         speaker_enabled = bool(session_cfg.get("speaker_enabled", True))
         speaker_threshold = float(session_cfg.get("speaker_threshold", 0.65))
         speaker_min_audio_ms = int(session_cfg.get("speaker_min_audio_ms", 1000))
+        stt_context_chars = int(session_cfg.get("stt_context_chars", 200))
+        translate_context_segments = int(session_cfg.get("translate_context_segments", 1))
+        refine_after_stop = bool(
+            session_cfg.get("refine_after_stop", cfg.session.refine_after_stop)
+        )
 
         # Build backends per connection (P1-a; share via app.state in a later pass)
         try:
@@ -171,6 +215,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 speaker_threshold=speaker_threshold,
                 speaker_min_audio_ms=speaker_min_audio_ms,
                 speaker_enabled=speaker_enabled,
+                stt_context_chars=stt_context_chars,
+                translate_context_segments=translate_context_segments,
             ),
         )
 
@@ -228,7 +274,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 created_at=created_at,
                 src_lang=src_lang,
                 tgt_lang=tgt_lang,
+                status="recording",
             )
+            session_row_exists = True
         except Exception:
             log.exception("upsert_session failed for %s", session_id)
 
@@ -403,6 +451,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 log.exception("Pipeline stop failed during cleanup")
         if wav_writer is not None:
             try:
+                wav_bytes = wav_writer.bytes_written
                 wav_writer.close()
             except Exception:
                 log.exception("WAV writer close failed during cleanup")
@@ -431,6 +480,17 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 await store_ref.update_session_duration(session_id, max_ended_at)
         except Exception:
             log.exception("duration update failed during cleanup")
+        # The session leaves `recording` here whatever happened above. Then,
+        # if the user asked for it and there is something to work with, the
+        # whole-recording pass takes over (status → processing); the live
+        # rows stay on screen until it replaces them.
+        if session_row_exists and session_id:
+            await _finish_session(
+                ws.app.state,
+                session_id,
+                refine=refine_after_stop and wav_bytes > 0 and max_ended_at > 0,
+                recordings_dir=recordings_dir,
+            )
         try:
             await ws.close()
         except Exception:

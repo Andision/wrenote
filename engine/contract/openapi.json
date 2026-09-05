@@ -1430,6 +1430,50 @@
         "summary": "Set Session Group"
       }
     },
+    "/v1/sessions/{session_id}/refine": {
+      "post": {
+        "description": "Kick off the whole-recording pass. Returns ``{job_id}``; subscribe to\n``/jobs/{job_id}/stream``. Body (optional): ``{\"translate\": bool}`` —\ndefault is whatever the session had.\n\nThe session shows ``status: processing`` from now until the job ends; its\ncurrent rows stay readable and are replaced in one go at the end.",
+        "operationId": "refine_endpoint_v1_sessions__session_id__refine_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Refine Endpoint V1 Sessions  Session Id  Refine Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refine Endpoint"
+      }
+    },
     "/v1/sessions/{session_id}/segments/speaker": {
       "post": {
         "description": "Body: ``{\"segmentIds\": [...], \"speaker\": \"Alice\"}``. Assigns a speaker\nto specific segments — used to label segments diarization left\nunidentified, without cascading across the whole session.",

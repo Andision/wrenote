@@ -37,7 +37,11 @@ The **first** message must be a JSON text frame of type `start`; anything else
     "partial_interval_ms": 800, "partial_min_audio_ms": 500,
     "translate_partials": true, "translate_enabled": true,
     "extended_silence_factor": 2.25,
-    "speaker_enabled": true, "speaker_threshold": 0.65, "speaker_min_audio_ms": 1000
+    "speaker_enabled": true, "speaker_threshold": 0.65, "speaker_min_audio_ms": 1000,
+    "stt_context_chars": 200,          // tail of the previous segment's text given to Whisper; 0 = off
+    "translate_context_segments": 1,   // earlier segments the translator sees with each new one; 0 = off
+    "refine_after_stop": true          // after `stop`, re-transcribe the whole recording and replace the
+                                       // transcript (session status → "processing"; see GET /v1/sessions)
   }
 }
 ```
@@ -51,7 +55,7 @@ Control messages (JSON text frames) during a session:
 
 | type          | payload                | effect                                                   |
 |---------------|------------------------|----------------------------------------------------------|
-| `stop`        | —                      | flush, finalize the recording, close cleanly             |
+| `stop`        | —                      | flush, finalize the recording, close cleanly; then, with `refine_after_stop`, the session goes `processing` and its `job_id` is on `GET /v1/sessions/{id}` |
 | `pause`       | —                      | drop incoming audio until `resume`                       |
 | `resume`      | —                      | resume processing                                        |
 | `switch_lang` | `{"src": …, "tgt": …}` | reserved: accepted and logged, not yet acted on          |

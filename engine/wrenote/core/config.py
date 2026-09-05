@@ -55,6 +55,11 @@ class BackendConfig(BaseModel):
 class SessionConfig(BaseModel):
     default_src_lang: str = "en"
     default_tgt_lang: str = "zh"
+    # After a recording stops, run the whole file through Whisper again and
+    # replace the live transcript (see core/refine.py). The client can pass
+    # its own choice in the WS start config; this is the default for one that
+    # doesn't.
+    refine_after_stop: bool = True
 
 
 # Where everything lives unless the config says otherwise. Kept as the

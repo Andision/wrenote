@@ -9,27 +9,42 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from ..core import export as export_mod
+from ..core.jobs import JobRegistry
 from ..core.recording import resolve_recording_path
 from ..core.store import Store
-from ..deps import get_recordings_dir, get_store
+from ..deps import get_jobs, get_recordings_dir, get_store
 from ._common import safe_session_id
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _with_job(row: dict[str, Any], jobs: JobRegistry) -> dict[str, Any]:
+    """A session in ``processing`` names the job doing it, so a client that
+    finds one (after a reload, or on another tab) can follow its progress."""
+    job = jobs.active_for(row["id"]) if row.get("status") == "processing" else None
+    row["job_id"] = job.id if job is not None else None
+    return row
+
+
 @router.get("/sessions")
-async def list_sessions(store: Store = Depends(get_store)) -> dict[str, Any]:
-    return {"sessions": await store.list_sessions()}
+async def list_sessions(
+    store: Store = Depends(get_store), jobs: JobRegistry = Depends(get_jobs)
+) -> dict[str, Any]:
+    return {"sessions": [_with_job(r, jobs) for r in await store.list_sessions()]}
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str, store: Store = Depends(get_store)) -> dict[str, Any]:
+async def get_session(
+    session_id: str,
+    store: Store = Depends(get_store),
+    jobs: JobRegistry = Depends(get_jobs),
+) -> dict[str, Any]:
     sid = safe_session_id(session_id)
     sess = await store.get_session(sid)
     if sess is None:
         raise HTTPException(status_code=404, detail="session not found")
-    return sess
+    return _with_job(sess, jobs)
 
 
 @router.get("/sessions/{session_id}/export")

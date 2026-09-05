@@ -44,6 +44,17 @@ def _normalize_lang(lang: str | None) -> str | None:
     return s
 
 
+def compose_prompt(*, context: str, glossary: str) -> str:
+    """The decoder prompt for one segment: what was just said, then the glossary.
+
+    Whisper trims a long prompt from the front, so the order is what gets
+    dropped first: the older context goes before the glossary the user wrote.
+    Both are already capped by their producers (context_tail, stt_initial_prompt).
+    """
+    parts = [p.strip() for p in (context, glossary) if p and p.strip()]
+    return " ".join(parts)
+
+
 @register_stt("whisper_cpp")
 class WhisperCppBackend(STTBackend):
     def __init__(
@@ -119,6 +130,7 @@ class WhisperCppBackend(STTBackend):
         *,
         src_lang: str | None = None,
         on_partial: PartialCallback | None = None,
+        context: str = "",
     ) -> TranscriptEvent:
         if self._model is None:
             raise RuntimeError("WhisperCppBackend not loaded; call load() first")
@@ -156,11 +168,13 @@ class WhisperCppBackend(STTBackend):
                 confidence=confidence,
             )
 
+        prompt = compose_prompt(context=context, glossary=self._initial_prompt)
+
         def _transcribe() -> list:
             assert self._model is not None
             kwargs: dict[str, object] = {"language": lang}
-            if self._initial_prompt:
-                kwargs["initial_prompt"] = self._initial_prompt
+            if prompt:
+                kwargs["initial_prompt"] = prompt
             return list(self._model.transcribe(audio, **kwargs))
 
         # All transcribe calls funnel through the single-threaded executor,

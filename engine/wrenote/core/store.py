@@ -37,7 +37,17 @@ log = logging.getLogger(__name__)
 
 # Bump together with an entry in MIGRATIONS. A new file is created at this
 # version straight from SCHEMA; test_store_migrations holds the two equal.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# sessions.status — where a session is in its life:
+#   recording   the WS session is live; segments arrive as the user speaks
+#   processing  a job is rewriting the transcript from the recording (the
+#               post-recording pass, or an upload being transcribed); the
+#               rows on file stay readable until the job replaces them
+#   ready       the transcript is what the user gets
+#   failed      the last processing pass died; status_detail says why and the
+#               previous transcript is still there
+SESSION_STATUSES = ("recording", "processing", "ready", "failed")
 
 # One statement per entry: a migration replays these inside its transaction,
 # and executescript() would commit that transaction first. Every statement is
@@ -52,7 +62,10 @@ _BASE_TABLES: tuple[str, ...] = (
         src_lang     TEXT NOT NULL,
         tgt_lang     TEXT NOT NULL,
         duration_s   REAL NOT NULL DEFAULT 0,
-        group_id     TEXT
+        group_id     TEXT,
+        status       TEXT NOT NULL DEFAULT 'ready',
+        status_detail TEXT,
+        refined_at   TEXT
     )
     """,
     # Optional folders the sidebar groups sessions into. Membership is the
@@ -127,6 +140,13 @@ _CHAT_MESSAGES_INDEX = (
 
 # The whole current schema — what a fresh file is built from.
 SCHEMA = ";\n".join((*_BASE_TABLES, _CHAT_MESSAGES, _CHAT_MESSAGES_INDEX)) + ";\n"
+
+
+# What a session row looks like to the API — list and get agree by construction.
+_SESSION_COLUMNS = (
+    "id, title, created_at, src_lang, tgt_lang, duration_s, group_id, "
+    "status, status_detail, refined_at"
+)
 
 
 class StoreVersionError(RuntimeError):
@@ -205,11 +225,26 @@ async def _migrate_1_pre_versioning(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE sessions ADD COLUMN group_id TEXT")
 
 
+async def _migrate_2_session_status(db: aiosqlite.Connection) -> None:
+    """1 → 2: sessions get a lifecycle.
+
+    ``status`` (see SESSION_STATUSES) lets the client show "still being
+    transcribed" for a session whose recording is being re-run through
+    Whisper as a whole file, ``status_detail`` carries the failure reason when
+    that pass dies, and ``refined_at`` records that it happened. Every
+    existing session is a finished one, so ``ready`` is the right default.
+    """
+    await db.execute("ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'ready'")
+    await db.execute("ALTER TABLE sessions ADD COLUMN status_detail TEXT")
+    await db.execute("ALTER TABLE sessions ADD COLUMN refined_at TEXT")
+
+
 # Ordered. Each step takes a file at the previous version to its own; the
 # runner wraps it in a transaction and stamps the version on commit. Append,
 # never edit or reorder: a step that already ran somewhere is history.
 MIGRATIONS: tuple[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]], ...] = (
     (1, _migrate_1_pre_versioning),
+    (2, _migrate_2_session_status),
 )
 
 
@@ -308,21 +343,73 @@ class Store:
         src_lang: str,
         tgt_lang: str,
         duration_s: float = 0.0,
+        status: str = "ready",
     ) -> None:
+        if status not in SESSION_STATUSES:
+            raise ValueError(f"unknown session status {status!r}")
         async with self._conn() as db:
             await db.execute(
                 """
-                INSERT INTO sessions (id, title, created_at, src_lang, tgt_lang, duration_s)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO sessions (id, title, created_at, src_lang, tgt_lang, duration_s, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     src_lang = excluded.src_lang,
                     tgt_lang = excluded.tgt_lang,
-                    duration_s = excluded.duration_s
+                    duration_s = excluded.duration_s,
+                    status = excluded.status,
+                    status_detail = NULL
                 """,
-                (session_id, title, created_at, src_lang, tgt_lang, duration_s),
+                (session_id, title, created_at, src_lang, tgt_lang, duration_s, status),
             )
             await db.commit()
+
+    async def set_session_status(
+        self, session_id: str, status: str, *, detail: str | None = None
+    ) -> None:
+        """Move a session along its lifecycle. ``detail`` is the reason when
+        ``status`` is ``failed`` (and cleared otherwise)."""
+        if status not in SESSION_STATUSES:
+            raise ValueError(f"unknown session status {status!r}")
+        async with self._conn() as db:
+            await db.execute(
+                "UPDATE sessions SET status = ?, status_detail = ? WHERE id = ?",
+                (status, detail if status == "failed" else None, session_id),
+            )
+            await db.commit()
+
+    async def mark_refined(self, session_id: str, refined_at: str) -> None:
+        """The transcript now comes from a whole-recording pass."""
+        async with self._conn() as db:
+            await db.execute(
+                "UPDATE sessions SET refined_at = ?, status = 'ready', status_detail = NULL "
+                "WHERE id = ?",
+                (refined_at, session_id),
+            )
+            await db.commit()
+
+    async def recover_statuses(self) -> int:
+        """Settle sessions a previous process left mid-flight.
+
+        Run once at startup. A session still ``recording`` belongs to a
+        connection that no longer exists — its rows are whatever got
+        persisted before the crash, so it is ``ready``. A session still
+        ``processing`` was in a job this process knows nothing about; the
+        previous transcript is intact, so mark it ``failed`` with a reason the
+        client can show and let the user re-run it.
+        """
+        async with self._conn() as db:
+            cur = await db.execute(
+                "UPDATE sessions SET status = 'ready' WHERE status = 'recording'"
+            )
+            n = cur.rowcount
+            cur = await db.execute(
+                "UPDATE sessions SET status = 'failed', status_detail = 'interrupted' "
+                "WHERE status = 'processing'"
+            )
+            n += cur.rowcount
+            await db.commit()
+        return n
 
     async def update_session_title(self, session_id: str, title: str) -> None:
         async with self._conn() as db:
@@ -343,8 +430,7 @@ class Store:
     async def list_sessions(self) -> list[dict[str, Any]]:
         async with self._conn() as db:
             cur = await db.execute(
-                "SELECT id, title, created_at, src_lang, tgt_lang, duration_s, group_id "
-                "FROM sessions ORDER BY created_at DESC"
+                f"SELECT {_SESSION_COLUMNS} FROM sessions ORDER BY created_at DESC"
             )
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
@@ -404,8 +490,7 @@ class Store:
     async def get_session(self, session_id: str) -> dict[str, Any] | None:
         async with self._conn() as db:
             cur = await db.execute(
-                "SELECT id, title, created_at, src_lang, tgt_lang, duration_s, group_id "
-                "FROM sessions WHERE id = ?",
+                f"SELECT {_SESSION_COLUMNS} FROM sessions WHERE id = ?",
                 (session_id,),
             )
             row = await cur.fetchone()

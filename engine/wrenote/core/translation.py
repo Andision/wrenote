@@ -8,6 +8,7 @@ store, and the job registry — never on ``server`` or the live ``pipeline``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from .jobs import JobRegistry
@@ -16,6 +17,28 @@ from .store import Store
 
 log = logging.getLogger(__name__)
 
+# How many earlier segments the translator sees along with the one it
+# translates. One is usually what resolves a pronoun or a dropped subject;
+# more mostly costs prompt tokens on a model that is small on purpose.
+CONTEXT_SEGMENTS = 1
+
+
+def context_before(
+    texts: Sequence[str], idx: int, *, n: int = CONTEXT_SEGMENTS
+) -> list[str]:
+    """The ``n`` non-empty texts preceding ``texts[idx]``, oldest first."""
+    if n <= 0:
+        return []
+    out: list[str] = []
+    i = idx - 1
+    while i >= 0 and len(out) < n:
+        t = (texts[i] or "").strip()
+        if t:
+            out.append(t)
+        i -= 1
+    out.reverse()
+    return out
+
 
 async def translate_one_for_segment(
     *,
@@ -23,6 +46,7 @@ async def translate_one_for_segment(
     text: str,
     audio_lang: str | None,
     tgt_lang: str,
+    context: Sequence[str] = (),
 ) -> tuple[str, str]:
     """Translate one segment's text. Returns (translated_text, status).
 
@@ -34,7 +58,9 @@ async def translate_one_for_segment(
     if src == tgt_lang:
         return ("", "skipped")
     try:
-        translated = await translator.translate(text, src=src, tgt=tgt_lang)
+        translated = await translator.translate(
+            text, src=src, tgt=tgt_lang, context=context
+        )
     except Exception as e:
         log.exception(
             "translate failed: src=%s tgt=%s text=%r err=%r",
@@ -89,6 +115,18 @@ async def translate_segments_for_session(
     if not segments:
         registry.advance(job_id, phase_inner=1.0)
         return 0
+    # Context comes from the session's whole transcript in order, not from
+    # the candidate list: when only the untranslated rows are candidates, the
+    # line before one of them is usually a row that isn't.
+    base = list(session.get("segments") or [])
+    known = {r["segment_id"] for r in base}
+    if not all(s["segment_id"] in known for s in segments):
+        # Rows the session doesn't know yet (a resegmented transcript being
+        # written): the candidate list is the whole transcript then.
+        base = list(segments)
+    ordered = sorted(base, key=lambda r: r.get("ord", 0))
+    all_texts = [str(r.get("orig_text") or "") for r in ordered]
+    idx_of = {r["segment_id"]: i for i, r in enumerate(ordered)}
     total = max(1, len(segments))
     done = 0
     for s in segments:
@@ -98,11 +136,13 @@ async def translate_segments_for_session(
         audio_lang = s.get("orig_lang") or session.get("src_lang") or "en"
         if audio_lang == "auto":
             audio_lang = "en"
+        idx = idx_of.get(s["segment_id"])
         translated, status = await translate_one_for_segment(
             translator=translator,
             text=text,
             audio_lang=audio_lang,
             tgt_lang=tgt_lang,
+            context=context_before(all_texts, idx) if idx is not None else (),
         )
         await store.upsert_segment_trans(
             session_id=session_id,

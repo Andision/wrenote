@@ -10,6 +10,7 @@ import asyncio
 import concurrent.futures
 import logging
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +113,7 @@ class LlamaCppTranslator(TranslatorBackend):
         src: str,
         tgt: str,
         timeout_s: float = 10.0,
+        context: Sequence[str] = (),
     ) -> str:
         if self._llm is None:
             raise RuntimeError("LlamaCppTranslator not loaded; call load() first")
@@ -119,7 +121,7 @@ class LlamaCppTranslator(TranslatorBackend):
         if not text:
             return ""
 
-        prompt = self._build_prompt(text, src=src, tgt=tgt)
+        prompt = self._build_prompt(text, src=src, tgt=tgt, context=context)
 
         def _generate() -> str:
             resp = self._llm.create_chat_completion(
@@ -135,10 +137,24 @@ class LlamaCppTranslator(TranslatorBackend):
             timeout=timeout_s,
         )
 
-    def _build_prompt(self, text: str, *, src: str, tgt: str) -> str:
+    def _build_prompt(
+        self, text: str, *, src: str, tgt: str, context: Sequence[str] = ()
+    ) -> str:
         src_name = _lang_name(src)
         tgt_name = _lang_name(tgt)
         glossary = f"{self._glossary_text} " if self._glossary_text else ""
+        # The previous lines are shown, marked, and the instruction names the
+        # last block as the only thing to translate. Hy-MT reads a "Context:"
+        # block this way; a general chat model follows the plain wording.
+        prior = [c.strip() for c in context if c and c.strip()]
+        if prior:
+            context_block = "\n".join(prior)
+            return (
+                f"Context (the {src_name} lines spoken just before; for reference only, "
+                f"do not translate them):\n{context_block}\n\n"
+                f"Translate the following {src_name} text into {tgt_name}. "
+                f"Output only the translation of this text, no explanation. {glossary}\n\n{text}"
+            )
         return (
             f"Translate the following {src_name} text into {tgt_name}. "
             f"Output only the translation, no explanation. {glossary}\n\n{text}"

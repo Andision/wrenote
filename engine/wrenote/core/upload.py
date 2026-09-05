@@ -16,18 +16,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import wave
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
-import numpy as np
 
 from ..translator.base import TranslatorBackend
+from .batch import merge_whisper_segments, normalize_src_lang, transcribe_pcm
 from .jobs import JobRegistry, Phase
 from .recording import resolve_recording_path
 from .store import Store
+from .translation import context_before, translate_one_for_segment
+
+__all__ = ["merge_whisper_segments", "process_upload"]
 
 log = logging.getLogger(__name__)
 
@@ -57,68 +57,6 @@ def _write_wav(path: Path, pcm: bytes, sample_rate: int = 16000) -> None:
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
         wf.writeframes(pcm)
-
-
-def _normalize_src_lang(src: str | None) -> str | None:
-    """`None` / "" / "auto" → None (let Whisper auto-detect)."""
-    if not src:
-        return None
-    s = src.strip().lower()
-    return None if s in ("", "auto") else s
-
-
-# Uploads are post-processed later for speaker labels, so preserving dialogue
-# turns is more important than creating long reading paragraphs. Whisper.cpp's
-# raw segments are already reasonably short; additionally, talk-show / subtitle
-# style transcripts often use " -Next speaker" inside one raw segment. Split on
-# that marker so the diarizer can label each turn independently. We deliberately
-# do not merge adjacent raw segments here: doing so mixes speakers before the
-# speaker pass gets a chance to separate them.
-_DIALOGUE_TURN_RE = re.compile(r"\s+-(?!-)")
-
-
-def merge_whisper_segments(
-    segs: list[Any],
-) -> list[tuple[str, float, float]]:
-    """Convert whisper.cpp segments into dialogue-friendly transcript rows.
-
-    Returns a list of ``(text, t0_s, t1_s)``. Times are converted from
-    centiseconds (whisper.cpp native unit) to seconds at this boundary —
-    callers downstream don't have to think about it.
-    """
-    out: list[tuple[str, float, float]] = []
-
-    for s in segs:
-        text = (s.text or "").strip()
-        if not text:
-            continue
-        t0 = float(s.t0) / 100.0
-        t1 = float(s.t1) / 100.0
-        parts = _split_dialogue_turns(text)
-        if len(parts) == 1 or t1 <= t0:
-            out.append((parts[0], t0, t1))
-            continue
-
-        weights = [max(1, len(p)) for p in parts]
-        total = sum(weights)
-        cur = t0
-        for i, (part, weight) in enumerate(zip(parts, weights, strict=True)):
-            nxt = t1 if i == len(parts) - 1 else cur + (t1 - t0) * weight / total
-            out.append((part, cur, nxt))
-            cur = nxt
-    return out
-
-
-def _split_dialogue_turns(text: str) -> list[str]:
-    """Split subtitle-style "-A -B" speaker turns inside one Whisper segment."""
-    parts = []
-    for raw in _DIALOGUE_TURN_RE.split(text):
-        part = raw.strip()
-        if part.startswith("-"):
-            part = part[1:].strip()
-        if part:
-            parts.append(part)
-    return parts or [text.strip()]
 
 
 # Phase weights, tuned from M1 Max measurements: transcribe dominates,
@@ -156,11 +94,12 @@ async def process_upload(
     store: Store,
     recordings_dir: Path,
     sample_rate: int = 16000,
+    initial_prompt: str = "",
 ) -> None:
     """Decode → concat → transcribe → translate → persist, reporting
     progress into the job registry. Caller owns lifecycle (registry.fail
     / registry.complete) — this function only advances phases and raises
-    on hard errors.
+    on hard errors. ``initial_prompt`` is the glossary bias for Whisper.
     """
     if not file_paths:
         raise ValueError("no files provided")
@@ -197,8 +136,10 @@ async def process_upload(
     # Translator is loaded by the caller before invoking us (see server),
     # but we still mark the phase as a discrete step so the progress bar
     # has something visible to advance through.
-    requested_lang = _normalize_src_lang(src_lang)
+    requested_lang = normalize_src_lang(src_lang)
     created_at = datetime.now(UTC).isoformat()
+    # `processing` from the first moment the row exists: the client's list
+    # shows the upload as in progress rather than as an empty session.
     await store.upsert_session(
         session_id=session_id,
         title=title,
@@ -206,39 +147,19 @@ async def process_upload(
         src_lang=src_lang or "auto",
         tgt_lang=tgt_lang,
         duration_s=duration_s,
+        status="processing",
     )
     tick(1.0)
 
     # ---- Phase 3: transcribe ----
     advance(3, 0.0, "Transcribing")
-    audio = np.frombuffer(full_pcm, dtype=np.int16).astype(np.float32) / 32768.0
-
-    def _transcribe() -> list[Any]:
-        from pywhispercpp.model import Model
-        model = Model(
-            whisper_model_path,
-            n_threads=8,
-            print_realtime=False,
-            print_progress=False,
-            print_timestamps=False,
-        )
-        kwargs: dict[str, Any] = {}
-        kwargs["language"] = requested_lang if requested_lang is not None else "auto"
-        # Keep uploaded conversations segmented closely to Whisper's detected
-        # turns. This gives the speaker post-pass smaller text rows to label,
-        # while still leaving final display grouping to the frontend.
-        kwargs["max_len"] = 80
-        kwargs["split_on_word"] = True
-        kwargs["token_timestamps"] = True
-        return list(model.transcribe(audio, **kwargs))
-
-    loop = asyncio.get_event_loop()
-    raw_segs = await loop.run_in_executor(None, _transcribe)
-    paragraphs = merge_whisper_segments(raw_segs)
-    tick(
-        1.0,
-        f"Got {len(raw_segs)} raw segments, prepared {len(paragraphs)} dialogue turns",
+    paragraphs = await transcribe_pcm(
+        full_pcm,
+        model_path=whisper_model_path,
+        language=requested_lang,
+        initial_prompt=initial_prompt,
     )
+    tick(1.0, f"Prepared {len(paragraphs)} dialogue turns")
 
     fallback_lang = requested_lang or "en"
 
@@ -251,6 +172,7 @@ async def process_upload(
         # No translate phase in this weight schedule — go straight to finalize.
         advance(3, 1.0, "Transcribe-only mode: skipping translation")
 
+    texts = [text for text, _t0, _t1 in paragraphs]
     for i, (text, t0, t1) in enumerate(paragraphs):
         sid = f"u-{i:04d}"
         seg_lang = fallback_lang
@@ -266,7 +188,7 @@ async def process_upload(
             orig_lang=seg_lang,
         )
 
-        if not translate or seg_lang == tgt_lang:
+        if not translate:
             await store.upsert_segment_trans(
                 session_id=session_id,
                 segment_id=sid,
@@ -277,19 +199,19 @@ async def process_upload(
             )
         else:
             assert translator is not None
-            try:
-                translated = await translator.translate(
-                    text, src=seg_lang, tgt=tgt_lang,
-                )
-            except Exception:
-                log.exception("translate failed for upload segment %d", i)
-                translated = ""
+            translated, status = await translate_one_for_segment(
+                translator=translator,
+                text=text,
+                audio_lang=seg_lang,
+                tgt_lang=tgt_lang,
+                context=context_before(texts, i),
+            )
             await store.upsert_segment_trans(
                 session_id=session_id,
                 segment_id=sid,
                 ord_=i,
                 trans_text=translated,
-                trans_status="final" if translated else "skipped",
+                trans_status=status,
                 trans_lang=tgt_lang,
             )
 
@@ -305,4 +227,6 @@ async def process_upload(
     final_idx = 5 if translate else 4
     advance(final_idx, 0.0, "Finalizing")
     await store.update_session_duration(session_id, duration_s)
+    # An upload is a whole-file transcription by construction.
+    await store.mark_refined(session_id, datetime.now(UTC).isoformat())
     tick(1.0)

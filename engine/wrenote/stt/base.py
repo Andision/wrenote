@@ -41,10 +41,18 @@ class STTBackend(ABC):
         *,
         src_lang: str | None = None,
         on_partial: PartialCallback | None = None,
+        context: str = "",
     ) -> TranscriptEvent:
         """Transcribe a complete VAD-segmented audio segment.
 
         Returns the *final* :class:`TranscriptEvent` (``type='final'``).
+
+        ``context`` is the text recognised just before this segment (the tail
+        of it — see :func:`wrenote.core.segmentation.context_tail`). Whisper
+        conditions on it the way it conditions on the previous window of a
+        long file, which is what keeps a sentence the VAD cut in two from
+        being decoded as two unrelated sentences. Backends without a decoder
+        prompt ignore it.
 
         If ``on_partial`` is provided, the implementation MAY invoke it during
         decoding to emit growing-buffer partials (``type='partial'``). P1-a

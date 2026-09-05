@@ -10,6 +10,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from ..core import glossary
+from ..core.catalogue import ModelCatalogue, resolve
 from ..core.config import Config
 from ..core.jobs import JobRegistry
 from ..core.registry import make_translator
@@ -19,7 +21,7 @@ from ..core.upload import (
     UPLOAD_PHASES_TRANSLATE,
     process_upload,
 )
-from ..deps import get_config, get_jobs, get_store
+from ..deps import get_catalogue, get_config, get_jobs, get_store
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,6 +37,7 @@ async def upload_session(
     cfg: Config = Depends(get_config),
     store: Store = Depends(get_store),
     registry: JobRegistry = Depends(get_jobs),
+    catalogue: ModelCatalogue = Depends(get_catalogue),
 ) -> dict[str, str]:
     """Kicks off a background job; returns immediately.
 
@@ -49,9 +52,9 @@ async def upload_session(
             status_code=400,
             detail="upload only supports the whisper_cpp STT backend currently",
         )
-    whisper_model_path = str(cfg.stt.params.get("model_path") or "")
+    whisper_model_path = str(resolve(cfg, "stt", catalogue).params.get("model_path") or "")
     if not whisper_model_path:
-        raise HTTPException(status_code=500, detail="stt.model_path not configured")
+        raise HTTPException(status_code=500, detail="stt model not configured")
 
     tmpdir = Path(tempfile.mkdtemp(prefix="wrenote-upload-"))
     saved_paths: list[Path] = []
@@ -65,15 +68,19 @@ async def upload_session(
 
     sid = uuid.uuid4().hex
     phases = UPLOAD_PHASES_TRANSLATE if translate else UPLOAD_PHASES_NO_TRANSLATE
-    job = registry.create(kind="upload", phases=list(phases))
+    job = registry.create(kind="upload", phases=list(phases), session_id=sid)
 
     async def runner() -> None:
         translator = (
-            make_translator(cfg.translator.backend, cfg.translator.params)
+            make_translator(
+                cfg.translator.backend, resolve(cfg, "translator", catalogue).params
+            )
             if translate else None
         )
         try:
+            entries = await store.list_glossary()
             if translator is not None:
+                glossary.apply_to_backends(entries, translator=translator)
                 registry.advance(job.id, log_line="Loading translator")
                 await translator.load()
             await process_upload(
@@ -89,6 +96,7 @@ async def upload_session(
                 translator=translator,
                 store=store,
                 recordings_dir=Path(cfg.data.recordings_dir),
+                initial_prompt=glossary.stt_initial_prompt(entries),
             )
             registry.complete(
                 job.id,
@@ -96,7 +104,14 @@ async def upload_session(
             )
         except Exception as e:
             log.exception("upload job %s failed", job.id)
-            registry.fail(job.id, f"{type(e).__name__}: {e}")
+            detail = f"{type(e).__name__}: {e}"
+            try:
+                # The row may not exist yet (decode failed): only mark it when it does.
+                if await store.get_session(sid) is not None:
+                    await store.set_session_status(sid, "failed", detail=detail)
+            except Exception:
+                log.exception("could not record upload failure for %s", sid)
+            registry.fail(job.id, detail)
         finally:
             if translator is not None:
                 try:

@@ -127,26 +127,65 @@ async def test_migrated_file_has_the_same_shape_as_a_new_one(tmp_path):
     assert _shape(migrated.path) == _shape(fresh.path)
 
 
+# What the last release before schema versioning created on every open: all
+# of today's tables at their v1 shape (sessions has group_id, chat is on
+# conversations), and no user_version. A file at this shape is "v0 but already
+# patched"; the same statements with `PRAGMA user_version = 1` are a v1 file.
+PATCHED_V0_SCHEMA = """
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL,
+    src_lang TEXT NOT NULL, tgt_lang TEXT NOT NULL, duration_s REAL NOT NULL DEFAULT 0,
+    group_id TEXT
+);
+CREATE TABLE session_groups (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE segments (
+    session_id TEXT NOT NULL, segment_id TEXT NOT NULL, ord INTEGER NOT NULL,
+    started_at REAL NOT NULL, ended_at REAL NOT NULL,
+    orig_text TEXT NOT NULL DEFAULT '', orig_status TEXT NOT NULL DEFAULT 'final', orig_lang TEXT,
+    trans_text TEXT NOT NULL DEFAULT '', trans_status TEXT NOT NULL DEFAULT 'final', trans_lang TEXT,
+    speaker TEXT,
+    PRIMARY KEY (session_id, segment_id),
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_segments_session_ord ON segments(session_id, ord);
+CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
+CREATE TABLE chat_conversations (
+    id TEXT PRIMARY KEY, session_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE TABLE glossary (
+    id TEXT PRIMARY KEY, term TEXT NOT NULL, translation TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE chat_messages (
+    conversation_id TEXT NOT NULL, ord INTEGER NOT NULL, role TEXT NOT NULL,
+    content TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY (conversation_id, ord),
+    FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_chat_conversation_ord ON chat_messages(conversation_id, ord);
+INSERT INTO sessions VALUES ('s1', 'T', '2026-01-01T00:00:00', 'en', 'zh', 0, NULL);
+INSERT INTO chat_conversations VALUES ('c1', 's1', 'first', '2026-01-01T00:00:00', '2026-01-01T00:00:00');
+INSERT INTO chat_messages VALUES ('c1', 0, 'user', 'hi', '2026-01-01T00:00:01');
+"""
+
+
+def _patched_file(path: Path, *, version: int = 0) -> Path:
+    with sqlite3.connect(path) as c:
+        c.executescript(PATCHED_V0_SCHEMA)
+        c.execute(f"PRAGMA user_version = {version}")
+    return path
+
+
 async def test_pre_versioning_file_that_was_already_patched(tmp_path):
     """A file written by the last release has every table (the old code created
     them on each open) but no user_version. It must be stamped, not rebuilt:
     no duplicate conversations, no lost rows."""
-    s = Store(tmp_path / "data.db")
-    await s.open()
-    await s.upsert_session(
-        session_id="s1", title="T", created_at="2026-01-01T00:00:00", src_lang="en", tgt_lang="zh",
-    )
-    await s.create_conversation(
-        conversation_id="c1", session_id="s1", title="first", created_at="2026-01-01T00:00:00",
-    )
-    await s.append_chat_message(
-        conversation_id="c1", role="user", content="hi", created_at="2026-01-01T00:00:01",
-    )
-    await s.close()
-    with sqlite3.connect(s.path) as c:
-        c.execute("PRAGMA user_version = 0")
-
-    s = Store(s.path)
+    s = Store(_patched_file(tmp_path / "data.db"))
     await s.open()
     try:
         convs = await s.list_conversations("s1")
@@ -155,6 +194,30 @@ async def test_pre_versioning_file_that_was_already_patched(tmp_path):
     finally:
         await s.close()
     assert _version(s.path) == SCHEMA_VERSION
+
+
+async def test_v1_file_sessions_come_up_ready(tmp_path):
+    """1 → 2 gives every existing session a lifecycle, and a finished one is
+    what every existing session is: ``ready``, never refined, no detail."""
+    s = Store(_patched_file(tmp_path / "data.db", version=1))
+    await s.open()
+    try:
+        (row,) = await s.list_sessions()
+        assert (row["status"], row["status_detail"], row["refined_at"]) == ("ready", None, None)
+        # And the new columns are live, not just present.
+        await s.set_session_status("s1", "failed", detail="interrupted")
+        assert (await s.get_session("s1"))["status_detail"] == "interrupted"
+    finally:
+        await s.close()
+    assert _version(s.path) == SCHEMA_VERSION
+    assert _shape(s.path) == _shape(await _fresh(tmp_path / "fresh.db"))
+
+
+async def _fresh(path: Path) -> Path:
+    s = Store(path)
+    await s.open()
+    await s.close()
+    return path
 
 
 async def test_a_copy_is_taken_before_migrating(tmp_path):
