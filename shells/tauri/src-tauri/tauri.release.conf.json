@@ -3,6 +3,9 @@
   "bundle": {
     "resources": {
       "../../../engine/dist/wrenote-server": "wrenote-server"
+    },
+    "macOS": {
+      "signingIdentity": "-"
     }
   }
 }

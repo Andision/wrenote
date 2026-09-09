@@ -75,8 +75,8 @@ models:
         filename: zipformer-zh-en-tokens.txt
         repo: csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
         path: tokens.txt
-        size: 75756
-        sha256: 59aba8873a2ed1e122c25fee421e25f283b63290efbde85c1f01a853d83cb6e6
+        size: 56317
+        sha256: a8e0e4ec53810e433789b54a5c0134a7eaa2ffca595a6334d54c00da858841d3
 
   - id: paraformer-zh-en-streaming
     kind: stt

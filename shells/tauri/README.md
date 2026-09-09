@@ -59,6 +59,35 @@ cd shells/tauri && npm run build    # = tauri build --config src-tauri/tauri.rel
 
 CI does both in `.github/workflows/build-tauri.yml`.
 
+## Testing downloaded macOS artifacts
+
+Download the DMG from `Wrenote-tauri-macos-arm64`, mount it and drag Wrenote
+into `/Applications`. Do not use a raw `.app` directory extracted from an old
+Actions artifact: artifact uploads lose executable permissions and symlinks.
+The workflow now uploads only the DMG and verifies the app signature first.
+
+The release config uses ad-hoc signing (`signingIdentity: "-"`). This preserves
+bundle integrity on Apple Silicon but does not establish a trusted developer
+identity or notarize the app. For a build you trust from this repository, try
+System Settings → Privacy & Security → Open Anyway after the first launch.
+If macOS instead reports “damaged”, you can remove quarantine from this one
+installed test app and try again:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Wrenote.app
+open /Applications/Wrenote.app
+```
+
+This is a local test workaround, not a distribution fix. If it still fails,
+collect `codesign --verify --deep --strict --verbose=2 /Applications/Wrenote.app`
+and the output of the executable named by `CFBundleExecutable` in its
+`Contents/Info.plist`. Do not disable Gatekeeper globally.
+
+Public distribution needs Developer ID Application signing and Apple
+notarization. Follow [Tauri's signing guide](https://v2.tauri.app/distribute/sign/macos/)
+when configuring the certificate and notarization credentials in CI; ad-hoc
+signing and the updater's minisign key are not substitutes for that process.
+
 ## Updates
 
 The engine finds out a newer release exists (`GET /v1/update`, reading

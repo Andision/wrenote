@@ -28,9 +28,9 @@ jobs:
           - os: macos-14 # Apple Silicon
             artifact: Wrenote-tauri-macos-arm64
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/metal
-            bundle_glob: |
-              shells/tauri/src-tauri/target/release/bundle/dmg/*.dmg
-              shells/tauri/src-tauri/target/release/bundle/macos/*.app
+            # Upload the DMG only: a raw .app loses executable permissions and
+            # symlinks when upload-artifact archives its individual files.
+            bundle_glob: shells/tauri/src-tauri/target/release/bundle/dmg/*.dmg
           - os: windows-latest
             artifact: Wrenote-tauri-windows-x64
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
@@ -67,13 +67,24 @@ jobs:
       - name: Build Tauri desktop app
         working-directory: shells/tauri
         env:
-          # No code signing in CI. macOS: Tauri skips signing without an
-          # identity (the .app runs locally; Gatekeeper needs a signed build
-          # for distribution). Windows: unsigned NSIS installer.
+          # macOS uses the release config's ad-hoc signature. This verifies
+          # bundle integrity, but is NOT Developer ID signing/notarization.
+          # Windows: unsigned NSIS installer.
           CI: "true"
         run: |
           npm install --no-audit --no-fund
           npm run build
+
+      - name: Verify macOS bundle signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="shells/tauri/src-tauri/target/release/bundle/macos/Wrenote.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          executable=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$app/Contents/Info.plist")
+          test -x "$app/Contents/MacOS/$executable"
+          test -x "$app/Contents/Resources/wrenote-server/wrenote-server"
 
       - uses: actions/upload-artifact@v4
         with:

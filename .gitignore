@@ -54,6 +54,8 @@ pnpm-debug.log*
 *.wav
 recordings/
 models/
+# Catalogue maintenance code is not downloaded model data.
+!packaging/models/
 
 # ---- Sample media (large; not redistributed) ----
 miscs/
