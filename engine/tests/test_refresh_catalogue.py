@@ -34,10 +34,12 @@ class RefreshCatalogueTests(unittest.TestCase):
             "https://huggingface.co/owner/model/resolve/revision/tokens.txt")
 
     def test_truncated_ordinary_file_is_rejected(self):
-        with patch.object(refresh, "fetch", return_value=b"short"):
-            with self.assertRaisesRegex(ValueError, "Unexpected file size"):
-                refresh.file_metadata("owner/model", "revision",
-                                      {"rfilename": "tokens.txt", "size": 100})
+        with (
+            patch.object(refresh, "fetch", return_value=b"short"),
+            self.assertRaisesRegex(ValueError, "Unexpected file size"),
+        ):
+            refresh.file_metadata("owner/model", "revision",
+                                  {"rfilename": "tokens.txt", "size": 100})
 
     def test_check_does_not_write_and_refresh_preserves_comments(self):
         original = '''# Keep this explanation.
