@@ -234,8 +234,14 @@ class TestReveal:
         r = client.post("/v1/reveal", json={"path": saved["path"]})
         assert r.status_code == 200 and r.json()["path"] == saved["path"]
         # A list, never a shell string: the path is user data and a session
-        # title can contain anything.
-        assert seen and saved["filename"] in " ".join(seen[0])
+        # title can contain anything. What is *in* the list is the platform's
+        # business — macOS and Windows can select the file, Linux can only
+        # open its folder — so the contract is that the argv points at one
+        # or the other, and nothing is passed through a shell.
+        assert seen, "nothing was spawned"
+        argv = seen[0]
+        assert all(isinstance(a, str) for a in argv)
+        assert any(saved["path"] in a or saved["dir"] in a for a in argv)
 
     def test_refuses_a_path_that_is_not_ours(self, client):
         """It hands a client-supplied path to the window server, so the set
