@@ -17,6 +17,8 @@ const MEASURE_EVERY_MS = 350;
 
 interface Marker {
   id: string;
+  /** Every segment id the card covers — a card merges a speaker's turn. */
+  ids: string[];
   /** Scroll offset (px) of the segment's card within the scroll container. */
   offsetTop: number;
   /** Session-relative start time (s) — shown in the hover tooltip. */
@@ -39,6 +41,10 @@ export function TimelineMinimap({ scrollRef, segments }: TimelineMinimapProps) {
   const [markers, setMarkers] = useState<Marker[]>([]);
   const [hoverY, setHoverY] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
+  // The rail's own height, in state rather than read off the ref at render
+  // time — the hover preview needs it to map a cursor y into scroll-space.
+  const [railHeight, setRailHeight] = useState(1);
+  const hasSegments = segments.length > 0;
 
   const playingId = useSessionStore((s) => s.playingSegmentId);
 
@@ -93,11 +99,13 @@ export function TimelineMinimap({ scrollRef, segments }: TimelineMinimapProps) {
       const cards = el.querySelectorAll<HTMLElement>("[data-segment-ids]");
       const out: Marker[] = [];
       cards.forEach((card) => {
-        const id = (card.dataset.segmentIds || "").split(" ")[0];
+        const ids = (card.dataset.segmentIds || "").split(" ").filter(Boolean);
+        const id = ids[0];
         if (!id) return;
         const seg = segMap.get(id);
         out.push({
           id,
+          ids,
           offsetTop: card.offsetTop,
           t0: seg?.startedAt ?? 0,
           color: seg?.speaker ? palette.get(seg.speaker) ?? null : null,
@@ -125,6 +133,16 @@ export function TimelineMinimap({ scrollRef, segments }: TimelineMinimapProps) {
       ro.disconnect();
     };
   }, [scrollRef, segMap, palette]);
+
+  // ResizeObserver reports the current size as soon as it starts observing,
+  // so the first callback seeds the height — no setState in the effect body.
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const ro = new ResizeObserver(() => setRailHeight(Math.max(1, rail.clientHeight)));
+    ro.observe(rail);
+    return () => ro.disconnect();
+  }, [hasSegments]);
 
   // Map a clientY on the rail to a scroll position (centered on the cursor).
   const scrollToClientY = useCallback(
@@ -164,23 +182,27 @@ export function TimelineMinimap({ scrollRef, segments }: TimelineMinimapProps) {
   const thumbTop = (scrollTop / scrollHeight) * 100;
   const thumbHeight = (clientHeight / scrollHeight) * 100;
 
-  // Currently-playing segment marker (playingId may be a merged-into id, so
-  // fall back to a direct DOM lookup if it's not a card's first id).
+  // Every id a card covers points at that card's offset: playingId may be a
+  // merged-into id, and looking it up here beats querying the DOM at render.
+  const offsetById = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const marker of markers) {
+      for (const id of marker.ids) m.set(id, marker.offsetTop);
+    }
+    return m;
+  }, [markers]);
+
+  // Currently-playing segment marker.
   const playPct = useMemo(() => {
     if (!playingId) return null;
-    const hit = markers.find((m) => m.id === playingId);
-    if (hit) return (hit.offsetTop / scrollHeight) * 100;
-    const el = scrollRef.current?.querySelector<HTMLElement>(
-      `[data-segment-ids~="${playingId}"]`,
-    );
-    return el ? (el.offsetTop / scrollHeight) * 100 : null;
-  }, [playingId, markers, scrollHeight, scrollRef]);
+    const offsetTop = offsetById.get(playingId);
+    return offsetTop == null ? null : (offsetTop / scrollHeight) * 100;
+  }, [playingId, offsetById, scrollHeight]);
 
   // The segment nearest the hovered position — drives the time + text preview.
   const hoverInfo = useMemo(() => {
-    const rail = railRef.current;
-    if (hoverY == null || !rail || markers.length === 0) return null;
-    const contentY = (hoverY / rail.clientHeight) * scrollHeight;
+    if (hoverY == null || markers.length === 0) return null;
+    const contentY = (hoverY / railHeight) * scrollHeight;
     let best = markers[0];
     let bestD = Infinity;
     for (const m of markers) {
@@ -196,9 +218,9 @@ export function TimelineMinimap({ scrollRef, segments }: TimelineMinimapProps) {
       text: seg?.origText ?? "",
       speaker: seg?.speaker && seg.speaker !== "unknown" ? seg.speaker : null,
     };
-  }, [hoverY, scrollHeight, markers, segMap]);
+  }, [hoverY, railHeight, scrollHeight, markers, segMap]);
 
-  if (segments.length === 0) return null;
+  if (!hasSegments) return null;
 
   return (
     // Hit area is wider than the visual rail so it's easy to grab; visuals

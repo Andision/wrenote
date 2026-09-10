@@ -562,15 +562,13 @@ function SpeakerChip({
   const setSpeakerColor = useSessionStore((s) => s.setSpeakerColor);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (editing) {
-      // Unknown chips start blank (type a fresh name); real chips pre-fill.
-      setDraft(isUnknown ? "" : name);
-      queueMicrotask(() => inputRef.current?.select());
-    }
-  }, [editing, name, isUnknown]);
+  // Seed the draft where the edit starts, not in an effect watching `editing`.
+  // Unknown chips start blank (type a fresh name); real chips pre-fill.
+  const startEditing = () => {
+    setDraft(isUnknown ? "" : name);
+    setEditing(true);
+  };
 
   const commit = async () => {
     const next = draft.trim();
@@ -601,7 +599,8 @@ function SpeakerChip({
     return (
       <span className="relative inline-flex items-center gap-1">
         <input
-          ref={inputRef}
+          autoFocus
+          onFocus={(e) => e.target.select()}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
@@ -655,7 +654,7 @@ function SpeakerChip({
 
   return (
     <button
-      onClick={() => setEditing(true)}
+      onClick={startEditing}
       data-tip={
         isUnknown
           ? t("transcript.speakerUnknown")

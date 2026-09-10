@@ -17,7 +17,7 @@ import { UpdateNotice } from "@/components/UpdateNotice";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { useMicrophone } from "@/hooks/useMicrophone";
-import { PlaybackProvider } from "@/hooks/playbackContext";
+import { PlaybackProvider } from "@/components/PlaybackProvider";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { initOverlayPublisher } from "@/lib/overlayBridge";
 import { useJobsStore } from "@/store/jobsStore";
@@ -25,8 +25,13 @@ import { useSessionStore } from "@/store/sessionStore";
 
 export default function App() {
   const { startSession, stopSession, pauseSession, resumeSession, feedAudio } = useWebSocket();
+  // The worklet fires onPcm ~10x a second and must not rebuild the audio
+  // graph when the socket hands us a new send function; the indirection is
+  // written after commit, never during render.
   const feedAudioRef = useRef(feedAudio);
-  feedAudioRef.current = feedAudio;
+  useEffect(() => {
+    feedAudioRef.current = feedAudio;
+  }, [feedAudio]);
 
   const onPcm = useCallback((chunk: ArrayBuffer) => {
     feedAudioRef.current(chunk);

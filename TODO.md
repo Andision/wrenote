@@ -46,20 +46,32 @@ The engine has 149 tests; `clients/web` has 10k lines of TypeScript and no test
 script at all. Business rules are leaking into the client (e.g. when the setup
 wizard may skip the runtime step) with nothing holding them.
 
-- [x] Vitest in `clients/web` — 48 tests: the message lookup, the code→words
-      renderers, `SetupGate`'s skip logic and `ModelPicker` with a mocked API
+- [x] Vitest in `clients/web` — 84 tests: the message lookup, the code→words
+      renderers, `SetupGate`'s skip logic, `ModelPicker` with a mocked API,
+      and the components the lint clean-up touched
 - [x] Locale key parity in CI (`npm run check:locales`, run before the SPA build)
-- [x] Lint in CI (`checks.yml`) — ruff clean; eslint baselined so new findings
-      fail (see below)
+- [x] Lint in CI (`checks.yml`) — ruff clean; eslint clean with no baseline
+      and `--max-warnings=0` (see below)
 - [x] A smoke test that boots the frozen engine and hits `/health` + `/v1/...`
       in the packaging workflows, so a broken bundle fails CI, not the user
-- [ ] **Work off `eslint-suppressions.json`** (15 files, 27 findings). These
-      predate the gate and are mostly React 19's stricter hook rules —
-      `react-hooks/refs` (reading a ref during render, 12×),
-      `set-state-in-effect` (5×), `react-refresh/only-export-components` (5×).
-      Each is a small refactor in a component this work didn't touch; doing
-      them blind, bundled into "add CI", is how a working app breaks. Take them
-      one component at a time, with a test.
+- [x] **`eslint-suppressions.json` is worked off and deleted** — all 27
+      findings, taken a component at a time; CI now lints with no baseline
+      and `--max-warnings=0`. What changed, and why each is a real fix and
+      not a rule silenced: refs written during render became refs written in
+      an effect (`App`) or plain closures (`GlossaryEditor`); the timeline
+      rail no longer reads the DOM from a `useMemo` — a card's every segment
+      id maps to its offset, and the rail's own height comes from a
+      ResizeObserver, so the play marker and the hover preview are pure
+      renders; state reset from an effect became state that cannot go stale
+      — `ChatBody` is keyed on the session and the upload dialog's body only
+      exists while it is open, so both reset by unmounting; the speaker chip
+      seeds its draft where the edit starts; `RecordingTimer` starts its
+      clock in an effect instead of calling `Date.now()` during render; the
+      speaker-meter rAF loop re-schedules itself by name; the two cva variant
+      tables and the language lists moved out of component files (Fast
+      Refresh), as did the playback context. Tests: `ThemeToggle` (the mount
+      gate it no longer needs), `GlossaryEditor` (blur saves what was typed),
+      `UploadDialog` (each open starts clean).
 - [ ] Component tests for the parts with real interaction left: `ComputePanel`
       (install → select → restart-required), `Transcript` editing, `ChatPanel`
 

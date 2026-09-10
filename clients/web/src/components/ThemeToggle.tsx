@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -10,20 +9,14 @@ const ORDER = ["light", "dark", "system"] as const;
 type Mode = (typeof ORDER)[number];
 
 /**
- * Cycles Light → Dark → System (follow OS). Renders nothing on first paint
- * to avoid the server-vs-client hydration mismatch that next-themes
- * documents — once mounted, swaps the icon with a small motion fade.
+ * Cycles Light → Dark → System (follow OS). next-themes seeds `theme` from
+ * localStorage in a state initialiser, so the first client render already
+ * has the right value — no mount gate needed in a client-only app. The icon
+ * swap is a small motion fade.
  */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const t = useT();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  if (!mounted) {
-    return <Button variant="ghost" size="icon" className="size-9" aria-hidden />;
-  }
-
   const current: Mode = (ORDER as readonly string[]).includes(theme ?? "")
     ? (theme as Mode)
     : "system";

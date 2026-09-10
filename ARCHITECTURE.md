@@ -432,7 +432,7 @@ the secondaries as chips under the language strip.
 
 Everything that can fail without a Mac, a Windows box or a 40-minute compile
 runs on every push: engine lint + 248 tests + the API-contract drift check, and
-for the client types, lint, locale parity, 55 tests and the build. The
+for the client types, lint, locale parity, 84 tests and the build. The
 platform-specific packaging workflows stay slow and separate.
 
 * **The frozen engine is smoke-tested** in `.github/actions/build-engine`: a
@@ -442,10 +442,10 @@ platform-specific packaging workflows stay slow and separate.
   `/health`, `/v1/models/status`, `/v1/compute/status` and the SPA at `/` —
   between them those touch the config, the catalogue, the hardware probe and
   the bundled static files.
-* **`eslint-suppressions.json` baselines** the client findings that predate the
-  gate (React 19's new hook rules, in components this work didn't touch).
-  Anything new fails; the file only shrinks. It is a debt list, not an
-  exemption — `TODO.md` tracks it.
+* **The client lints clean with no baseline** (`--max-warnings=0`). The 27
+  findings that predated the gate — React 19's hook rules, mostly refs read
+  during render and state reset from an effect — were worked off component by
+  component, and `eslint-suppressions.json` is gone. A new finding fails CI.
 * **Every manifest agrees on the version** (`packaging/release/version.py
   --check`), and a release build also checks its tag against them before
   spending twenty minutes compiling.

@@ -44,10 +44,12 @@ export function useMicrophone({ onPcm }: UseMicrophoneOptions) {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ audio: baseAudio });
         } catch (e2) {
-          throw new Error(`Microphone unavailable: ${(e2 as Error).message}`);
+          throw new Error(`Microphone unavailable: ${(e2 as Error).message}`, { cause: e2 });
         }
       } else {
-        throw new Error(`Microphone permission denied or unavailable: ${(e as Error).message}`);
+        throw new Error(`Microphone permission denied or unavailable: ${(e as Error).message}`, {
+          cause: e,
+        });
       }
     }
     streamRef.current = stream;

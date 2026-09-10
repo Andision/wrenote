@@ -2,11 +2,8 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Activity, ArrowRight, Loader2, Mic, Monitor, RefreshCw, ShieldCheck, UploadCloud, Volume2 } from "lucide-react";
 
-import {
-  LanguageSelect,
-  SOURCE_LANGUAGES,
-  TARGET_LANGUAGES,
-} from "@/components/LanguageSelect";
+import { LanguageSelect } from "@/components/LanguageSelect";
+import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@/lib/languages";
 import { defaultSecondaryLangs, toggleSecondary } from "@/lib/langPolicy";
 import { UploadDialog } from "@/components/UploadDialog";
 import { Button } from "@/components/ui/button";

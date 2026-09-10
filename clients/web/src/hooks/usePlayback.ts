@@ -148,7 +148,9 @@ export function usePlayback(): UsePlayback {
 
   // Per-frame RMS sampler for the speaker meter. Started on `play`,
   // stopped on `pause` so it doesn't burn cycles when silent.
-  const sampleLevel = useCallback(() => {
+  // A named function expression: the rAF loop re-schedules itself by name,
+  // which is in scope inside its own body.
+  const sampleLevel = useCallback(function step() {
     const a = analyserRef.current;
     if (!a) {
       rafRef.current = null;
@@ -159,7 +161,7 @@ export function usePlayback(): UsePlayback {
     let sum = 0;
     for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
     setPlaybackLevel(Math.sqrt(sum / buf.length));
-    rafRef.current = requestAnimationFrame(sampleLevel);
+    rafRef.current = requestAnimationFrame(step);
   }, [setPlaybackLevel]);
 
   const ensureAudio = useCallback((): HTMLAudioElement | null => {
@@ -264,7 +266,7 @@ export function usePlayback(): UsePlayback {
       audioRef.current = a;
     }
     return audioRef.current;
-  }, [sessionId, setPlayback, setPlaybackLevel, sampleLevel]);
+  }, [sessionId, setPlayback, setPlaybackLevel, setPlaybackTime, sampleLevel]);
 
   const play = useCallback(
     (segmentId: string) => {

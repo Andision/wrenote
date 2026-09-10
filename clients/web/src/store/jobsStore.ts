@@ -202,7 +202,8 @@ export const useJobsStore = create<JobsState>((set, get) => {
     dismiss: (jobId) => {
       set((s) => {
         if (!s.jobs[jobId]) return {};
-        const { [jobId]: _, ...rest } = s.jobs;
+        const rest = { ...s.jobs };
+        delete rest[jobId];
         return {
           jobs: rest,
           order: s.order.filter((id) => id !== jobId),

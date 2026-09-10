@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 
 import { ExportMenu } from "@/components/ExportMenu";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
 import { useActiveSessionMeta, useActiveSessionStatus } from "@/hooks/useSessionStatus";
 import { useRefineAction } from "@/hooks/useRefineAction";
@@ -479,7 +480,9 @@ function ProcessingPill() {
 function RecordingTimer({ paused }: { paused: boolean }) {
   const [elapsedMs, setElapsedMs] = useState(0);
   // wall-clock start, minus total paused intervals, gives the live count.
-  const startRef = useRef<number>(Date.now());
+  // Date.now() is impure, so the clock is started by the mount effect below
+  // rather than read while rendering.
+  const startRef = useRef<number>(0);
   const pausedTotalRef = useRef<number>(0);
   const pausedAtRef = useRef<number | null>(null);
 
@@ -497,7 +500,6 @@ function RecordingTimer({ paused }: { paused: boolean }) {
     startRef.current = Date.now();
     pausedTotalRef.current = 0;
     pausedAtRef.current = null;
-    setElapsedMs(0);
     const id = window.setInterval(() => {
       const now = Date.now();
       const inPause =

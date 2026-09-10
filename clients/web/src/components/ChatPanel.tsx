@@ -54,7 +54,13 @@ export function ChatPanel() {
           transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
           className="flex shrink-0 flex-col overflow-hidden border-l bg-card"
         >
-          <ChatBody sessionId={sessionId} segmentCount={segmentCount} />
+          {/* Keyed on the session: switching sessions remounts the body, so
+              every piece of thread state resets without an effect doing it. */}
+          <ChatBody
+            key={sessionId ?? "none"}
+            sessionId={sessionId}
+            segmentCount={segmentCount}
+          />
         </motion.aside>
       )}
     </AnimatePresence>
@@ -104,28 +110,21 @@ function ChatBody({
     [],
   );
 
-  // (Re)load the thread list when the session changes, and open the most
-  // recent thread. A session with no threads starts on a blank "New chat".
+  // Load the thread list and open the most recent one. A session with no
+  // threads starts on a blank "New chat"; a session change remounts us.
   useEffect(() => {
-    abortRef.current?.abort();
-    if (!sessionId) {
-      setConversations([]);
-      setCurrentId(null);
-      setMessages([]);
-      return;
-    }
+    if (!sessionId) return;
     let cancelled = false;
-    setShowList(false);
     void listConversations(sessionId).then((list) => {
       if (cancelled) return;
       setConversations(list);
       const first = list[0]?.id ?? null;
       setCurrentId(first);
       if (first) void loadMessages(sessionId, first);
-      else setMessages([]);
     });
     return () => {
       cancelled = true;
+      abortRef.current?.abort();
     };
   }, [sessionId, loadMessages]);
 

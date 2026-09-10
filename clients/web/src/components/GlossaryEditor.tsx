@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { type GlossaryEntry, getGlossary, saveGlossary } from "@/lib/glossary";
@@ -14,9 +14,6 @@ const EMPTY: GlossaryEntry = { term: "", translation: "", note: "" };
 export function GlossaryEditor() {
   const [rows, setRows] = useState<GlossaryEntry[]>([]);
   const t = useT();
-  const rowsRef = useRef(rows);
-  rowsRef.current = rows;
-
   useEffect(() => {
     void getGlossary().then(setRows);
   }, []);
@@ -58,7 +55,7 @@ export function GlossaryEditor() {
               value={row.term}
               placeholder={t("glossary.termPlaceholder")}
               onChange={(e) => update(i, { term: e.target.value })}
-              onBlur={() => persist(rowsRef.current)}
+              onBlur={() => persist(rows)}
               className={inputCls}
             />
             <span className="text-muted-foreground/50">→</span>
@@ -66,7 +63,7 @@ export function GlossaryEditor() {
               value={row.translation}
               placeholder={t("glossary.translationPlaceholder")}
               onChange={(e) => update(i, { translation: e.target.value })}
-              onBlur={() => persist(rowsRef.current)}
+              onBlur={() => persist(rows)}
               className={inputCls}
             />
             <button

@@ -85,9 +85,9 @@ jobs:
 
       - name: Lint
         working-directory: clients/web
-        # eslint-suppressions.json baselines the findings that predate this
-        # gate; anything new fails. See TODO.md for what's left in it.
-        run: npx eslint src scripts
+        # No baseline: the suppression list is worked off, so any finding
+        # fails. --max-warnings=0 keeps warnings from accumulating into one.
+        run: npx eslint src scripts --max-warnings=0
 
       - name: Locales
         working-directory: clients/web
