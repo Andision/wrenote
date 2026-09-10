@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import {
   type ExportContent,
   type ExportFormat,
-  downloadText,
   fetchExport,
+  revealSaved,
+  saveExport,
 } from "@/lib/export";
 import { getMinutes } from "@/lib/minutes";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,6 @@ import { useT } from "@/i18n";
 
 interface ExportMenuProps {
   sessionId: string;
-  title: string;
   /** Whether the session has any translated segments — gates the bilingual options. */
   hasTranslations: boolean;
 }
@@ -33,7 +33,7 @@ const FORMATS: { fmt: ExportFormat; key: string }[] = [
  * (original / translation / both) then copies or downloads in a chosen format.
  * The backend renders the text; we just copy/save it.
  */
-export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProps) {
+export function ExportMenu({ sessionId, hasTranslations }: ExportMenuProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState<ExportContent>(hasTranslations ? "both" : "original");
@@ -95,11 +95,16 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
       toast.success(t("export.copied"));
     });
 
-  const onDownload = (fmt: ExportFormat) =>
+  const onSave = (fmt: ExportFormat) =>
     run(async () => {
-      const text = await fetchExport(sessionId, fmt, content, minutesLang);
-      downloadText(title || sessionId, fmt, text);
+      const saved = await saveExport(sessionId, fmt, content, minutesLang);
       setOpen(false);
+      // Name the file and where it went. Silence was the whole complaint:
+      // the copy action had a toast, the save had nothing.
+      toast.success(t("export.saved", { filename: saved.filename }), {
+        description: saved.dir,
+        action: { label: t("export.showFolder"), onClick: () => revealSaved(saved) },
+      });
     });
 
   const CONTENTS: { value: ExportContent; label: string; disabled?: boolean }[] = [
@@ -115,6 +120,7 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
         size="icon"
         onClick={() => setOpen((v) => !v)}
         data-tip={t("export.tooltip")}
+        aria-label={t("export.tooltip")}
         aria-haspopup="menu"
         aria-expanded={open}
         className={open ? "size-9 bg-accent text-foreground" : "size-9"}
@@ -184,7 +190,7 @@ export function ExportMenu({ sessionId, title, hasTranslations }: ExportMenuProp
               type="button"
               role="menuitem"
               disabled={busy}
-              onClick={() => onDownload(f.fmt)}
+              onClick={() => onSave(f.fmt)}
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-accent disabled:opacity-50"
             >
               <Download className="size-4 text-muted-foreground" />

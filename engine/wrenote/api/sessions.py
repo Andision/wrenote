@@ -1,19 +1,22 @@
 """Session CRUD endpoints (SQLite-backed)."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 from ..core import export as export_mod
 from ..core import minutes as minutes_mod
 from ..core.jobs import JobRegistry
 from ..core.recording import resolve_recording_path
 from ..core.store import Store
-from ..deps import get_jobs, get_recordings_dir, get_store
+from ..deps import get_exports_dir, get_jobs, get_recordings_dir, get_store
 from ._common import SAFE_SESSION_ID, safe_session_id
 
 log = logging.getLogger(__name__)
@@ -85,13 +88,22 @@ async def export_session(
     404 when the session has none in that language). Returned as text so
     the frontend can copy it or save it client-side with a chosen filename."""
     sid = safe_session_id(session_id)
+    text, mime, _ext = await _render_export(sid, fmt, content, minutes, store)
+    return PlainTextResponse(text, media_type=mime)
+
+
+async def _render_export(
+    sid: str, fmt: str, content: str, minutes: str, store: Store
+) -> tuple[str, str, str]:
+    """The text, its mime type and its extension. Shared by the GET (which
+    hands it to the client) and the save (which writes it)."""
     if content not in ("original", "translation", "both"):
         raise HTTPException(status_code=400, detail="invalid content")
     sess = await store.get_session(sid)
     if sess is None:
         raise HTTPException(status_code=404, detail="session not found")
     try:
-        text, mime, _ext = export_mod.export_transcript(sess, fmt, content)
+        text, mime, ext = export_mod.export_transcript(sess, fmt, content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     if minutes:
@@ -102,7 +114,70 @@ async def export_session(
             raise HTTPException(status_code=404, detail="minutes not found")
         doc = minutes_mod.row_to_public(row, "")["content"]
         text = export_mod.with_minutes(text, minutes_mod.to_markdown(doc, minutes), fmt)
-    return PlainTextResponse(text, media_type=mime)
+    return text, mime, ext
+
+
+class SaveExportRequest(BaseModel):
+    """Which rendering to write, and — for the markdown/text formats — which
+    language's minutes to put in front of it."""
+
+    fmt: str = "md"
+    content: str = "both"
+    minutes: str = ""
+
+
+@router.post("/sessions/{session_id}/export/save")
+async def save_export(
+    session_id: str,
+    body: SaveExportRequest,
+    store: Store = Depends(get_store),
+    exports_dir: Path = Depends(get_exports_dir),
+) -> dict[str, Any]:
+    """Write the export to ``data.exports_dir`` and say where it went.
+
+    The client used to save it with a blob download, which in a WebView
+    lands somewhere the app can neither choose nor name — so the user got a
+    file with no idea whether, or where. The engine is local by construction,
+    so it can just write the file and answer with the absolute path; the
+    directory is a config key, which is the "choose where" half.
+    """
+    sid = safe_session_id(session_id)
+    text, _mime, ext = await _render_export(sid, body.fmt, body.content, body.minutes, store)
+    sess = await store.get_session(sid)
+    assert sess is not None  # _render_export 404s otherwise
+    base = safe_filename(str(sess.get("title") or "") or sid)
+    path = await asyncio.to_thread(write_unique, exports_dir, base, ext, text)
+    log.info("saved export for %s to %s", sid, path)
+    return {
+        "path": str(path),
+        "filename": path.name,
+        "dir": str(exports_dir),
+        "bytes": len(text.encode("utf-8")),
+    }
+
+
+#: Characters no mainstream filesystem takes, plus the ones that make a name
+#: awkward to type back. Control characters go too — a session title is user
+#: text and can contain anything.
+_UNSAFE_NAME = re.compile(r'[/\\?%*:|"<>\x00-\x1f]')
+
+
+def safe_filename(title: str) -> str:
+    name = _UNSAFE_NAME.sub("_", title).strip(" .")
+    return (name[:80] or "transcript")
+
+
+def write_unique(directory: Path, base: str, ext: str, text: str) -> Path:
+    """``base.ext``, or ``base (2).ext`` and so on. Exporting twice should
+    leave you with both files, not silently replace the first."""
+    directory.mkdir(parents=True, exist_ok=True)
+    candidate = directory / f"{base}.{ext}"
+    n = 2
+    while candidate.exists():
+        candidate = directory / f"{base} ({n}).{ext}"
+        n += 1
+    candidate.write_text(text, encoding="utf-8")
+    return candidate
 
 
 @router.patch("/sessions/{session_id}")

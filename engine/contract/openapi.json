@@ -104,6 +104,28 @@
         "title": "InstallRequest",
         "type": "object"
       },
+      "SaveExportRequest": {
+        "description": "Which rendering to write, and — for the markdown/text formats — which\nlanguage's minutes to put in front of it.",
+        "properties": {
+          "content": {
+            "default": "both",
+            "title": "Content",
+            "type": "string"
+          },
+          "fmt": {
+            "default": "md",
+            "title": "Fmt",
+            "type": "string"
+          },
+          "minutes": {
+            "default": "",
+            "title": "Minutes",
+            "type": "string"
+          }
+        },
+        "title": "SaveExportRequest",
+        "type": "object"
+      },
       "UpdateSettings": {
         "properties": {
           "check": {
@@ -1632,6 +1654,58 @@
         "summary": "Export Session"
       }
     },
+    "/v1/sessions/{session_id}/export/save": {
+      "post": {
+        "description": "Write the export to ``data.exports_dir`` and say where it went.\n\nThe client used to save it with a blob download, which in a WebView\nlands somewhere the app can neither choose nor name — so the user got a\nfile with no idea whether, or where. The engine is local by construction,\nso it can just write the file and answer with the absolute path; the\ndirectory is a config key, which is the \"choose where\" half.",
+        "operationId": "save_export_v1_sessions__session_id__export_save_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Export V1 Sessions  Session Id  Export Save Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Export"
+      }
+    },
     "/v1/sessions/{session_id}/group": {
       "patch": {
         "description": "Body: ``{\"groupId\": \"<id>\"|null}``. Move a session into a group (or out\nof all groups when null).",
@@ -1855,6 +1929,57 @@
           }
         },
         "summary": "Minutes Markdown"
+      }
+    },
+    "/v1/sessions/{session_id}/minutes/save": {
+      "post": {
+        "description": "Write the minutes to ``data.exports_dir`` and say where they went.\n\nSame reasoning as the transcript's save (see api/sessions.save_export):\na blob download in a WebView is a file the app can neither place nor\nname back to the user.",
+        "operationId": "minutes_save_v1_sessions__session_id__minutes_save_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "title": "Lang",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Minutes Save V1 Sessions  Session Id  Minutes Save Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Minutes Save"
       }
     },
     "/v1/sessions/{session_id}/refine": {

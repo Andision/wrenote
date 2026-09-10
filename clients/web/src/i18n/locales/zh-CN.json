@@ -22,8 +22,14 @@
     "status": {
       "processing": "处理中",
       "processingHint": "正在用完整录音重新转写；完成后会替换当前文本。",
+      "pending": "排队中",
+      "pendingHint": "正在等另一段录音转写完成。",
       "failed": "处理失败",
       "failedHint": "录制后的整理未能完成。录制时的文本仍然保留 — 打开会话可以重试。"
+    },
+    "pending": {
+      "title": "已排队等待转写",
+      "body": "一次只转写一段录音；当前这段会在前一段完成后开始。"
     },
     "processing": {
       "title": "正在用完整录音重新转写…",
@@ -198,6 +204,8 @@
     "translation": "译文",
     "both": "双语",
     "copied": "转写已复制",
+    "saved": "已保存 {filename}",
+    "showFolder": "打开所在文件夹",
     "failed": "导出失败",
     "withMinutes": "附上会议纪要（{lang}）"
   },
@@ -233,8 +241,15 @@
     "starting": "开始中…",
     "complete": "已完成",
     "failed": "失败",
-    "showLog": "展开日志",
-    "hideLog": "收起日志"
+    "openSession": "跳转到该会话"
+  },
+  "tasks": {
+    "tooltip": "后台任务",
+    "title": "任务",
+    "running_other": "{count} 个进行中",
+    "idle": "没有进行中的任务",
+    "clear": "清除已完成",
+    "remove": "从列表移除"
   },
   "overlay": {
     "compact": "精简条",

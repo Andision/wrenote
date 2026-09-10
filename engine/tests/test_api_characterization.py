@@ -63,6 +63,8 @@ EXPECTED_ROUTES = {
     ("POST", "/v1/sessions/{session_id}/conversations"),
     ("POST", "/v1/sessions/{session_id}/conversations/{conversation_id}/chat"),
     ("POST", "/v1/sessions/{session_id}/diarize"),
+    ("POST", "/v1/sessions/{session_id}/export/save"),
+    ("POST", "/v1/sessions/{session_id}/minutes/save"),
     ("POST", "/v1/sessions/{session_id}/refine"),
     ("GET", "/v1/sessions/{session_id}/minutes"),
     ("POST", "/v1/sessions/{session_id}/minutes"),

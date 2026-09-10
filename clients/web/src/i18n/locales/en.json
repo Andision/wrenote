@@ -22,8 +22,14 @@
     "status": {
       "processing": "Processing",
       "processingHint": "The recording is being transcribed again as a whole; the transcript will be replaced when it finishes.",
+      "pending": "Queued",
+      "pendingHint": "Waiting for another recording to finish being transcribed.",
       "failed": "Failed",
       "failedHint": "The post-recording pass failed. The transcript as recorded is still here — open the session to retry."
+    },
+    "pending": {
+      "title": "Queued for transcription",
+      "body": "One recording is transcribed at a time; this one starts when the current pass finishes."
     },
     "processing": {
       "title": "Transcribing the full recording…",
@@ -198,6 +204,8 @@
     "translation": "Translation",
     "both": "Both",
     "copied": "Transcript copied",
+    "saved": "Saved {filename}",
+    "showFolder": "Show folder",
     "failed": "Export failed",
     "withMinutes": "Include minutes ({lang})"
   },
@@ -233,8 +241,16 @@
     "starting": "Starting…",
     "complete": "Complete",
     "failed": "Failed",
-    "showLog": "Show log",
-    "hideLog": "Hide log"
+    "openSession": "Go to this session"
+  },
+  "tasks": {
+    "tooltip": "Background tasks",
+    "title": "Tasks",
+    "running_one": "{count} running",
+    "running_other": "{count} running",
+    "idle": "No tasks running",
+    "clear": "Clear finished",
+    "remove": "Remove from the list"
   },
   "overlay": {
     "compact": "Compact bar",

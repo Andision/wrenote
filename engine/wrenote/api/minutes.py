@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -12,8 +13,9 @@ from fastapi.responses import PlainTextResponse
 from ..core import minutes as minutes_mod
 from ..core.jobs import JobRegistry
 from ..core.store import Store
-from ..deps import get_jobs, get_models, get_store
+from ..deps import get_exports_dir, get_jobs, get_models, get_store
 from ..model_manager import ModelManager
+from . import sessions as sessions_api
 from ._common import safe_session_id
 
 log = logging.getLogger(__name__)
@@ -129,6 +131,43 @@ async def minutes_markdown(
     doc = minutes_mod.row_to_public(row, "")["content"]
     text = minutes_mod.to_markdown(doc, lang, title=session.get("title") or "Untitled session")
     return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")
+
+
+@router.post("/sessions/{session_id}/minutes/save")
+async def minutes_save(
+    session_id: str,
+    lang: str,
+    store: Store = Depends(get_store),
+    exports_dir: Path = Depends(get_exports_dir),
+) -> dict[str, Any]:
+    """Write the minutes to ``data.exports_dir`` and say where they went.
+
+    Same reasoning as the transcript's save (see api/sessions.save_export):
+    a blob download in a WebView is a file the app can neither place nor
+    name back to the user.
+    """
+    sid = safe_session_id(session_id)
+    lang = _lang(lang, "")
+    session = await store.get_session(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    row = next((r for r in await store.list_minutes(sid) if r["lang"] == lang), None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="minutes not found")
+    doc = minutes_mod.row_to_public(row, "")["content"]
+    title = session.get("title") or "Untitled session"
+    text = minutes_mod.to_markdown(doc, lang, title=title)
+    base = f"{sessions_api.safe_filename(str(title))} - minutes {lang}"
+    path = await asyncio.to_thread(
+        sessions_api.write_unique, exports_dir, base, "md", text
+    )
+    log.info("saved minutes for %s (%s) to %s", sid, lang, path)
+    return {
+        "path": str(path),
+        "filename": path.name,
+        "dir": str(exports_dir),
+        "bytes": len(text.encode("utf-8")),
+    }
 
 
 _background: set[asyncio.Task[None]] = set()

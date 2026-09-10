@@ -120,3 +120,89 @@ def test_export_happy_path_through_http(client):
     md = client.get("/v1/sessions/s1/export?fmt=md&content=original")
     assert md.status_code == 200
     assert md.text.startswith("# Demo")
+
+
+# ---------- saving, rather than handing the client a blob ----------------
+
+
+def _seed(client, sid: str = "s1", title: str = "Demo") -> None:
+    import asyncio
+    from pathlib import Path
+
+    import wrenote.core.store as store_mod
+
+    async def seed():
+        s = store_mod.Store(Path(client.app.state.config.data.db_path))
+        await s.open()
+        await s.upsert_session(
+            session_id=sid, title=title, created_at="2026-06-03T09:00:00",
+            src_lang="en", tgt_lang="zh",
+        )
+        await s.upsert_segment_orig(
+            session_id=sid, segment_id="a", ord_=0, started_at=1.0, ended_at=3.0,
+            orig_text="Hello world", orig_status="final", orig_lang="en",
+        )
+        await s.close()
+
+    asyncio.run(seed())
+
+
+class TestSave:
+    """The client used to save an export with a blob download, which in a
+    WebView lands somewhere it can neither choose nor name — so the user got a
+    file and no idea whether, or where. The engine is local, so it writes the
+    file and answers with the path."""
+
+    def test_writes_the_file_and_answers_with_the_path(self, client):
+        from pathlib import Path
+
+        _seed(client)
+        r = client.post("/v1/sessions/s1/export/save", json={"fmt": "md", "content": "original"})
+        assert r.status_code == 200
+        body = r.json()
+        path = Path(body["path"])
+        assert path.is_file() and path.read_text(encoding="utf-8").startswith("# Demo")
+        assert body["filename"] == "Demo.md"
+        assert body["dir"] == client.app.state.config.data.exports_dir
+        assert body["bytes"] == len(path.read_bytes())
+
+    def test_saving_twice_keeps_both(self, client):
+        _seed(client)
+        first = client.post("/v1/sessions/s1/export/save", json={"fmt": "txt"}).json()
+        second = client.post("/v1/sessions/s1/export/save", json={"fmt": "txt"}).json()
+        assert first["filename"] == "Demo.txt"
+        assert second["filename"] == "Demo (2).txt"
+
+    def test_a_title_that_is_not_a_filename(self, client):
+        """Session titles are free text — a slash in one must not write
+        outside the exports directory."""
+        from pathlib import Path
+
+        _seed(client, title="../../etc/passwd: notes")
+        body = client.post("/v1/sessions/s1/export/save", json={"fmt": "txt"}).json()
+        path = Path(body["path"])
+        assert path.parent == Path(client.app.state.config.data.exports_dir)
+        assert "/" not in path.name and ":" not in path.name
+
+    def test_an_untitled_session_still_gets_a_name(self, client):
+        _seed(client, title="")
+        body = client.post("/v1/sessions/s1/export/save", json={"fmt": "txt"}).json()
+        # Falls back to the session id, not to an empty name.
+        assert body["filename"] == "s1.txt"
+
+    def test_the_same_guards_as_the_GET(self, client):
+        assert client.post("/v1/sessions/nope/export/save", json={"fmt": "md"}).status_code == 404
+        assert client.post(
+            "/v1/sessions/any/export/save", json={"content": "bogus"}
+        ).status_code == 400
+        _seed(client)
+        assert client.post(
+            "/v1/sessions/s1/export/save", json={"fmt": "srt", "minutes": "zh"}
+        ).status_code == 400
+
+    def test_the_directory_is_a_config_key(self, client):
+        assert client.app.state.config.data.exports_dir.endswith("exports")
+        assert (
+            client.get("/v1/info").json()["paths"]["exports_dir"]
+            == client.app.state.config.data.exports_dir
+        )

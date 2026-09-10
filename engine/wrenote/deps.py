@@ -33,6 +33,11 @@ def get_recordings_dir(request: Request) -> Path:
     return Path(request.app.state.config.data.recordings_dir)
 
 
+def get_exports_dir(request: Request) -> Path:
+    """Where a saved transcript goes (``data.exports_dir``, resolved)."""
+    return Path(request.app.state.config.data.exports_dir)
+
+
 def get_jobs(request: Request) -> JobRegistry:
     return request.app.state.jobs
 

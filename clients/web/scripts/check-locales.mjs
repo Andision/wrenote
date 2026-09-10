@@ -41,6 +41,8 @@ const DYNAMIC_PREFIXES = [
   // pinned key-by-key in src/i18n/runtimeKeys.test.ts so a missing one fails.
   "setup.feature.",
   "models.tier.",
+  "session.status.",  // session.status.${status} (TopBar's pill, the sidebar badge)
+  "topbar.refine.jobLabel", // lib/jobText.ts: the key comes from a per-kind table
 ];
 
 // Test files are skipped: their `t("plain")` fixtures are made-up keys, not

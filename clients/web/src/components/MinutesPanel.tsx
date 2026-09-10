@@ -22,7 +22,7 @@ import {
   type Minutes,
   type MinutesState,
 } from "@/lib/minutes";
-import { downloadText } from "@/lib/export";
+import { revealSaved, saveMinutes } from "@/lib/export";
 import { cn } from "@/lib/utils";
 import { useJobsStore } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
@@ -68,7 +68,6 @@ function languagesFor(src: string, tgt: string, existing: Minutes[]): string[] {
 export function MinutesBody({ sessionId }: { sessionId: string | null }) {
   const t = useT();
   const toggleMinutes = useSessionStore((s) => s.toggleMinutes);
-  const title = useSessionStore((s) => s.sessionTitle);
   const segmentCount = useSessionStore((s) => s.segmentOrder.length);
   const connection = useSessionStore((s) => s.connection);
   const meta = useSessionStore((s) => s.pastSessions.find((p) => p.id === s.sessionId));
@@ -162,8 +161,11 @@ export function MinutesBody({ sessionId }: { sessionId: string | null }) {
   const download = async () => {
     if (!sessionId || !current) return;
     try {
-      const text = await fetchMinutesMarkdown(sessionId, current.lang);
-      downloadText(`${title || sessionId} - ${t("minutes.title")}`, "md", text);
+      const saved = await saveMinutes(sessionId, current.lang);
+      toast.success(t("export.saved", { filename: saved.filename }), {
+        description: saved.dir,
+        action: { label: t("export.showFolder"), onClick: () => revealSaved(saved) },
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     }
