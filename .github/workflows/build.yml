@@ -3,7 +3,9 @@ name: build (electron)
 on:
   workflow_dispatch:
   push:
-    branches: ["init-codebase"]
+    # No branch trigger: Tauri is the shell being validated (build-tauri.yml
+    # covers master) and this one is on the way out — see "Retire the dead
+    # shells" in TODO.md. A release tag still produces it while it exists.
     tags: ["v*"]
 
 jobs:

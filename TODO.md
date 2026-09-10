@@ -510,6 +510,7 @@ Measurements for everything in this section: `docs/plans/TRANSCRIPTION_QUALITY.m
       blue-violet waveform. Brand is warm brown, `#9e6f45` (`index.css`
       `--color-brand-600`). One source SVG, then `npx tauri icon` for the
       shell set and the same file as the favicon.
-- [ ] After merging: drop the temporary branch `push:` triggers from
-      `build-tauri.yml` and `build-runtimes.yml` (both marked "Remove once
-      merged")
+- [x] The temporary branch `push:` triggers are gone: `build-tauri.yml`
+      builds on `master` and on a `v*` tag, and `build-runtimes.yml` is
+      dispatch-only now that living on the default branch is what keeps it
+      dispatchable.
