@@ -1,0 +1,52 @@
+# What Wrenote is built on, for Settings → About.
+#
+# The Python dependencies are NOT listed here: `api/about.py` reads them from
+# the installed distributions at request time, so they cannot go stale or be
+# wrong. This file is the rest — the native libraries whose licence is not in
+# any Python metadata, the front-end packages, and the models, each with the
+# upstream page where the licence actually lives.
+#
+# Adding something the app ships: add it here. A licence stated from memory is
+# worse than none, so if you are not sure, put the URL and leave `license`
+# empty — the client shows the link either way.
+
+native:
+  - name: whisper.cpp
+    license: MIT
+    url: https://github.com/ggml-org/whisper.cpp
+    note: speech recognition
+  - name: llama.cpp
+    license: MIT
+    url: https://github.com/ggml-org/llama.cpp
+    note: translation and chat
+  - name: sherpa-onnx
+    license: Apache-2.0
+    url: https://github.com/k2-fsa/sherpa-onnx
+    note: streaming speech recognition
+  - name: Silero VAD
+    license: MIT
+    url: https://github.com/snakers4/silero-vad
+    note: voice activity detection
+  - name: FFmpeg
+    license: LGPL-2.1-or-later
+    url: https://ffmpeg.org/legal.html
+    note: audio and video conversion
+  - name: Tauri
+    license: MIT OR Apache-2.0
+    url: https://github.com/tauri-apps/tauri
+    note: the desktop shell
+
+web:
+  - { name: React, license: MIT, url: https://github.com/facebook/react }
+  - { name: Base UI, license: MIT, url: https://github.com/mui/base-ui }
+  - { name: Tailwind CSS, license: MIT, url: https://github.com/tailwindlabs/tailwindcss }
+  - { name: Motion, license: MIT, url: https://github.com/motiondivision/motion }
+  - { name: Zustand, license: MIT, url: https://github.com/pmndrs/zustand }
+  - { name: Lucide, license: ISC, url: https://github.com/lucide-icons/lucide }
+  - { name: Sonner, license: MIT, url: https://github.com/emilkowalski/sonner }
+  - { name: next-themes, license: MIT, url: https://github.com/pacocoursey/next-themes }
+  - { name: class-variance-authority, license: Apache-2.0, url: https://github.com/joe-bell/cva }
+  - { name: clsx, license: MIT, url: https://github.com/lukeed/clsx }
+  - { name: tailwind-merge, license: MIT, url: https://github.com/dcastil/tailwind-merge }
+  - { name: tw-animate-css, license: MIT, url: https://github.com/Wombosvideo/tw-animate-css }
+  - { name: Geist, license: OFL-1.1, url: https://github.com/vercel/geist-font }

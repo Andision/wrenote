@@ -6,7 +6,6 @@ import { useTheme } from "next-themes";
 import { ComputePanel } from "@/components/ComputePanel";
 import { GlossaryEditor } from "@/components/GlossaryEditor";
 import { ModelsPanel } from "@/components/ModelsPanel";
-import { UpdatePanel } from "@/components/UpdatePanel";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -18,6 +17,10 @@ import {
   SETTINGS_CATEGORIES,
   type CategoryId,
 } from "@/components/settingsCategories";
+import { AboutPanel } from "@/components/AboutPanel";
+import { Button } from "@/components/ui/button";
+import { getAppInfo } from "@/lib/info";
+import { revealPath } from "@/lib/export";
 import { DevPanel } from "@/components/DevPanel";
 import { useDevMode } from "@/lib/devMode";
 import { iconTip } from "@/lib/tooltip";
@@ -160,19 +163,12 @@ export function SettingsDrawer() {
               </header>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                {/* General is the app: how it looks, how it behaves, where
+                    it puts things. Nothing here changes a transcript. */}
                 {cat === "general" && (
                   <div className="space-y-5">
                     <LanguageField />
                     <ThemeField />
-                    {/* Mic device, Record system audio, and Record screen moved
-                        to the PreFlight "Capture sources" row — they're
-                        per-recording input choices, not global preferences. */}
-                    <ToggleField
-                      label={t("settings.refineAfterStop")}
-                      checked={settings.refineAfterStop}
-                      hint={t("settings.refineAfterStopHint")}
-                      onChange={(v) => updateSettings({ refineAfterStop: v })}
-                    />
                     <ToggleField
                       label={t("settings.continuousPlayback")}
                       checked={settings.playbackMode === "continuous"}
@@ -187,17 +183,52 @@ export function SettingsDrawer() {
                       hint={t("settings.levelMetersHint")}
                       onChange={(v) => updateSettings({ showLevelMeters: v })}
                     />
-                    <div className="border-t border-border pt-5">
-                      <UpdatePanel />
-                    </div>
+                    <ExportFolderField />
                   </div>
                 )}
 
-                {cat === "segmentation" && (
+                {/* Recording is what happens to what you say: during, and
+                    after you stop. The capture sources themselves are in
+                    pre-flight, where you choose them per recording. */}
+                {cat === "recording" && (
+                  <div className="space-y-5">
+                    <ToggleField
+                      label={t("settings.refineAfterStop")}
+                      checked={settings.refineAfterStop}
+                      hint={t("settings.refineAfterStopHint")}
+                      onChange={(v) => updateSettings({ refineAfterStop: v })}
+                    />
+                    <ToggleField
+                      label={t("settings.translatePartials")}
+                      checked={settings.translatePartials}
+                      hint={t("settings.translatePartialsHint")}
+                      onChange={(v) => updateSettings({ translatePartials: v })}
+                    />
+                    <ToggleField
+                      label={t("settings.speakerLive")}
+                      experimental
+                      checked={settings.speakerEnabled}
+                      hint={t("settings.speakerLiveHint")}
+                      onChange={(v) => updateSettings({ speakerEnabled: v })}
+                    />
+                  </div>
+                )}
+
+                {cat === "about" && <AboutPanel />}
+
+                {/* One panel, not two of two settings each: these are all
+                    thresholds on the same live pipeline. */}
+                {cat === "tuning" && (
                   <div className="space-y-5">
                     <AdvancedNote
-                      text={t("settings.segmentationCaution")}
-                      onReset={() => resetSettings(["minSilenceMs", "maxSegmentMs"])}
+                      text={t("settings.tuningCaution")}
+                      onReset={() =>
+                        resetSettings([
+                          "minSilenceMs",
+                          "maxSegmentMs",
+                          "partialIntervalMs",
+                        ])
+                      }
                     />
                     {sessionInProgress && <NextSessionNote />}
                     <RangeField
@@ -220,22 +251,6 @@ export function SettingsDrawer() {
                       hint={t("settings.maxSegmentHint")}
                       onChange={(v) => updateSettings({ maxSegmentMs: v })}
                     />
-                  </div>
-                )}
-
-                {cat === "realtime" && (
-                  <div className="space-y-5">
-                    <AdvancedNote
-                      text={t("settings.realtimeCaution")}
-                      onReset={() =>
-                        resetSettings([
-                          "partialIntervalMs",
-                          "translatePartials",
-                          "speakerEnabled",
-                        ])
-                      }
-                    />
-                    {sessionInProgress && <NextSessionNote />}
                     <RangeField
                       label={t("settings.partialInterval")}
                       value={settings.partialIntervalMs}
@@ -245,20 +260,6 @@ export function SettingsDrawer() {
                       unit="ms"
                       hint={t("settings.partialIntervalHint")}
                       onChange={(v) => updateSettings({ partialIntervalMs: v })}
-                    />
-                    <ToggleField
-                      label={t("settings.translatePartials")}
-                      checked={settings.translatePartials}
-                      hint={t("settings.translatePartialsHint")}
-                      onChange={(v) => updateSettings({ translatePartials: v })}
-                    />
-                    {/* Its own hint says "experimental — unreliable mid-call",
-                        which is the definition of not a General setting. */}
-                    <ToggleField
-                      label={t("settings.speakerLive")}
-                      checked={settings.speakerEnabled}
-                      hint={t("settings.speakerLiveHint")}
-                      onChange={(v) => updateSettings({ speakerEnabled: v })}
                     />
                   </div>
                 )}
@@ -494,20 +495,75 @@ function ToggleField({
   label,
   checked,
   hint,
+  experimental,
   onChange,
 }: {
   label: string;
   checked: boolean;
   hint?: string;
+  /** Marks the one setting, not a whole section. An "Experimental" category
+   *  becomes a graveyard nobody empties; a chip stays attached to the thing
+   *  it is true of and disappears when it stops being true. */
+  experimental?: boolean;
   onChange: (b: boolean) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="space-y-0.5">
-        <Label className="text-xs text-foreground">{label}</Label>
+        <div className="flex items-center gap-1.5">
+          <Label className="text-xs text-foreground">{label}</Label>
+          {experimental && (
+            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+              {t("settings.experimental")}
+            </span>
+          )}
+        </div>
         {hint && <p className="text-[11px] leading-snug text-muted-foreground">{hint}</p>}
       </div>
       <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  );
+}
+
+/** Where a saved transcript goes. Read-only here — it is a config key
+ *  (`data.exports_dir`) — but the folder is worth showing, because the
+ *  previous default was a dotfolder nobody would have found. */
+function ExportFolderField() {
+  const t = useT();
+  const [dir, setDir] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    getAppInfo()
+      .then((info) => {
+        if (alive) setDir(info.paths.exports_dir ?? "");
+      })
+      .catch(() => {
+        /* the rest of the panel doesn't depend on it */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!dir) return null;
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 space-y-0.5">
+        <Label className="text-xs text-foreground">{t("settings.exportFolder")}</Label>
+        <p className="truncate font-mono text-[11px] text-muted-foreground" title={dir}>
+          {dir}
+        </p>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => void revealPath(dir)}
+        className="shrink-0"
+      >
+        {t("settings.openFolder")}
+      </Button>
     </div>
   );
 }

@@ -78,10 +78,15 @@ export async function saveMinutes(sessionId: string, lang: string): Promise<Save
  * can just ask the desktop; it only accepts paths in directories it writes.
  */
 export async function revealSaved(file: SavedFile): Promise<void> {
+  return revealPath(file.path);
+}
+
+/** Show a path — a file or a folder — in the OS file manager. */
+export async function revealPath(path: string): Promise<void> {
   const res = await fetch(`${BASE}/reveal`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ path: file.path }),
+    body: JSON.stringify({ path }),
   });
   if (!res.ok) throw new Error(`reveal failed (${res.status})`);
 }

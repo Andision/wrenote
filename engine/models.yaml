@@ -21,6 +21,10 @@
 #   requires  the floor for offering it: ram_mb (and vram_mb where GPU-only)
 #   files     one or more downloads; `param` names the backend argument the
 #             local path is passed as
+#   license   SPDX id of the *weights*, shown in Settings → About. Leave it
+#             out when you are not certain: the `url` is shown either way,
+#             and a licence stated from memory is worse than a link.
+#   url       where the weights and their terms live
 #   params    extra backend arguments this model needs (optional)
 
 schema: 1
@@ -51,6 +55,7 @@ models:
     tier: small
     name: Zipformer streaming (zh-en, int8)
     note_code: stt_streaming_rough_en
+    url: https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
     requires: { ram_mb: 2048 }
     files:
       - param: encoder_path
@@ -84,6 +89,7 @@ models:
     tier: medium
     name: Paraformer streaming (zh-en, FunASR int8)
     note_code: stt_streaming
+    url: https://huggingface.co/csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en
     requires: { ram_mb: 2048 }
     files:
       - param: encoder_path
@@ -113,6 +119,8 @@ models:
     tier: small
     name: Whisper base (Q5)
     note_code: stt_fast_rough
+    license: MIT
+    url: https://huggingface.co/ggerganov/whisper.cpp
     requires: { ram_mb: 2048 }
     files:
       - param: model_path
@@ -128,6 +136,8 @@ models:
     tier: medium
     name: Whisper small (Q5)
     note_code: stt_balanced
+    license: MIT
+    url: https://huggingface.co/ggerganov/whisper.cpp
     requires: { ram_mb: 4096 }
     files:
       - param: model_path
@@ -143,6 +153,8 @@ models:
     tier: large
     name: Whisper large-v3 turbo (Q5)
     note_code: stt_best
+    license: MIT
+    url: https://huggingface.co/ggerganov/whisper.cpp
     requires: { ram_mb: 6144 }
     files:
       - param: model_path
@@ -162,6 +174,7 @@ models:
     tier: medium
     name: Hunyuan MT2 1.8B (Q4_K_M)
     note_code: mt_default
+    url: https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF
     requires: { ram_mb: 4096 }
     files:
       - param: model_path
@@ -179,6 +192,8 @@ models:
     tier: small
     name: Qwen3 1.7B (Q4_K_M)
     note_code: chat_light
+    license: Apache-2.0
+    url: https://huggingface.co/Qwen/Qwen3-1.7B
     requires: { ram_mb: 4096 }
     files:
       - param: model_path
@@ -194,6 +209,8 @@ models:
     tier: medium
     name: Qwen3 4B Instruct (Q4_K_M)
     note_code: chat_default
+    license: Apache-2.0
+    url: https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507
     requires: { ram_mb: 8192 }
     files:
       - param: model_path
@@ -213,6 +230,8 @@ models:
     tier: small
     name: ECAPA-TDNN (VoxCeleb)
     note_code: speaker_default
+    license: Apache-2.0
+    url: https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb
     requires: { ram_mb: 2048 }
     files:
       - param: model_path

@@ -30,6 +30,7 @@ EXPECTED_ROUTES = {
     ("POST", "/v1/compute/install"),
     ("POST", "/v1/compute/select"),
     ("GET", "/v1/models/status"),
+    ("GET", "/v1/about"),
     ("GET", "/v1/capture/targets"),
     ("GET", "/v1/glossary"),
     ("PUT", "/v1/glossary"),

@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__, ws
 from .api import (
+    about,
     capture,
     chat,
     compute,
@@ -71,7 +72,7 @@ API_PREFIX = "/v1"
 
 # Resource routers, registered in this order before the SPA catch-all.
 _ROUTERS = (
-    sessions, groups, recordings, jobs, models,
+    about, sessions, groups, recordings, jobs, models,
     upload, translate, diarize, refine, minutes, search, segments, chat, capture, glossary, compute, update, ws,
 )
 

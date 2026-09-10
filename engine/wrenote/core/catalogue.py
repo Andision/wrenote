@@ -97,6 +97,11 @@ class ModelSpec:
     name: str
     files: tuple[ModelFile, ...]
     note_code: str = ""  # what this choice means; the client renders it
+    #: SPDX id of the weights, "" where the catalogue does not assert one —
+    #: a licence stated from memory is worse than a link (Settings → About).
+    license: str = ""
+    #: Where the weights and their terms live.
+    url: str = ""
     requires: dict[str, int] = field(default_factory=dict)
     params: dict[str, Any] = field(default_factory=dict)
 
@@ -153,6 +158,8 @@ def _parse_model(row: dict[str, Any]) -> ModelSpec:
         name=str(row.get("name") or row["id"]),
         files=files,
         note_code=str(row.get("note_code") or ""),
+        license=str(row.get("license") or ""),
+        url=str(row.get("url") or ""),
         requires={k: int(v) for k, v in (row.get("requires") or {}).items()},
         params=dict(row.get("params") or {}),
     )

@@ -265,3 +265,38 @@ def test_exports_default_to_the_download_folder_not_a_dotfolder():
     assert cfg.data.exports_dir == str(default_exports_dir())
     assert not cfg.data.exports_dir.startswith("/moved")
     assert Path(cfg.data.exports_dir).name in ("Downloads", Path.home().name)
+
+
+class TestAbout:
+    """Settings → About. The rule that matters: nothing here is written from
+    memory. Python licences come from the installed distributions, and a
+    catalogue entry that does not assert a licence gets a link instead."""
+
+    def test_reads_python_licences_from_the_installed_packages(self, client):
+        body = client.get("/v1/about").json()
+        by_name = {p["name"].lower(): p for p in body["python"]}
+        assert "fastapi" in by_name
+        assert by_name["fastapi"]["license"]
+        assert by_name["fastapi"]["version"]
+
+    def test_states_the_app_licence_and_its_source(self, client):
+        body = client.get("/v1/about").json()
+        assert body["license"] == "AGPL-3.0-only"
+        assert body["source"].startswith("https://")
+        assert body["version"]
+
+    def test_a_model_with_no_asserted_licence_still_links_upstream(self, client):
+        body = client.get("/v1/about").json()
+        models = {m["name"]: m for m in body["models"]}
+        assert models, "the catalogue contributed nothing"
+        # Whisper's weights are MIT and the catalogue says so.
+        whisper = next(m for n, m in models.items() if n.startswith("Whisper"))
+        assert whisper["license"] == "MIT"
+        # Every entry has somewhere to read the actual terms.
+        assert all(m["url"] or m["license"] for m in body["models"])
+
+    def test_the_curated_components_are_there(self, client):
+        body = client.get("/v1/about").json()
+        names = {c["name"] for c in body["native"]} | {c["name"] for c in body["web"]}
+        assert {"whisper.cpp", "llama.cpp", "React"} <= names
+        assert all(c.get("url") for c in body["native"] + body["web"])

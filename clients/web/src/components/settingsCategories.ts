@@ -9,28 +9,37 @@ import {
   Cpu,
   FlaskConical,
   Gauge,
+  Info,
+  Mic,
   Scissors,
   SlidersHorizontal,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 
 export type CategoryId =
   | "general"
-  | "segmentation"
-  | "realtime"
+  | "recording"
   | "glossary"
   | "models"
+  | "about"
+  | "tuning"
   | "engines"
   | "compute"
   | "dev";
 
-/** What the rail shows without being asked. Everything a user who just wants
- *  a transcript would recognise. */
+/** What the rail shows without being asked, grouped the way someone using
+ *  the app would look for things: the app itself, what a recording does,
+ *  the words it should know, what runs it, and what it is.
+ *
+ *  Not one category per subsystem. "Segmentation" and "Real-time" were two
+ *  entries of two settings each, both of them thresholds on the same live
+ *  pipeline; they are one Tuning panel under Advanced now. */
 export const SETTINGS_CATEGORIES: { id: CategoryId; icon: LucideIcon }[] = [
   { id: "general", icon: SlidersHorizontal },
+  { id: "recording", icon: Mic },
   { id: "glossary", icon: BookMarked },
   { id: "models", icon: Boxes },
+  { id: "about", icon: Info },
 ];
 
 /** Behind an "Advanced" disclosure. Not hidden — a power user tuning the
@@ -39,10 +48,9 @@ export const SETTINGS_CATEGORIES: { id: CategoryId; icon: LucideIcon }[] = [
  *  people learn to click those away, and a "reset to defaults" in each panel
  *  is the safety net that actually undoes a mistake. */
 export const ADVANCED_CATEGORIES: { id: CategoryId; icon: LucideIcon }[] = [
-  { id: "segmentation", icon: Scissors },
-  { id: "realtime", icon: Zap },
-  { id: "engines", icon: Cpu },
+  { id: "tuning", icon: Scissors },
   { id: "compute", icon: Gauge },
+  { id: "engines", icon: Cpu },
 ];
 
 /** Only listed while developer mode is on (lib/devMode.ts). Kept out of

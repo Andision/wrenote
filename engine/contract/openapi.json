@@ -253,6 +253,27 @@
         "summary": "Health"
       }
     },
+    "/v1/about": {
+      "get": {
+        "description": "The app's own licence, and everything it ships or downloads.",
+        "operationId": "about_v1_about_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response About V1 About Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "About"
+      }
+    },
     "/v1/capture/targets": {
       "get": {
         "description": "List capturable displays + windows. Empty when unsupported / permission\nnot yet granted (the UI then just offers full-screen / mic-only).\n\n``audio_scope`` says whether a window's ``bundle`` can be used to capture\nonly that application's sound. macOS can (ScreenCaptureKit filters audio\nby application); Windows can only where the `procloop` helper shipped.\nWhere it cannot, the client must not offer the choice — capturing the\nwhole desktop when someone asked for one app records more than they\nagreed to.",
