@@ -221,6 +221,9 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
 
 ### Live recognition
 
+Measurements for everything in this section: `docs/plans/TRANSCRIPTION_QUALITY.md`.
+
+
 - [x] **A streaming-native recogniser for the live path.** sherpa-onnx
       Zipformer (bilingual zh-en, int8, ~200 MB, CPU) as a second STT
       backend; the pipeline feeds it directly and takes its endpoints, so
@@ -237,19 +240,14 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       time on four CPU cores with no partial ever finishing, against the
       Zipformer's real time and ~1 s to first text, at similar accuracy on
       the same four clips.
-      **The comparison has now been made, and it is bad.** On a real
-      28-minute English meeting recorded through a MacBook's built-in
-      microphone the Zipformer is unusable: "yesterday we discussed we want
-      to build a standalone service" came out as "yeah you stay which
-      custin own to build / standard / subacist". `modified_beam_search`
-      helps a little ("we discussing yeah we want to build standard room")
-      and is still unusable. The integration is not at fault — the
-      mishearings are phonetically plausible, and Whisper transcribes the
-      same audio well — the model is simply not good enough for far-field
-      conversational English. Its catalogue note says so now, in those
-      words. Open question: whether it *is* good on a real Chinese meeting
-      recorded the same way, which is the only case left where it earns its
-      place.
+      **The comparison has now been made, and it is bad** — see
+      `docs/plans/TRANSCRIPTION_QUALITY.md` for the numbers. The Zipformer
+      is unusable on a real English meeting, and on a machine with an
+      accelerator there is nothing for it to solve: whisper-large-v3-turbo
+      answers 935 ms after each utterance, which is the best option
+      available and not a fallback. Its catalogue note says so now. Open
+      question: whether it, or SenseVoice, is worth anything on a real
+      *Chinese* meeting — the only case left where either earns a place.
 - [x] **FunASR streaming Paraformer (bilingual zh-en, int8, ~240 MB)** as
       a second streaming option, same backend. On the four bilingual test
       clips both models ship, fed in real time through the live pipeline
@@ -264,9 +262,16 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       the live default, the Zipformer is the one to measure against
       Whisper — on a real meeting, with `_compare_live_stt.py` and a
       reference transcript.
-- [ ] Punctuation for the streaming path (sherpa-onnx's CT-Transformer
-      zh-en model, ~300 MB) so live English isn't a wall of lower case; or
-      accept it, since the post-recording pass rewrites everything.
+- [ ] **Punctuation and case restoration, as a separate step** — and now
+      for the *offline* pass too, not just the streaming one. Whisper's own
+      casing on a real meeting is bimodal and unstable (three minutes of
+      lowercase, then correct, flipping mid-file), and none of the three
+      knobs tried stabilised it; each only moved where the instability
+      landed. See `docs/plans/TRANSCRIPTION_QUALITY.md` §2. What makes this
+      tractable is that it must not change the words, so it can be verified
+      by diffing the word sequence — build that guard first, then try
+      sherpa-onnx's CT-Transformer (~300 MB) or the already-downloaded chat
+      model under a "repunctuate, do not reword" constraint.
 - [ ] Glossary → sherpa-onnx hotwords (it supports them with
       modified-beam-search; the bilingual model ships a `bpe.model` for
       the token mapping). The glossary reaches Whisper as a prompt today
