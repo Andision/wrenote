@@ -25,15 +25,16 @@ import {
   type Features,
   type OptionalFeature,
 } from "../lib/models";
-import type {
-  ConnectionState,
-  ReadyInfo,
-  Segment,
-  SessionGroup,
-  SessionMeta,
-  TranscriptEvent,
-  TranslationEvent,
-  VADEvent,
+import {
+  isPassInFlight,
+  type ConnectionState,
+  type ReadyInfo,
+  type Segment,
+  type SessionGroup,
+  type SessionMeta,
+  type TranscriptEvent,
+  type TranslationEvent,
+  type VADEvent,
 } from "../types";
 
 export interface SessionSettings {
@@ -440,7 +441,7 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
     const list = await loadAllSessions();
     set({ pastSessions: list });
     if (!id) return;
-    if (list.find((p) => p.id === id)?.status === "processing") return;
+    if (isPassInFlight(list.find((p) => p.id === id)?.status)) return;
     get().autoTitleAfterRecording();
   },
 

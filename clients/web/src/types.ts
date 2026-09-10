@@ -95,13 +95,28 @@ export interface Segment {
 /** Where a session is in its life — mirrors engine/wrenote/core/store.py
  *  SESSION_STATUSES.
  *   recording   live; segments arrive as the user speaks
+ *   pending     that pass is queued behind another one. The engine runs one
+ *               whole-file pass at a time, and a queued one that reported
+ *               "processing" was indistinguishable from a stuck one
  *   processing  the engine is rewriting the transcript from the recording
  *               (the pass after a recording stops, or an upload); the rows
  *               on screen stay until it replaces them
  *   ready       the transcript is what the user gets
  *   failed      that pass died; `statusDetail` says why and the previous
  *               transcript is still there */
-export type SessionStatus = "recording" | "processing" | "ready" | "failed";
+export type SessionStatus =
+  | "recording"
+  | "pending"
+  | "processing"
+  | "ready"
+  | "failed";
+
+/** Whether a pass is in flight — queued or running. The two differ in what
+ *  they say, never in what they allow: the transcript is about to be replaced
+ *  either way, so nothing else may touch it. */
+export function isPassInFlight(status: SessionStatus | null | undefined): boolean {
+  return status === "pending" || status === "processing";
+}
 
 export interface SessionMeta {
   id: string;

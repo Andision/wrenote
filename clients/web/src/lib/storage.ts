@@ -47,7 +47,13 @@ interface SegmentRow {
   speaker: string | null;
 }
 
-const STATUSES: readonly SessionStatus[] = ["recording", "processing", "ready", "failed"];
+const STATUSES: readonly SessionStatus[] = [
+  "recording",
+  "pending",
+  "processing",
+  "ready",
+  "failed",
+];
 
 /** An engine we don't know the statuses of is one we'd rather treat as done
  *  than as busy: an unknown value reads as `ready`. */

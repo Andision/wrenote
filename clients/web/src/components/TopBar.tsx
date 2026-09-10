@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  Clock,
   Download,
   FileText,
   Languages,
@@ -29,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { useJobsStore } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
+import { isPassInFlight } from "@/types";
 
 interface TopBarProps {
   onStop: () => void;
@@ -53,8 +55,9 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
   const sessionStatus = useActiveSessionStatus();
   const sessionMeta = useActiveSessionMeta();
   const runRefine = useRefineAction();
-  // While the engine rewrites the transcript, nothing else may touch it.
-  const processing = sessionStatus === "processing";
+  // While the engine is about to rewrite the transcript — queued or running
+  // — nothing else may touch it.
+  const processing = isPassInFlight(sessionStatus);
   const activeDiarizeForThis = useJobsStore((s) =>
     Object.values(s.jobs).some(
       (j) =>
@@ -251,7 +254,9 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
 
       <AnimatePresence>
         {isActive && <RecordingTimer paused={isPaused} />}
-        {!isActive && processing && <ProcessingPill key="processing" />}
+        {!isActive && processing && (
+          <ProcessingPill key="processing" queued={sessionStatus === "pending"} />
+        )}
       </AnimatePresence>
 
       {/* Floating subtitles — desktop shell only, while a recording is live. */}
@@ -419,7 +424,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
       )}
 
       {canDownload && sessionId && (
-        <ExportMenu sessionId={sessionId} title={title} hasTranslations={hasTranslations} />
+        <ExportMenu sessionId={sessionId} hasTranslations={hasTranslations} />
       )}
 
       {finished && (
@@ -462,8 +467,9 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
  * Where the recording timer sits while the recording is being transcribed
  * again from the file: the session isn't live, but it isn't done either.
  */
-function ProcessingPill() {
+function ProcessingPill({ queued }: { queued: boolean }) {
   const t = useT();
+  const key = queued ? "pending" : "processing";
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.92 }}
@@ -471,10 +477,10 @@ function ProcessingPill() {
       exit={{ opacity: 0, scale: 0.92 }}
       transition={{ duration: 0.18 }}
       className="flex h-8 items-center gap-2 rounded-lg border border-brand-500/20 bg-brand-500/8 px-2.5 text-brand-600 dark:border-brand-400/25 dark:bg-brand-400/10 dark:text-brand-400"
-      data-tip={t("session.status.processingHint")}
+      data-tip={t(`session.status.${key}Hint`)}
     >
-      <Loader2 className="size-3 animate-spin" />
-      <span className="text-[12px] font-medium">{t("session.status.processing")}</span>
+      {queued ? <Clock className="size-3" /> : <Loader2 className="size-3 animate-spin" />}
+      <span className="text-[12px] font-medium">{t(`session.status.${key}`)}</span>
     </motion.div>
   );
 }

@@ -41,6 +41,24 @@ describe("ProcessingBanner", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("says a pass is queued, without pretending to have progress", () => {
+    // A queued pass on 0% for as long as the recording ahead takes is what
+    // made this look stuck, so `pending` gets words and no bar.
+    useSessionStore.setState({ pastSessions: [meta({ status: "pending", jobId: "j1" })] });
+    render(<I18nProvider><ProcessingBanner onRetry={() => {}} /></I18nProvider>);
+    const text = screen.getByRole("status").textContent ?? "";
+    expect(text).toMatch(/queued for transcription/i);
+    expect(text).not.toMatch(/%/);
+  });
+
+  it("badges a queued session differently from a running one", () => {
+    const queued = render(<I18nProvider><StatusBadge status="pending" /></I18nProvider>);
+    expect(queued.container.textContent).toBe("Queued");
+    queued.unmount();
+    const running = render(<I18nProvider><StatusBadge status="processing" /></I18nProvider>);
+    expect(running.container.textContent).toBe("Processing");
+  });
+
   it("shows the pass in progress with its progress", () => {
     useSessionStore.setState({ pastSessions: [meta({ status: "processing", jobId: "j1" })] });
     useJobsStore.setState({
@@ -48,6 +66,7 @@ describe("ProcessingBanner", () => {
       jobs: {
         j1: {
           id: "j1", label: "Standup", kind: "refine", sessionId: "s1", lingerUntil: null,
+          dismissed: false, startedAt: 0,
           snapshot: {
             id: "j1", kind: "refine", status: "running", phase: "transcribe", phase_idx: 1,
             phase_count: 5, fraction: 0.42, elapsed_s: 3, eta_s: 4, log: [], error: null, result: null,
