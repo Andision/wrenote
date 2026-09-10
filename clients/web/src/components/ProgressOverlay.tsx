@@ -6,6 +6,7 @@ import { jobLabel } from "@/lib/jobText";
 import { useJobsStore, type TrackedJob } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
+import { iconTip } from "@/lib/tooltip";
 
 /**
  * The toasts, bottom-right: one card per job in flight, with a bar and an
@@ -85,7 +86,7 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
         )}
         <button
           onClick={() => dismiss(tracked.id)}
-          data-tip={t("common.dismiss")}
+          {...iconTip(t("common.dismiss"))}
           className="rounded p-1 text-muted-foreground hover:bg-accent"
         >
           <X className="size-3.5" />

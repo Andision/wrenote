@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { useJobsStore } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
+import { iconTip } from "@/lib/tooltip";
 import { isPassInFlight } from "@/types";
 
 interface TopBarProps {
@@ -265,7 +266,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
           variant="ghost"
           size="icon"
           onClick={() => void window.wrenoteDesktop?.toggleOverlay()}
-          data-tip={t("topbar.overlay")}
+          {...iconTip(t("topbar.overlay"))}
           className="size-9"
         >
           <PictureInPicture2 className="size-4" />
@@ -287,7 +288,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
                 variant="ghost"
                 size="icon"
                 onClick={isPaused ? onResume : onPause}
-                data-tip={isPaused ? t("common.resume") : t("common.pause")}
+                {...iconTip(isPaused ? t("common.resume") : t("common.pause"))}
                 className="size-9 rounded-full text-foreground/70 hover:bg-accent hover:text-foreground"
               >
                 {isPaused ? (
@@ -343,13 +344,13 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
           size="icon"
           onClick={() => void runRefine()}
           disabled={processing || activeTranslateForThis || activeDiarizeForThis}
-          data-tip={
+          {...iconTip(
             processing
               ? t("topbar.refine.running")
               : sessionMeta?.refinedAt
                 ? t("topbar.refine.tooltipAgain")
-                : t("topbar.refine.tooltip")
-          }
+                : t("topbar.refine.tooltip"),
+          )}
           className="size-9"
         >
           {processing ? (
@@ -366,17 +367,17 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
           size="icon"
           onClick={() => void runTranslate()}
           disabled={processing || activeTranslateForThis || activeDiarizeForThis}
-          data-tip={
+          {...iconTip(
             processing
               ? t("topbar.refine.blocking")
               : activeTranslateForThis
-              ? t("topbar.translate.running")
-              : activeDiarizeForThis
-                ? t("topbar.diarize.blocking")
-                : hasUntranslated
-                  ? t("topbar.translate.tooltip")
-                  : t("topbar.translate.tooltipAll")
-          }
+                ? t("topbar.translate.running")
+                : activeDiarizeForThis
+                  ? t("topbar.diarize.blocking")
+                  : hasUntranslated
+                    ? t("topbar.translate.tooltip")
+                    : t("topbar.translate.tooltipAll"),
+          )}
           className="size-9"
         >
           {activeTranslateForThis ? (
@@ -393,15 +394,15 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
           size="icon"
           onClick={() => void runDiarize()}
           disabled={processing || activeDiarizeForThis || activeTranslateForThis}
-          data-tip={
+          {...iconTip(
             processing
               ? t("topbar.refine.blocking")
               : activeDiarizeForThis
-              ? t("topbar.diarize.running")
-              : activeTranslateForThis
-                ? t("topbar.translate.blocking")
-                : t("topbar.diarize.tooltip")
-          }
+                ? t("topbar.diarize.running")
+                : activeTranslateForThis
+                  ? t("topbar.translate.blocking")
+                  : t("topbar.diarize.tooltip"),
+          )}
           className="size-9"
         >
           {activeDiarizeForThis ? (
@@ -416,7 +417,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
         <a
           href={recordingUrl(sessionId)}
           download={`${title || sessionId}.wav`}
-          data-tip={t("topbar.download")}
+          {...iconTip(t("topbar.download"))}
           className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-9")}
         >
           <Download className="size-4" />
@@ -435,7 +436,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
             // Minutes are written by the chat model; one feature, two buttons.
             if (requireFeature("chat")) toggleMinutes();
           }}
-          data-tip={t("topbar.minutes")}
+          {...iconTip(t("topbar.minutes"))}
           aria-pressed={minutesOpen}
           className={minutesOpen ? "size-9 bg-accent text-foreground" : "size-9"}
         >
@@ -449,7 +450,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
         onClick={() => {
           if (requireFeature("chat")) toggleChat();
         }}
-        data-tip={t("topbar.chat")}
+        {...iconTip(t("topbar.chat"))}
         aria-pressed={chatOpen}
         className={
           chatOpen

@@ -19,6 +19,7 @@ import {
 } from "@/components/settingsCategories";
 import { DevPanel } from "@/components/DevPanel";
 import { useDevMode } from "@/lib/devMode";
+import { iconTip } from "@/lib/tooltip";
 
 
 /**
@@ -112,7 +113,7 @@ export function SettingsDrawer() {
                 <h2 className="text-sm font-semibold text-foreground">{activeLabel}</h2>
                 <button
                   onClick={close}
-                  data-tip={t("common.closeEsc")}
+                  {...iconTip(t("common.closeEsc"))}
                   className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 >
                   <X className="size-4" />

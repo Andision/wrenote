@@ -32,6 +32,7 @@ import {
 } from "@/lib/chat";
 import { useSessionStore } from "@/store/sessionStore";
 import { useI18n, useT } from "@/i18n";
+import { iconTip } from "@/lib/tooltip";
 
 /**
  * Right-side, push-in chat panel. The transcript stays visible to the left.
@@ -316,7 +317,7 @@ function ChatBody({
           onClick={() => sessionId && setShowList((v) => !v)}
           disabled={!sessionId}
           aria-pressed={showList}
-          data-tip={t("chat.history")}
+          {...iconTip(t("chat.history"))}
         >
           <History className="size-4" />
         </Button>
@@ -326,7 +327,7 @@ function ChatBody({
           className="size-7 shrink-0"
           onClick={newConversation}
           disabled={!sessionId}
-          data-tip={t("chat.newConversation")}
+          {...iconTip(t("chat.newConversation"))}
         >
           <Plus className="size-4" />
         </Button>
@@ -336,7 +337,7 @@ function ChatBody({
             size="icon"
             className="size-7 shrink-0"
             onClick={() => void clearCurrent()}
-            data-tip={t("chat.clearTip")}
+            {...iconTip(t("chat.clearTip"))}
           >
             <Trash2 className="size-3.5" />
           </Button>
@@ -346,7 +347,7 @@ function ChatBody({
           size="icon"
           className="size-7 shrink-0"
           onClick={() => toggleChat(false)}
-          data-tip={t("common.close")}
+          {...iconTip(t("common.close"))}
         >
           <X className="size-3.5" />
         </Button>
@@ -455,7 +456,7 @@ function ChatBody({
               size="icon"
               className="size-9"
               onClick={cancel}
-              data-tip={t("common.stop")}
+              {...iconTip(t("common.stop"))}
             >
               <X className="size-4" />
             </Button>
@@ -465,7 +466,7 @@ function ChatBody({
               className="size-9 bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
               onClick={() => void send()}
               disabled={!canSend}
-              data-tip={t("chat.send")}
+              {...iconTip(t("chat.send"))}
             >
               <Send className="size-4" />
             </Button>
@@ -561,7 +562,7 @@ function ConversationList({
                       <button
                         onClick={commitRename}
                         className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                        data-tip={t("common.save")}
+                        {...iconTip(t("common.save"))}
                       >
                         <Check className="size-3.5" />
                       </button>

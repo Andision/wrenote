@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "check:locales": "node scripts/check-locales.mjs",
+    "check:a11y": "node scripts/check-a11y.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

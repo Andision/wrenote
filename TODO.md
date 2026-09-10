@@ -316,13 +316,17 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
 
 ### Engineering
 
-- [ ] **Icon-only buttons have no accessible name.** `data-tip` drives the
-      app's own tooltip layer and is not an aria attribute, so a button whose
-      only content is an icon reads as "button" to a screen reader. About
-      forty of them across the components (the export one is done, as is
-      everything the task list added). Mechanical — `aria-label` alongside
-      the `data-tip` — but a sweep, and worth one pass with a lint rule after
-      it (`jsx-a11y` is not in the config today).
+- [x] **Icon-only buttons now name themselves.** `data-tip` drives the app's
+      own tooltip layer and is not an aria attribute, so 36 buttons read as
+      "button" to a screen reader. `lib/tooltip.ts` `iconTip(text)` sets both
+      from one string, so the two cannot drift, and `npm run check:a11y`
+      (CI, next to check:locales) fails on a new icon-only control with a
+      tooltip and no name — it found the last two the manual sweep missed,
+      both conditional play/pause icons. Only icon-only controls: on anything
+      with visible text `aria-label` *replaces* that text, which turns a
+      correct name into a worse one. Replace the script with
+      `jsx-a11y/control-has-associated-label` when that plugin supports
+      ESLint 10 — it peers on ^9 today, which is why this is ours.
 - [ ] **A native Save dialog** for exports, once the Tauri shell is verified
       on-device. `data.exports_dir` plus a reported path is the answer that
       works in every shell and in a browser tab, but "choose where, now" is

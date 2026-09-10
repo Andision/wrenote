@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { useJobsStore } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
+import { iconTip } from "@/lib/tooltip";
 
 /**
  * Right-side panel with the meeting minutes the chat model wrote for the
@@ -180,15 +181,15 @@ export function MinutesBody({ sessionId }: { sessionId: string | null }) {
         </span>
         {current && (
           <>
-            <Button variant="ghost" size="icon" className="size-7" onClick={() => void copy()} data-tip={t("minutes.copy")}>
+            <Button variant="ghost" size="icon" className="size-7" onClick={() => void copy()} {...iconTip(t("minutes.copy"))}>
               {copied ? <Check className="size-4 text-green-600" /> : <Copy className="size-4" />}
             </Button>
-            <Button variant="ghost" size="icon" className="size-7" onClick={() => void download()} data-tip={t("minutes.download")}>
+            <Button variant="ghost" size="icon" className="size-7" onClick={() => void download()} {...iconTip(t("minutes.download"))}>
               <Download className="size-4" />
             </Button>
           </>
         )}
-        <Button variant="ghost" size="icon" className="size-7" onClick={() => toggleMinutes(false)} data-tip={t("common.close")}>
+        <Button variant="ghost" size="icon" className="size-7" onClick={() => toggleMinutes(false)} {...iconTip(t("common.close"))}>
           <X className="size-4" />
         </Button>
       </header>

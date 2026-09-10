@@ -23,6 +23,7 @@ import { recordingUrl } from "@/lib/recording";
 import { confirmDialog } from "@/lib/confirm";
 import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
+import { iconTip } from "@/lib/tooltip";
 import type { SessionMeta } from "@/types";
 
 const UNGROUPED = "__ungrouped__";
@@ -160,7 +161,7 @@ export function Sidebar() {
             href={recordingUrl(s.id)}
             onClick={(e) => e.stopPropagation()}
             download={`${s.title || s.id}.wav`}
-            data-tip={t("sidebar.downloadRecording")}
+            {...iconTip(t("sidebar.downloadRecording"))}
             className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Download className="size-3.5" />
@@ -291,7 +292,7 @@ export function Sidebar() {
               size="icon"
               className="size-7"
               onClick={() => toggleSidebar(false)}
-              data-tip={t("sidebar.collapse")}
+              {...iconTip(t("sidebar.collapse"))}
             >
               <PanelLeftClose className="size-4" />
             </Button>
@@ -424,7 +425,7 @@ export function Sidebar() {
               size="icon"
               className="size-9"
               onClick={() => toggleSidebar(true)}
-              data-tip={t("sidebar.expand")}
+              {...iconTip(t("sidebar.expand"))}
               data-tip-side="right"
             >
               <PanelLeftOpen className="size-4" />
@@ -435,7 +436,7 @@ export function Sidebar() {
               className="size-9"
               onClick={newSession}
               disabled={locked}
-              data-tip={locked ? t("sidebar.lockedNew") : t("session.new")}
+              {...iconTip(locked ? t("sidebar.lockedNew") : t("session.new"))}
               data-tip-side="right"
             >
               <Plus className="size-4" />
@@ -450,7 +451,7 @@ export function Sidebar() {
               size="icon"
               className="size-9"
               onClick={() => toggleSettings()}
-              data-tip={t("settings.title")}
+              {...iconTip(t("settings.title"))}
               data-tip-side="right"
             >
               <Settings className="size-4" />

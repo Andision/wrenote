@@ -27,6 +27,7 @@ import {
 import { formatEta, subscribeJob } from "@/lib/jobs";
 import { hardwareText } from "@/lib/computeText";
 import { useT } from "@/i18n";
+import { iconTip } from "@/lib/tooltip";
 
 interface InstallProgress {
   fraction: number;
@@ -205,7 +206,7 @@ export function ComputePanel() {
           <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {t("compute.runtime")}
           </h3>
-          <Button variant="ghost" size="icon" className="size-7" onClick={() => void refresh()} data-tip={t("common.refresh")}>
+          <Button variant="ghost" size="icon" className="size-7" onClick={() => void refresh()} {...iconTip(t("common.refresh"))}>
             <RefreshCw className="size-3.5" />
           </Button>
         </div>
@@ -369,7 +370,7 @@ function PackRow({
       </div>
       {!pack.builtin && !progress && (
         pack.installed ? (
-          <Button variant="ghost" size="icon" className="size-7" onClick={onRemove} data-tip={t("compute.remove")}>
+          <Button variant="ghost" size="icon" className="size-7" onClick={onRemove} {...iconTip(t("compute.remove"))}>
             <Trash2 className="size-3.5" />
           </Button>
         ) : (
@@ -379,7 +380,7 @@ function PackRow({
             className="size-7"
             onClick={onInstall}
             disabled={!pack.available}
-            data-tip={pack.available ? t("compute.install") : t("compute.unavailable")}
+            {...iconTip(pack.available ? t("compute.install") : t("compute.unavailable"))}
           >
             <Download className="size-3.5" />
           </Button>

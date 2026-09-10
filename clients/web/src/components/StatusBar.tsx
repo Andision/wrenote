@@ -17,6 +17,7 @@ import { TaskList } from "@/components/TaskList";
 import { usePlaybackControls } from "@/hooks/playbackContext";
 import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
+import { iconTip } from "@/lib/tooltip";
 
 export function StatusBar() {
   const micLevel = useSessionStore((s) => s.micLevel);
@@ -148,9 +149,9 @@ function PlaybackControls() {
 
       <button
         onClick={onTogglePlay}
-        data-tip={
-          isPlaying ? t("player.pause") : playingId ? t("player.resume") : t("player.play")
-        }
+        {...iconTip(
+          isPlaying ? t("player.pause") : playingId ? t("player.resume") : t("player.play"),
+        )}
         className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
       >
         {isPlaying ? (
@@ -287,7 +288,7 @@ function LoopControls({ current }: { current: number }) {
       <button
         onClick={toggleSegment}
         aria-pressed={segmentOn}
-        data-tip={t("player.loopSegment")}
+        {...iconTip(t("player.loopSegment"))}
         className={`inline-flex size-6 items-center justify-center rounded-md transition-colors ${
           segmentOn
             ? "bg-brand-500/15 text-brand-600 dark:text-brand-400"

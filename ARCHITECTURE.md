@@ -516,7 +516,7 @@ it on is mid-task and about to restart something.
 
 Everything that can fail without a Mac, a Windows box or a 40-minute compile
 runs on every push: engine lint + 359 tests + the API-contract drift check, and
-for the client types, lint, locale parity, 125 tests and the build. The
+for the client types, lint, locale parity, accessible names, 126 tests and the build. The
 platform-specific packaging workflows stay slow and separate.
 
 * **The frozen engine is smoke-tested** in `.github/actions/build-engine`: a
@@ -530,6 +530,11 @@ platform-specific packaging workflows stay slow and separate.
   findings that predated the gate — React 19's hook rules, mostly refs read
   during render and state reset from an effect — were worked off component by
   component, and `eslint-suppressions.json` is gone. A new finding fails CI.
+* **Icon-only controls name themselves** (`npm run check:a11y`). `data-tip` is
+  this app's tooltip attribute, not an accessibility one, so a button whose
+  only content is an icon had no accessible name; `lib/tooltip.ts` `iconTip()`
+  sets the tooltip and the name from one string and the check fails on a new
+  one that doesn't. Ours rather than `jsx-a11y`, which peers on ESLint ^9.
 * **Every manifest agrees on the version** (`packaging/release/version.py
   --check`), and a release build also checks its tag against them before
   spending twenty minutes compiling.

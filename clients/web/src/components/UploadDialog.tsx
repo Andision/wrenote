@@ -18,6 +18,7 @@ import { useT, type TFunction } from "@/i18n";
 import { startUpload } from "@/lib/upload";
 import { useJobsStore } from "@/store/jobsStore";
 import { useSessionStore } from "@/store/sessionStore";
+import { iconTip } from "@/lib/tooltip";
 
 interface UploadDialogProps {
   open: boolean;
@@ -141,7 +142,7 @@ function UploadDialogBody({ onClose }: { onClose: () => void }) {
             className="size-7"
             onClick={onClose}
             disabled={submitting}
-            data-tip={t("common.close")}
+            {...iconTip(t("common.close"))}
           >
             <X className="size-3.5" />
           </Button>
@@ -201,7 +202,7 @@ function UploadDialogBody({ onClose }: { onClose: () => void }) {
                     onClick={() => move(i, -1)}
                     disabled={i === 0 || submitting}
                     className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-30"
-                    data-tip={t("upload.moveUp")}
+                    {...iconTip(t("upload.moveUp"))}
                   >
                     <ArrowUp className="size-3" />
                   </button>
@@ -209,7 +210,7 @@ function UploadDialogBody({ onClose }: { onClose: () => void }) {
                     onClick={() => move(i, 1)}
                     disabled={i === files.length - 1 || submitting}
                     className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-30"
-                    data-tip={t("upload.moveDown")}
+                    {...iconTip(t("upload.moveDown"))}
                   >
                     <ArrowDown className="size-3" />
                   </button>
@@ -217,7 +218,7 @@ function UploadDialogBody({ onClose }: { onClose: () => void }) {
                     onClick={() => remove(i)}
                     disabled={submitting}
                     className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
-                    data-tip={t("common.remove")}
+                    {...iconTip(t("common.remove"))}
                   >
                     <X className="size-3" />
                   </button>

@@ -16,6 +16,7 @@ import { assignSpeaker, renameSpeaker } from "@/lib/diarize";
 import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
 import { type TurnCache, mergeBySpeaker } from "@/lib/turns";
+import { iconTip } from "@/lib/tooltip";
 import type { Segment } from "@/types";
 
 /**
@@ -316,7 +317,7 @@ function SegmentCardInner({
             onClick={() =>
               isPlayingThis ? pause() : play(seg.segmentId)
             }
-            data-tip={isPlayingThis ? t("common.pause") : t("transcript.playSegment")}
+            {...iconTip(isPlayingThis ? t("common.pause") : t("transcript.playSegment"))}
             className="inline-flex size-5 items-center justify-center rounded-full bg-muted/60 text-muted-foreground transition-colors hover:bg-brand-500/20 hover:text-brand-600 dark:hover:text-brand-400"
           >
             {isPlayingThis ? (
@@ -625,7 +626,7 @@ function SpeakerChip({
             e.preventDefault();
             void commit();
           }}
-          data-tip={t("transcript.save")}
+          {...iconTip(t("transcript.save"))}
           className="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition-colors hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-600"
         >
           <Check className="size-3" />

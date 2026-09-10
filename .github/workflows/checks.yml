@@ -93,6 +93,10 @@ jobs:
         working-directory: clients/web
         run: npm run check:locales
 
+      - name: Accessible names
+        working-directory: clients/web
+        run: npm run check:a11y
+
       - name: Tests
         working-directory: clients/web
         run: npm test
