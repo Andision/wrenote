@@ -17,8 +17,16 @@ codes and facts, never sentences to display.
 
 - [x] i18n module, locale files auto-discovered, language picker in Settings
 - [x] `en` + `zh-CN`, engine compute reasons as codes the client renders
+- [x] Two bugs that made the locale files look broken: the whole `export.*`
+      section never loaded (`import.meta.glob` hands back a module namespace,
+      and `export` is a reserved word, so that key had no named export to be
+      spread from — read `default` instead), and `settings.cat.models` was
+      never written. Keys the UI composes at render are invisible to
+      `check:locales`, which scans for literal `t("…")`; `runtimeKeys.test.ts`
+      now pins every one the client owns, in every locale.
 - [ ] Remaining engine-generated strings: job phase/log lines, WS error
-      messages, HTTP `detail` payloads — same code+params treatment
+      messages, HTTP `detail` payloads — same code+params treatment.
+      `feature_off` and `session.refuse.*` are the pattern to follow.
 - [ ] Date/duration formatting through the active locale everywhere
 
 ### b. Models: configuration, not a hard-coded set
@@ -36,9 +44,36 @@ that same question.
       with a key per item to move just that (see "Data directory" below)
 - [x] Tiers (small / medium / large) recommended from the probed hardware,
       offered in `SetupGate` and in Settings → Models
+- [x] A model row is two tags — its tier (Rough / Balanced / Most accurate)
+      and the memory floor from `requires`, which turns red and becomes the
+      reason when the machine is short — not a paragraph. The paragraph
+      served nobody: whoever knows the models reads the name, whoever doesn't
+      isn't helped by prose. It survives as the row's tooltip. Model names
+      are ASCII now too ("Zipformer streaming (zh-en, int8)"): a name that
+      switches script mid-string reads as a slip in either UI language.
+- [x] **Features you can decline.** A first run downloaded 4.3 GB because
+      `required_models` walked every slot, and 2.5 GB of that is the chat
+      model a transcript-only user never touches. `<slot>.enabled` in the
+      config switches translation, minutes+chat, and speaker identification
+      off; the wizard opens on that choice, because it decides what there is
+      to download. A declined feature keeps its buttons — hiding them makes
+      the feature undiscoverable — and the click offers the download instead,
+      leading back into the flow with that feature pre-switched-on. The
+      switches are in Settings → Models too. Speech recognition is not
+      optional: the app is a transcriber. Not measured: whether skipping the
+      chat model actually shortens a first run enough to notice, on a real
+      connection.
 - [ ] Adapters for common third-party APIs (OpenAI-compatible chat/completions,
       whisper-style transcription) so a user can point at a remote model —
       strictly opt-in, and the privacy claim in the UI must change when it is on
+- [ ] **A local `claude` / `codex` CLI as the chat backend** — investigated,
+      not built: `docs/plans/CLI_AGENT_BACKENDS.md`. Both fit `ChatBackend`
+      as a subprocess and use the login the user already has. Claude streams
+      token-by-token, Codex only whole messages; both bill ~15k tokens of
+      agent scaffolding per call, and `claude --bare` (the clean-context
+      flag) refuses OAuth, so an embedded call can't have both. Blocked on
+      the same rule as the item above, plus one question the doc raises and
+      does not answer: whether the CLIs' terms permit it.
 
 ### c. Tests and CI/CD
 
@@ -74,6 +109,13 @@ wizard may skip the runtime step) with nothing holding them.
       `UploadDialog` (each open starts clean).
 - [ ] Component tests for the parts with real interaction left: `ComputePanel`
       (install → select → restart-required), `Transcript` editing, `ChatPanel`
+- [x] **Developer mode** — five taps on the version line in Settings →
+      General. The first-run flow, a slot with no model and a failed download
+      were the least-tested screens in the app because reaching them meant
+      `rm ~/.wrenote/models/*` and a restart; Settings → Developer now has a
+      button for each, plus the paths this process writes to and the merged
+      config a bug report needs. `DELETE /v1/models/{id}` is the one
+      destructive act, and it is recoverable by construction.
 
 ### d. In-place updates — the shell half of the update channel
 
@@ -288,7 +330,13 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       WebView2, overlay transparency, signing and notarization
       (`shells/tauri/README.md`)
 - [ ] Runtime-pack driver matrix on real NVIDIA / AMD / Intel machines
-- [ ] Real logo, then regenerate the placeholder Tauri icons (`npx tauri icon`)
+- [ ] **Real logo**, then regenerate the icons. There are two unrelated
+      placeholders, and neither is the brand: `clients/web/public/favicon.svg`
+      is a purple (#863bff) bolt from somewhere else entirely, and
+      `shells/tauri/src-tauri/icons/*` is a black rounded square with a
+      blue-violet waveform. Brand is warm brown, `#9e6f45` (`index.css`
+      `--color-brand-600`). One source SVG, then `npx tauri icon` for the
+      shell set and the same file as the favicon.
 - [ ] After merging: drop the temporary branch `push:` triggers from
       `build-tauri.yml` and `build-runtimes.yml` (both marked "Remove once
       merged")

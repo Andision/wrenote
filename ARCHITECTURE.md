@@ -131,8 +131,26 @@ backend. Only the third was ever in the right place.
   weights unloaded. `POST /v1/models/select` answers `applies: "now" |
   "next_session"` and never asks for a restart — claiming one trains people to
   restart for nothing.
+* **A feature you decline costs nothing.** `<slot>.enabled` (config, on the
+  three slots in `catalogue.OPTIONAL_SLOTS`: translator, chat, speaker) makes
+  `resolve` return no model, so `required_models` skips the download and
+  `all_present` — which decides whether the first-run wizard appears at all —
+  ignores it. Kept separate from the model choice so turning a feature back on
+  remembers which model it had, and switching one off keeps the files: 2.5 GB
+  deleted because a toggle moved is not a thing to do quietly. Speech
+  recognition is not in the list; the app is a transcriber. The paths that
+  would have used a switched-off feature answer the code `feature_off`, or —
+  where translation is a side effect rather than the ask (a re-diarize, a
+  post-recording pass of a session recorded before the switch) — quietly run
+  without it.
+* **A model row is tags, not prose.** The tier and the `requires` memory floor,
+  the second turning red and becoming the blocker when the machine is short.
+  The catalogue's `note_code` sentence is the row's tooltip. A paragraph per
+  model helped neither the reader who knows the models nor the one who doesn't.
 * Adding a *backend* needs no new machinery: `core/registry.py` is already a
-  factory, and a remote provider registers into it like a local one.
+  factory, and a remote provider registers into it like a local one. A local
+  CLI agent (`claude`, `codex`) would register the same way — investigated in
+  `docs/plans/CLI_AGENT_BACKENDS.md`, and blocked on the privacy claim.
 
 ## Compute runtimes (`engine/wrenote/core/runtimes.py`)
 
@@ -214,10 +232,20 @@ speaker model stay on CPU (ONNX Runtime) by design.
   has no message for a code yet.
 * Language names (English, 中文, 日本語) are endonyms and are never translated.
   Relative times and dates go through `Intl`, not through message keys.
+* Locale files are read through their **default export**, not the module
+  namespace `import.meta.glob` returns. That namespace has a named export per
+  top-level key — except for the ones that are reserved words, which cannot be
+  bindings, so spreading it silently dropped the whole `"export"` section and
+  every `export.*` key rendered as its own name.
 * `npm run check:locales` fails on a key used but missing, a locale out of sync
   with `en`, or a message nothing references. It runs in CI before the SPA
   build, because a missing key is invisible to whoever speaks the language the
-  app was written in.
+  app was written in. Its blind spot is a key the UI *composes*
+  (``t(`settings.cat.${id}`)``), which it cannot see and which shipped a
+  missing `settings.cat.models`; `src/i18n/runtimeKeys.test.ts` pins every
+  such key the client owns, in every locale. A prefix in the script's
+  `DYNAMIC_PREFIXES` should mean a code the *engine* chooses — those, no
+  static check can enumerate.
 
 ## Data (`core/config.py`, `core/store.py`)
 
@@ -428,11 +456,30 @@ the secondaries as chips under the language strip.
 * Everything is under `/v1` except `/health` (the shell's readiness probe).
   Breaking changes ship under `/v2` with `/v1` kept for a release.
 
+## Developer mode (`clients/web/src/lib/devMode.ts`)
+
+Five taps on the version line in Settings → General. The first-run flow, a
+slot with no model and a failed download are states the app shows once and
+then never again, which made them the least-looked-at screens in it — the
+only way back was `rm ~/.wrenote/models/*` and a restart. Settings →
+Developer replaces that with a button each, plus the two read-only facts a
+bug report needs: where this process writes, and the *merged* config, which
+is not any file on disk.
+
+`DELETE /v1/models/{id}` is the one destructive endpoint, and it is
+recoverable by construction: the catalogue still knows every file's URL. It
+drops a loaded model from `ModelManager` before unlinking, because Windows
+will not remove a file the process holds open.
+
+The gesture rather than a setting, because a setting for the developer tools
+is a setting every user has to read past. It persists — the person who turned
+it on is mid-task and about to restart something.
+
 ## Checks (`.github/workflows/checks.yml`)
 
 Everything that can fail without a Mac, a Windows box or a 40-minute compile
-runs on every push: engine lint + 248 tests + the API-contract drift check, and
-for the client types, lint, locale parity, 84 tests and the build. The
+runs on every push: engine lint + 348 tests + the API-contract drift check, and
+for the client types, lint, locale parity, 109 tests and the build. The
 platform-specific packaging workflows stay slow and separate.
 
 * **The frozen engine is smoke-tested** in `.github/actions/build-engine`: a
@@ -472,6 +519,9 @@ platform-specific packaging workflows stay slow and separate.
    library is the only copy, and the migration tests hold you to it.
 7. Paths come from `Config`, never from a module constant; the tests are
    isolated the way a user would move their data — by setting `data.dir`.
+8. A feature the user declined answers a code, never a crash and never a
+   500: something reached for a model that was deliberately not downloaded,
+   and the client turns that into an offer to fetch it.
 
 ## Roadmap (agreed direction)
 
