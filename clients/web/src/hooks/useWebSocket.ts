@@ -59,6 +59,9 @@ export function useWebSocket({ url = DEFAULT_URL }: UseWebSocketOptions = {}) {
             // the mic if it somehow gets both off.
             capture_mic: s.captureMic || !s.captureSystemAudio,
             capture_system: s.captureSystemAudio,
+            audio_source: s.audioApp
+              ? { type: "app", id: s.audioApp.id }
+              : { type: "system" },
             capture_screen: s.captureScreen,
             capture_target: s.captureScreen ? s.captureTarget : null,
           },

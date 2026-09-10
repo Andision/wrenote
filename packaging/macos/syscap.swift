@@ -1,9 +1,20 @@
 // wrenote system-audio capture helper (macOS, ScreenCaptureKit).
 //
-// Captures the system audio output and writes raw PCM to stdout for the Python
+// Captures system audio output and writes raw PCM to stdout for the Python
 // backend to mix into the transcription pipeline. We exclude our own process's
 // audio so playback inside Wrenote isn't re-captured. Requires the Screen
 // Recording permission (TCC), prompted on first run.
+//
+// Usage:
+//   syscap                       everything the machine is playing
+//   syscap --app <bundle-id>     only that app (repeatable)
+//
+// `--app` is "record the meeting, not the video you have open in the other
+// window": ScreenCaptureKit filters audio by application, so the filter is
+// built with `including:` instead of the whole display. Matching is by bundle
+// identifier and includes *every* running process of that bundle — Zoom,
+// Chrome and Slack all emit audio from helper processes, and filtering to the
+// one process that owns the window would silently capture nothing.
 //
 // Output: signed 16-bit little-endian PCM, mono, 16 kHz, on stdout.
 // Diagnostics go to stderr. Exit on EOF of stdin or SIGTERM.
@@ -25,14 +36,43 @@ final class SysCap: NSObject, SCStreamOutput, SCStreamDelegate {
     private var stream: SCStream?
     private let out = FileHandle.standardOutput
 
+    /// Bundle identifiers to capture, or empty for the whole output.
+    private let apps: [String]
+
+    init(apps: [String]) {
+        self.apps = apps
+        super.init()
+    }
+
     func start() async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: false)
         guard let display = content.displays.first else {
             log("syscap: no display available"); exit(2)
         }
-        let filter = SCContentFilter(
-            display: display, excludingApplications: [], exceptingWindows: [])
+
+        let filter: SCContentFilter
+        if apps.isEmpty {
+            filter = SCContentFilter(
+                display: display, excludingApplications: [], exceptingWindows: [])
+        } else {
+            let wanted = Set(apps)
+            let matched = content.applications.filter {
+                wanted.contains($0.bundleIdentifier)
+            }
+            if matched.isEmpty {
+                // Not an error to fail on: the app may not be running yet, or
+                // may have quit. Capturing nothing is the honest answer, and
+                // the caller sees silence rather than the whole desktop.
+                log("syscap: no running application matches \(apps.joined(separator: ", "))")
+            } else {
+                log(
+                    "syscap: capturing \(matched.count) process(es) of "
+                        + apps.joined(separator: ", "))
+            }
+            filter = SCContentFilter(
+                display: display, including: matched, exceptingWindows: [])
+        }
 
         let cfg = SCStreamConfiguration()
         cfg.capturesAudio = true
@@ -86,7 +126,24 @@ guard #available(macOS 13.0, *) else {
     log("syscap: requires macOS 13+"); exit(1)
 }
 
-let cap = SysCap()
+/// `--app <bundle-id>`, repeatable. Anything else is ignored: this helper is
+/// spawned by the engine, never typed by a person.
+func parseApps(_ argv: [String]) -> [String] {
+    var out: [String] = []
+    var i = 1
+    while i < argv.count {
+        if argv[i] == "--app", i + 1 < argv.count {
+            let id = argv[i + 1].trimmingCharacters(in: .whitespaces)
+            if !id.isEmpty { out.append(id) }
+            i += 2
+        } else {
+            i += 1
+        }
+    }
+    return out
+}
+
+let cap = SysCap(apps: parseApps(CommandLine.arguments))
 Task {
     do {
         try await cap.start()

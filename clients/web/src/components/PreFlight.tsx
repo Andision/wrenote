@@ -97,10 +97,16 @@ export function PreFlight({ onStart }: PreFlightProps) {
 
   const [uploadOpen, setUploadOpen] = useState(false);
 
-  // Screen/window capture targets — fetched only while "Record screen" is on.
-  // On macOS the list is empty until Screen-Recording permission is granted, so
-  // we expose a Refresh button (the first real recording triggers the prompt).
-  const [targets, setTargets] = useState<CaptureTargets>({ displays: [], windows: [] });
+  // Window/display list — fetched while either capture is on: the screen
+  // picker chooses what to *record*, and the audio picker chooses whose sound
+  // to capture, both from the same enumeration. On macOS it is empty until
+  // Screen-Recording permission is granted, so there is a Refresh button (the
+  // first real recording triggers the prompt).
+  const [targets, setTargets] = useState<CaptureTargets>({
+    displays: [],
+    windows: [],
+    audio_scope: false,
+  });
   const [loadingTargets, setLoadingTargets] = useState(false);
 
   const refreshTargets = () => {
@@ -111,8 +117,9 @@ export function PreFlight({ onStart }: PreFlightProps) {
     });
   };
 
+  const wantsTargets = settings.captureScreen || settings.captureSystemAudio;
   useEffect(() => {
-    if (!settings.captureScreen) return;
+    if (!wantsTargets) return;
     // Fetch inside an async IIFE so the effect body has no synchronous setState
     // (refreshTargets sets loading state up-front); avoids cascading renders.
     let cancelled = false;
@@ -127,11 +134,21 @@ export function PreFlight({ onStart }: PreFlightProps) {
     return () => {
       cancelled = true;
     };
-  }, [settings.captureScreen]);
+  }, [wantsTargets]);
 
   const targetValue = settings.captureTarget
     ? `${settings.captureTarget.type}:${settings.captureTarget.id}`
     : "";
+
+  // One entry per application that has a window, since audio is captured per
+  // app and several windows of one app are one source.
+  const audioApps = Array.from(
+    new Map(
+      targets.windows
+        .filter((w) => w.bundle)
+        .map((w) => [w.bundle!, w.app || w.title]),
+    ),
+  ).map(([id, label]) => ({ id, label }));
 
   const onPickTarget = (val: string) => {
     if (!val) {
@@ -345,6 +362,40 @@ export function PreFlight({ onStart }: PreFlightProps) {
               )
             }
           />
+          {/* Whose sound. "Everything" is the old behaviour and stays the
+              default; one app is the answer to "record the meeting, not the
+              video I have open next to it". Only offered where the platform
+              can actually filter — capturing the whole desktop when someone
+              asked for one app would record more than they agreed to. */}
+          {settings.captureSystemAudio && targets.audio_scope && (
+            <select
+              value={settings.audioApp?.id ?? ""}
+              onChange={(e) => {
+                const hit = audioApps.find((a) => a.id === e.target.value);
+                updateSettings({ audioApp: hit ?? null });
+              }}
+              disabled={isRecording || isBusy}
+              aria-label={t("preflight.audioSource")}
+              className="min-w-[10rem] max-w-[16rem] flex-1 truncate rounded-md border border-border bg-card px-2 py-1 text-[12.5px] text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50"
+            >
+              <option value="">{t("preflight.audioAll")}</option>
+              {audioApps.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {t("preflight.audioOnly", { app: a.label })}
+                </option>
+              ))}
+            </select>
+          )}
+          {/* An app that was chosen and has since quit: say so rather than
+              silently recording nothing. */}
+          {settings.captureSystemAudio &&
+            settings.audioApp &&
+            targets.windows.length > 0 &&
+            !audioApps.some((a) => a.id === settings.audioApp?.id) && (
+              <span className="text-[11.5px] text-amber-600 dark:text-amber-400">
+                {t("preflight.audioAppGone", { app: settings.audioApp.label })}
+              </span>
+            )}
           <SourceToggle
             icon={Monitor}
             label={t("preflight.screen")}

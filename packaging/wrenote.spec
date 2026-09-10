@@ -70,6 +70,13 @@ if IS_MAC:
     if os.path.exists(screencap):
         binaries += [(screencap, ".")]  # ScreenCaptureKit window/display video helper
 
+if IS_WIN:
+    procloop = os.path.join(SPECPATH, "windows", "procloop.exe")  # noqa: F821
+    if os.path.exists(procloop):
+        # WASAPI per-process loopback: "record Zoom, not the browser". Absent,
+        # the app still captures the whole output mix.
+        binaries += [(procloop, ".")]
+
 datas = [
     (os.path.join(ENGINE, "static", "app"), "static/app"),
     (os.path.join(ENGINE, "config.yaml"), "."),

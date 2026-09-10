@@ -177,6 +177,16 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         # the client, so the system source has to drive the clock instead
         # (core/syscap.SystemAudioPump). Only meaningful with capture_system.
         capture_mic = bool(session_cfg.get("capture_mic", True))
+        # Which application's audio, when the platform can tell them apart:
+        # {"type": "system"} = everything, {"type": "app", "id": "us.zoom.xos"}
+        # = only that one. A platform that cannot scope ignores `id` and the
+        # client doesn't offer the choice (GET /v1/capture/targets says so).
+        audio_source = session_cfg.get("audio_source") or {}
+        audio_app = (
+            str(audio_source.get("id") or "")
+            if isinstance(audio_source, dict) and audio_source.get("type") == "app"
+            else ""
+        ) or None
         capture_screen = bool(session_cfg.get("capture_screen"))
         # Optional chosen target {type: "window"|"display", id, title}. None =
         # legacy full-screen.
@@ -279,7 +289,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         # Either way a missing helper or permission falls back rather than
         # failing: the session still records what it can.
         if capture_system and capture_mic:
-            mixer = SystemAudioMixer()
+            mixer = SystemAudioMixer(audio_app)
             if not await mixer.start():
                 mixer = None
         # The mic-less case starts below, once the WAV writer exists — the
@@ -317,7 +327,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 wav_writer.append(frame)
 
         if capture_system and not capture_mic:
-            syspump = SystemAudioPump(_consume_audio)
+            syspump = SystemAudioPump(_consume_audio, audio_app)
             if not await syspump.start():
                 syspump = None
                 await _send_error(

@@ -36,6 +36,7 @@ __all__ = [
     "SystemAudioPump",
     "SystemAudioSource",
     "make_system_audio_source",
+    "system_audio_can_scope",
 ]
 
 log = logging.getLogger(__name__)
@@ -47,15 +48,22 @@ FRAME_MS = 100
 FRAME_BYTES = SAMPLE_RATE * 2 * FRAME_MS // 1000
 
 
-def make_system_audio_source() -> SystemAudioSource | None:
-    return get_platform().make_system_audio_source()
+def make_system_audio_source(app: str | None = None) -> SystemAudioSource | None:
+    """The platform's system-output source, optionally scoped to one app."""
+    return get_platform().make_system_audio_source(app)
+
+
+def system_audio_can_scope() -> bool:
+    """Whether this platform can capture one app rather than the whole mix.
+    The client asks so it can offer the choice, or say why it cannot."""
+    return get_platform().system_audio_can_scope
 
 
 class SystemAudioMixer:
     """Mixes a SystemAudioSource into mic frames before the pipeline."""
 
-    def __init__(self) -> None:
-        self._source: SystemAudioSource | None = make_system_audio_source()
+    def __init__(self, app: str | None = None) -> None:
+        self._source: SystemAudioSource | None = make_system_audio_source(app)
 
     async def start(self) -> bool:
         if self._source is None:
@@ -91,8 +99,10 @@ class SystemAudioPump:
     sending mic frames when it pauses.
     """
 
-    def __init__(self, on_frame: Callable[[bytes], Awaitable[None]]) -> None:
-        self._source: SystemAudioSource | None = make_system_audio_source()
+    def __init__(
+        self, on_frame: Callable[[bytes], Awaitable[None]], app: str | None = None
+    ) -> None:
+        self._source: SystemAudioSource | None = make_system_audio_source(app)
         self._on_frame = on_frame
         self._task: asyncio.Task[None] | None = None
         self._paused = False

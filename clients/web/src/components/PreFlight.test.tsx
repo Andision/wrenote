@@ -12,9 +12,10 @@ vi.mock("@/hooks/useMicPreview", () => ({
 }));
 vi.mock("@/lib/capture", async (orig) => ({
   ...(await orig<typeof import("@/lib/capture")>()),
-  listCaptureTargets: vi.fn().mockResolvedValue({ displays: [], windows: [] }),
+  listCaptureTargets: vi.fn(),
 }));
 
+const capture = await import("@/lib/capture");
 const { PreFlight } = await import("@/components/PreFlight");
 const { I18nProvider } = await import("@/i18n/provider");
 const { useSessionStore } = await import("@/store/sessionStore");
@@ -22,15 +23,21 @@ const { useSessionStore } = await import("@/store/sessionStore");
 const show = () =>
   render(<I18nProvider><PreFlight onStart={vi.fn()} /></I18nProvider>);
 
-const toggle = (name: string) => screen.getByRole("button", { name });
+const toggle = (name: string | RegExp) => screen.getByRole("button", { name });
 const settings = () => useSessionStore.getState().settings;
 
 describe("PreFlight capture sources", () => {
   beforeEach(() => {
+    vi.mocked(capture.listCaptureTargets).mockResolvedValue({
+      displays: [],
+      windows: [],
+      audio_scope: false,
+    });
     useSessionStore.getState().updateSettings({
       captureMic: true,
       captureSystemAudio: false,
       captureScreen: false,
+      audioApp: null,
     });
   });
 
@@ -67,5 +74,75 @@ describe("PreFlight capture sources", () => {
     fireEvent.click(toggle(/System audio/));
     fireEvent.click(toggle(/Microphone/));
     expect(toggle(/Test/)).toHaveProperty("disabled", true);
+  });
+});
+
+
+describe("PreFlight audio source", () => {
+  const zoom = {
+    type: "window" as const, id: 1, title: "Zoom Meeting",
+    app: "zoom.us", bundle: "us.zoom.xos", width: 900, height: 600,
+  };
+  const chrome = {
+    type: "window" as const, id: 2, title: "YouTube", app: "Google Chrome",
+    bundle: "com.google.Chrome", width: 1200, height: 800,
+  };
+
+  beforeEach(() => {
+    useSessionStore.getState().updateSettings({
+      captureMic: true,
+      captureSystemAudio: false,
+      captureScreen: false,
+      audioApp: null,
+    });
+  });
+
+  it("offers one entry per running app, once each", async () => {
+    vi.mocked(capture.listCaptureTargets).mockResolvedValue({
+      displays: [],
+      // Two windows of the same app are one audio source.
+      windows: [zoom, chrome, { ...zoom, id: 3, title: "Zoom Chat" }],
+      audio_scope: true,
+    });
+    show();
+    fireEvent.click(toggle(/System audio/));
+    const select = await screen.findByLabelText("Which audio to capture");
+    const options = Array.from(select.querySelectorAll("option")).map((o) => o.textContent);
+    expect(options).toEqual(["All system audio", "Only zoom.us", "Only Google Chrome"]);
+  });
+
+  it("records the meeting and not the video in the other window", async () => {
+    vi.mocked(capture.listCaptureTargets).mockResolvedValue({
+      displays: [], windows: [zoom, chrome], audio_scope: true,
+    });
+    show();
+    fireEvent.click(toggle(/System audio/));
+    const select = await screen.findByLabelText("Which audio to capture");
+    fireEvent.change(select, { target: { value: "us.zoom.xos" } });
+    expect(settings().audioApp).toEqual({ id: "us.zoom.xos", label: "zoom.us" });
+  });
+
+  it("does not offer the choice where the platform cannot filter", async () => {
+    vi.mocked(capture.listCaptureTargets).mockResolvedValue({
+      displays: [], windows: [zoom], audio_scope: false,
+    });
+    show();
+    fireEvent.click(toggle(/System audio/));
+    await screen.findByText(/System audio/);
+    // Offering it and then capturing the whole desktop would record more
+    // than the user agreed to.
+    expect(screen.queryByLabelText("Which audio to capture")).toBeNull();
+  });
+
+  it("says so when the chosen app has quit", async () => {
+    vi.mocked(capture.listCaptureTargets).mockResolvedValue({
+      displays: [], windows: [chrome], audio_scope: true,
+    });
+    useSessionStore.getState().updateSettings({
+      audioApp: { id: "us.zoom.xos", label: "zoom.us" },
+    });
+    show();
+    fireEvent.click(toggle(/System audio/));
+    expect(await screen.findByText(/zoom.us isn't running/)).toBeTruthy();
   });
 });

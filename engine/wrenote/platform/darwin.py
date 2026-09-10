@@ -45,9 +45,17 @@ def _x264_out(video_path: Path) -> list[str]:
 
 
 class MacSystemAudioSource(SystemAudioSource):
-    def __init__(self, helper: Path | None) -> None:
+    """ScreenCaptureKit, through the bundled `syscap` helper.
+
+    ``app`` is a bundle identifier; the helper matches every running process
+    of that bundle, because Zoom, Chrome and Slack all emit their audio from
+    helper processes rather than the one that owns the window.
+    """
+
+    def __init__(self, helper: Path | None, *, app: str | None = None) -> None:
         super().__init__()
         self._helper = helper
+        self._app = (app or "").strip()
         self._proc: asyncio.subprocess.Process | None = None
         self._reader: asyncio.Task[None] | None = None
         self._stderr_task: asyncio.Task[None] | None = None
@@ -57,8 +65,11 @@ class MacSystemAudioSource(SystemAudioSource):
             log.warning("syscap helper not found; system audio disabled")
             return False
         try:
+            argv = [str(self._helper)]
+            if self._app:
+                argv += ["--app", self._app]
             self._proc = await asyncio.create_subprocess_exec(
-                str(self._helper),
+                *argv,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -68,7 +79,11 @@ class MacSystemAudioSource(SystemAudioSource):
             return False
         self._reader = asyncio.create_task(self._read_loop())
         self._stderr_task = asyncio.create_task(self._log_stderr())
-        log.info("system-audio capture started (macOS ScreenCaptureKit: %s)", self._helper)
+        log.info(
+            "system-audio capture started (macOS ScreenCaptureKit: %s%s)",
+            self._helper,
+            f", app={self._app}" if self._app else "",
+        )
         return True
 
     async def _read_loop(self) -> None:
@@ -128,8 +143,12 @@ class DarwinPlatform(PlatformAdapter):
 
     # --- audio ---
 
-    def make_system_audio_source(self) -> SystemAudioSource | None:
-        return MacSystemAudioSource(self.bundled_binary("syscap"))
+    def make_system_audio_source(self, app: str | None = None) -> SystemAudioSource | None:
+        return MacSystemAudioSource(self.bundled_binary("syscap"), app=app)
+
+    @property
+    def system_audio_can_scope(self) -> bool:
+        return True
 
     # --- screen ---
 

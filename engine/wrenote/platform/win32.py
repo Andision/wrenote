@@ -50,6 +50,120 @@ def _x264_out(video_path: Path) -> list[str]:
 # ---------- System audio: WASAPI loopback ----------
 
 
+def _exe_name(pid: int) -> str:
+    """The process's executable name ("Zoom.exe"), or "" if it can't be read.
+
+    Windows has no application name the way macOS does; the exe is what the
+    user will recognise in a picker next to the window title.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return ""
+        try:
+            size = wintypes.DWORD(260)
+            buf = ctypes.create_unicode_buffer(size.value)
+            if not kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                return ""
+            return Path(buf.value).name
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return ""
+
+
+class WindowsProcessAudioSource(SystemAudioSource):
+    """One application's audio, via the bundled `procloop.exe`.
+
+    WASAPI's per-process loopback is a different activation path from the
+    endpoint loopback :class:`WindowsSystemAudioSource` uses
+    (``AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK``, Windows 10 2004+), and
+    no Python audio binding reaches it — hence a helper, on the same stdout-
+    PCM contract as the macOS one, so this class and the macOS one are the
+    same shape.
+    """
+
+    def __init__(self, helper: Path | None, pid: str) -> None:
+        super().__init__()
+        self._helper = helper
+        self._pid = pid
+        self._proc: asyncio.subprocess.Process | None = None
+        self._reader: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
+
+    async def start(self) -> bool:
+        if self._helper is None:
+            # Deliberately not falling back to the whole output mix: the user
+            # asked for one app, and recording the rest of the desktop
+            # instead is worse than recording nothing.
+            log.warning("procloop helper not found; per-app system audio unavailable")
+            return False
+        try:
+            self._proc = await asyncio.create_subprocess_exec(
+                str(self._helper),
+                "--pid",
+                self._pid,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except Exception:
+            log.exception("failed to launch procloop helper")
+            return False
+        self._reader = asyncio.create_task(self._read_loop())
+        self._stderr_task = asyncio.create_task(self._log_stderr())
+        log.info("system-audio capture started (Windows process loopback, pid=%s)", self._pid)
+        return True
+
+    async def _read_loop(self) -> None:
+        assert self._proc is not None and self._proc.stdout is not None
+        try:
+            while True:
+                chunk = await self._proc.stdout.read(4096)
+                if not chunk:
+                    break
+                self._feed(chunk)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("procloop read loop failed")
+
+    async def _log_stderr(self) -> None:
+        assert self._proc is not None and self._proc.stderr is not None
+        try:
+            while True:
+                line = await self._proc.stderr.readline()
+                if not line:
+                    break
+                log.info("procloop: %s", line.decode(errors="ignore").rstrip())
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
+
+    async def stop(self) -> None:
+        for task in (self._reader, self._stderr_task):
+            if task is not None:
+                task.cancel()
+        if self._proc is not None:
+            # Closing stdin is how both helpers are asked to stop.
+            try:
+                if self._proc.stdin is not None:
+                    self._proc.stdin.close()
+                await asyncio.wait_for(self._proc.wait(), timeout=2)
+            except Exception:
+                try:
+                    self._proc.kill()
+                except Exception:
+                    pass
+            self._proc = None
+
+
 class WindowsSystemAudioSource(SystemAudioSource):
     def __init__(self) -> None:
         super().__init__()
@@ -291,8 +405,25 @@ class WindowsPlatform(PlatformAdapter):
 
     # --- audio ---
 
-    def make_system_audio_source(self) -> SystemAudioSource | None:
+    def make_system_audio_source(self, app: str | None = None) -> SystemAudioSource | None:
+        """WASAPI. Scoped to one process when ``app`` is a pid and the
+        `procloop` helper is present; the whole output mix otherwise.
+
+        Falling back to the whole mix when asked for one app would record
+        more than the user agreed to, so the caller checks
+        ``system_audio_can_scope`` and the source refuses rather than
+        widening (see :class:`WindowsProcessAudioSource`).
+        """
+        pid = (app or "").strip()
+        if pid:
+            return WindowsProcessAudioSource(self.bundled_binary("procloop.exe"), pid)
         return WindowsSystemAudioSource()
+
+    @property
+    def system_audio_can_scope(self) -> bool:
+        # Only if the helper shipped: process loopback is not reachable from
+        # `soundcard`, which is what the whole-output path uses.
+        return self.bundled_binary("procloop.exe") is not None
 
     # --- screen ---
 
@@ -324,8 +455,16 @@ class WindowsPlatform(PlatformAdapter):
                 h = rect.bottom - rect.top
                 if w < 80 or h < 80:
                     return True
+                # The pid is what `procloop` filters audio by, so the
+                # audio-source picker can offer "only this app's sound"
+                # from the same list the screen picker uses. `app` is the
+                # executable name, which is the closest Windows has to the
+                # macOS side's application name.
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
                 windows.append(
-                    {"id": int(hwnd), "title": title, "app": "", "width": w, "height": h,
+                    {"id": int(hwnd), "title": title, "app": _exe_name(pid.value),
+                     "bundle": str(pid.value), "width": w, "height": h,
                      "type": "window"}
                 )
                 return True

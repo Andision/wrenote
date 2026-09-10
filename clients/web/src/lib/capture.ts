@@ -7,6 +7,9 @@ export interface CaptureTarget {
   id: number;
   title: string;
   app?: string;
+  /** What identifies the owning *application* to the audio capture: a bundle
+   *  id on macOS, a process id on Windows. "" when the platform didn't say. */
+  bundle?: string;
   width?: number;
   height?: number;
 }
@@ -14,6 +17,10 @@ export interface CaptureTarget {
 export interface CaptureTargets {
   displays: CaptureTarget[];
   windows: CaptureTarget[];
+  /** Whether one application's audio can be captured on its own. False =
+   *  don't offer it: recording the whole desktop when someone asked for one
+   *  app records more than they agreed to. */
+  audio_scope: boolean;
 }
 
 /**
@@ -24,9 +31,9 @@ export interface CaptureTargets {
 export async function listCaptureTargets(): Promise<CaptureTargets> {
   try {
     const res = await fetch(`${BASE}/capture/targets`);
-    if (!res.ok) return { displays: [], windows: [] };
+    if (!res.ok) return { displays: [], windows: [], audio_scope: false };
     return (await res.json()) as CaptureTargets;
   } catch {
-    return { displays: [], windows: [] };
+    return { displays: [], windows: [], audio_scope: false };
   }
 }

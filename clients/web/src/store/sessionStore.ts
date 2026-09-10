@@ -69,6 +69,10 @@ export interface SessionSettings {
   micDeviceId: string;
   /** Also capture system audio output (meeting recording) and mix it with the mic. */
   captureSystemAudio: boolean;
+  /** Which application's audio to capture; null = everything the machine
+   *  plays. The value is the platform's own handle for an app (a bundle id,
+   *  a process id) — the client only carries it. */
+  audioApp: { id: string; label: string } | null;
   /** Also record the screen; on stop it's muxed with the audio into an MP4. */
   captureScreen: boolean;
   /** Which window/display to record (null = full screen). Used when captureScreen is on. */
@@ -93,6 +97,7 @@ const DEFAULT_SETTINGS: SessionSettings = {
   captureMic: true,
   micDeviceId: "",
   captureSystemAudio: false,
+  audioApp: null,
   captureScreen: false,
   captureTarget: null,
 };

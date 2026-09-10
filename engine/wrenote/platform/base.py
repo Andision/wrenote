@@ -220,9 +220,22 @@ class PlatformAdapter:
 
     # --- audio ------------------------------------------------------------
 
-    def make_system_audio_source(self) -> SystemAudioSource | None:
-        """A source for the system output mix, or ``None`` when unsupported."""
+    def make_system_audio_source(self, app: str | None = None) -> SystemAudioSource | None:
+        """A source for the system output, or ``None`` when unsupported.
+
+        ``app`` scopes it to one application — "record the meeting, not the
+        video playing in the other window". Its meaning is the platform's:
+        a bundle identifier on macOS, a process id on Windows. A platform
+        that cannot scope ignores it and captures the whole output, which is
+        what it did before; capturing more than asked is the wrong failure,
+        so the caller is told (see ``system_audio_can_scope``).
+        """
         return None
+
+    @property
+    def system_audio_can_scope(self) -> bool:
+        """Whether ``make_system_audio_source(app=…)`` actually filters."""
+        return False
 
     # --- screen / window capture -----------------------------------------
 

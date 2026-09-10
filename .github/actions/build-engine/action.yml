@@ -75,6 +75,19 @@ runs:
         swiftc -O -o syscap syscap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia
         swiftc -O -o screencap screencap.swift -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework AppKit
 
+    # Per-application audio on Windows. WASAPI's process loopback is a
+    # different activation path from the endpoint loopback `soundcard` uses,
+    # and no Python binding reaches it — see the file's header. Without this
+    # exe the app still captures the whole output mix; it just cannot offer
+    # "only this app".
+    - name: Compile the Windows per-process audio helper
+      if: runner.os == 'Windows'
+      shell: cmd
+      working-directory: packaging/windows
+      run: |
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        cl /nologo /O2 /EHsc /std:c++17 procloop.cpp /Fe:procloop.exe /link ole32.lib mmdevapi.lib
+
     # Freeze the pure FastAPI server (no window code) into engine/dist/wrenote-server/.
     # Shells pick that folder up as a resource (Electron extraResources, Tauri bundle.resources).
     - name: Freeze engine sidecar (PyInstaller)

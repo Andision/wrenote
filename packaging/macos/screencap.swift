@@ -74,11 +74,16 @@ func runList() async {
         for w in content.windows {
             guard w.isOnScreen, let title = w.title, !title.isEmpty else { continue }
             let app = w.owningApplication?.applicationName ?? ""
+            // The bundle id, not just the display name: it is what
+            // `syscap --app` filters audio by, so the audio-source picker
+            // can offer "only this app's sound" from this same list.
+            let bundle = w.owningApplication?.bundleIdentifier ?? ""
             // Skip our own helper / tiny chrome windows.
             if Int(w.frame.width) < 80 || Int(w.frame.height) < 80 { continue }
             windows.append(
                 "{\"id\":\(w.windowID),\"title\":\(jsonString(title)),"
                     + "\"app\":\(jsonString(app)),"
+                    + "\"bundle\":\(jsonString(bundle)),"
                     + "\"width\":\(Int(w.frame.width)),\"height\":\(Int(w.frame.height))}")
         }
         let out = "{\"displays\":[\(displays.joined(separator: ","))],"

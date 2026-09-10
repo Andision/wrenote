@@ -47,7 +47,7 @@ class FakeSource:
 @pytest.fixture
 def source(monkeypatch):
     src = FakeSource()
-    monkeypatch.setattr(syscap, "make_system_audio_source", lambda: src)
+    monkeypatch.setattr(syscap, "make_system_audio_source", lambda app=None: src)
     return src
 
 
@@ -108,7 +108,40 @@ class TestPump:
         assert len(frames) == n, "the pump task outlived stop()"
 
     async def test_no_source_means_no_pump(self, monkeypatch):
-        monkeypatch.setattr(syscap, "make_system_audio_source", lambda: None)
+        monkeypatch.setattr(syscap, "make_system_audio_source", lambda app=None: None)
         pump = await _pump([])
         assert await pump.start() is False
         await pump.stop()  # must not raise
+
+
+class TestAppScope:
+    """"Record Zoom, not the browser." The platform is asked for one app's
+    audio; what it can't scope, it must not silently widen."""
+
+    async def test_the_app_reaches_the_platform(self, monkeypatch):
+        seen: list[str | None] = []
+
+        def fake(app=None):
+            seen.append(app)
+            return FakeSource()
+
+        monkeypatch.setattr(syscap, "make_system_audio_source", fake)
+        syscap.SystemAudioMixer("us.zoom.xos")
+        SystemAudioPump(lambda _f: asyncio.sleep(0), "us.zoom.xos")
+        assert seen == ["us.zoom.xos", "us.zoom.xos"]
+
+    async def test_no_app_still_means_everything(self, monkeypatch):
+        seen: list[str | None] = []
+        monkeypatch.setattr(
+            syscap, "make_system_audio_source", lambda app=None: (seen.append(app), FakeSource())[1]
+        )
+        syscap.SystemAudioMixer()
+        assert seen == [None]
+
+    def test_a_platform_that_cannot_scope_says_so(self):
+        """The client asks before offering the choice: capturing the whole
+        desktop when someone asked for one app records more than they agreed
+        to, so 'can't' has to be visible rather than silently approximated."""
+        from wrenote.platform.base import PlatformAdapter
+
+        assert PlatformAdapter.system_audio_can_scope.fget(object()) is False  # type: ignore[attr-defined]
