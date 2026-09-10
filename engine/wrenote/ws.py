@@ -38,7 +38,7 @@ from .core.pipeline import Pipeline, SessionParams
 from .core.recording import WavWriter, resolve_recording_path
 from .core.registry import make_speaker, make_stt, make_translator, make_vad
 from .core.store import Store
-from .core.syscap import SystemAudioMixer
+from .core.syscap import SystemAudioMixer, SystemAudioPump
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -122,6 +122,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     pipeline: Pipeline | None = None
     pump_task: asyncio.Task[None] | None = None
     mixer: SystemAudioMixer | None = None
+    syspump: SystemAudioPump | None = None
     recorder: screenrec.ScreenRecorder | None = None
     screen_video_path: Path | None = None
     wav_writer: WavWriter | None = None
@@ -172,6 +173,10 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             session_cfg.get("lang_override_confidence", DEFAULT_OVERRIDE_CONFIDENCE)
         )
         capture_system = bool(session_cfg.get("capture_system"))
+        # "Record the meeting, not me": with no mic there are no frames from
+        # the client, so the system source has to drive the clock instead
+        # (core/syscap.SystemAudioPump). Only meaningful with capture_system.
+        capture_mic = bool(session_cfg.get("capture_mic", True))
         capture_screen = bool(session_cfg.get("capture_screen"))
         # Optional chosen target {type: "window"|"display", id, title}. None =
         # legacy full-screen.
@@ -269,13 +274,17 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             await _send_error(ws, "MODEL_LOAD_FAILED", f"{type(e).__name__}: {e}", recoverable=False)
             return
 
-        # System-audio capture (meeting recording): mix the system output into
-        # the mic stream. Falls back to mic-only if the helper/permission isn't
-        # available, so recording still works.
-        if capture_system:
+        # System-audio capture (meeting recording). With a mic, the system
+        # output is mixed into its frames; without one, it *is* the frames.
+        # Either way a missing helper or permission falls back rather than
+        # failing: the session still records what it can.
+        if capture_system and capture_mic:
             mixer = SystemAudioMixer()
             if not await mixer.start():
                 mixer = None
+        # The mic-less case starts below, once the WAV writer exists — the
+        # pump feeds both, and frames dropped before the file was open would
+        # be missing from the recording the post-recording pass re-reads.
 
         # Optional screen/window recording → muxed with the session audio into an
         # MP4 on stop. `capture_target` picks a window/display; None = full screen.
@@ -297,6 +306,28 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         except Exception:
             log.exception("Failed to open WAV writer for session %s — continuing without recording", session_id)
             wav_writer = None
+
+        async def _consume_audio(frame: bytes) -> None:
+            """One frame of session audio, wherever it came from: the mic (via
+            the receive loop, already mixed with the system output) or the
+            system source alone (via the pump). Tees to the live pipeline and
+            to the WAV the post-recording pass re-reads."""
+            await pipeline.feed_audio(frame)
+            if wav_writer is not None:
+                wav_writer.append(frame)
+
+        if capture_system and not capture_mic:
+            syspump = SystemAudioPump(_consume_audio)
+            if not await syspump.start():
+                syspump = None
+                await _send_error(
+                    ws,
+                    "SYSTEM_AUDIO_UNAVAILABLE",
+                    "system audio is this session's only source and it could "
+                    "not be started",
+                    recoverable=False,
+                )
+                return
 
         # Create / refresh the SQLite session row up-front so a crash
         # mid-recording still leaves *something* discoverable.
@@ -420,15 +451,12 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             payload_text = msg.get("text")
 
             if payload_bytes:
-                # P1 audio contract: 16kHz mono int16 PCM. Tee to both the
-                # live pipeline and the per-session WAV file. Paused chunks
-                # never arrive here (frontend gates them) so the WAV
-                # naturally excludes silence-from-pause.
+                # P1 audio contract: 16kHz mono int16 PCM. Paused chunks never
+                # arrive here (frontend gates them) so the WAV naturally
+                # excludes silence-from-pause.
                 if mixer is not None:
                     payload_bytes = await mixer.mix(payload_bytes)
-                await pipeline.feed_audio(payload_bytes)
-                if wav_writer is not None:
-                    wav_writer.append(payload_bytes)
+                await _consume_audio(payload_bytes)
                 continue
 
             if not payload_text:
@@ -454,6 +482,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 await asyncio.sleep(0.5)
                 break
             elif msg_type == "pause":
+                if syspump is not None:
+                    syspump.set_paused(True)
                 # Frontend already stopped feeding PCM. Tell the pipeline to
                 # flush any in-flight VAD segment now so the user sees their
                 # pre-pause speech finalized instead of left hanging as a partial.
@@ -464,6 +494,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                     except Exception:
                         log.exception("close_open_segment failed during pause")
             elif msg_type == "resume":
+                if syspump is not None:
+                    syspump.set_paused(False)
                 log.info("WS received 'resume'")
             elif msg_type == "switch_lang":
                 # P1: log and ignore (UI doesn't expose). Architecture supports it later.
@@ -478,6 +510,11 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         except Exception:
             pass
     finally:
+        if syspump is not None:
+            try:
+                await syspump.stop()
+            except Exception:
+                log.exception("system-audio pump stop failed during cleanup")
         if mixer is not None:
             try:
                 await mixer.stop()

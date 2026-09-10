@@ -129,6 +129,8 @@
     "translateOn": "Translate as I speak",
     "translateOff": "Transcribe only · no translation",
     "microphone": "Microphone",
+    "micToggleHint": "Record your microphone. Off records only the meeting's audio.",
+    "micNeedsSystem": "Turn on System audio first — a recording needs at least one source.",
     "defaultMic": "System default microphone",
     "unnamedMic": "Microphone ({id}…)",
     "test": "Test",

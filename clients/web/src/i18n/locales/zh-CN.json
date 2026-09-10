@@ -129,6 +129,8 @@
     "translateOn": "边说边译",
     "translateOff": "仅转写 · 不翻译",
     "microphone": "麦克风",
+    "micToggleHint": "录制你的麦克风。关闭后只录会议本身的声音。",
+    "micNeedsSystem": "先打开「系统声音」——录制至少需要一个声源。",
     "defaultMic": "系统默认麦克风",
     "unnamedMic": "麦克风（{id}…）",
     "test": "测试",

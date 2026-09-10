@@ -54,6 +54,10 @@ export function useWebSocket({ url = DEFAULT_URL }: UseWebSocketOptions = {}) {
             translate_enabled: s.translateEnabled,
             refine_after_stop: s.refineAfterStop,
             speaker_enabled: s.speakerEnabled,
+            // Mic off is only meaningful with system audio on; PreFlight
+            // won't let you start with neither, and the engine falls back to
+            // the mic if it somehow gets both off.
+            capture_mic: s.captureMic || !s.captureSystemAudio,
             capture_system: s.captureSystemAudio,
             capture_screen: s.captureScreen,
             capture_target: s.captureScreen ? s.captureTarget : null,

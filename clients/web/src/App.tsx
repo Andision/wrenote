@@ -63,8 +63,15 @@ export default function App() {
 
   // Mic lifecycle: start on first transition to "recording" / "paused"
   // (paused keeps the mic alive but gates PCM upstream — no permission
-  // re-prompt on resume). Stop on terminal states only.
+  // re-prompt on resume). Stop on terminal states only. A session recording
+  // only the system output never opens the mic at all — no permission
+  // prompt, no red menu-bar dot for a device nobody is listening to.
+  const micEnabled = useSessionStore((s) => s.settings.captureMic || !s.settings.captureSystemAudio);
   useEffect(() => {
+    if (!micEnabled) {
+      mic.stop();
+      return;
+    }
     if (connection === "recording" || connection === "paused") {
       mic.start().catch((err) => {
         console.error(err);
@@ -80,7 +87,7 @@ export default function App() {
     }
     // intentionally only on connection changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connection]);
+  }, [connection, micEnabled]);
 
   // When a recording finishes (recording/stopping → disconnected) and the
   // title is still the placeholder, ask the LLM to summarize one.

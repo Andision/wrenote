@@ -63,6 +63,9 @@ export interface SessionSettings {
   /** Whether the StatusBar shows the mic + speaker level meters. */
   showLevelMeters: boolean;
   /** Preferred microphone deviceId from enumerateDevices ("" = system default). */
+  /** Record the microphone. Off = the meeting and not you — only possible
+   *  with system audio on, since something has to be recorded. */
+  captureMic: boolean;
   micDeviceId: string;
   /** Also capture system audio output (meeting recording) and mix it with the mic. */
   captureSystemAudio: boolean;
@@ -87,6 +90,7 @@ const DEFAULT_SETTINGS: SessionSettings = {
   speakerEnabled: false,
   playbackMode: "continuous",
   showLevelMeters: true,
+  captureMic: true,
   micDeviceId: "",
   captureSystemAudio: false,
   captureScreen: false,

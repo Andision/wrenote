@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Activity, ArrowRight, Loader2, Mic, Monitor, RefreshCw, ShieldCheck, UploadCloud, Volume2 } from "lucide-react";
+import { Activity, ArrowRight, Loader2, Mic, MicOff, Monitor, RefreshCw, ShieldCheck, UploadCloud, Volume2 } from "lucide-react";
 
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@/lib/languages";
@@ -40,18 +40,22 @@ function SourceToggle({
   active,
   onClick,
   disabled,
+  tip,
 }: {
   icon: typeof Mic;
   label: string;
   active: boolean;
   onClick: () => void;
   disabled?: boolean;
+  /** Why it is disabled, or what it does. The label is the accessible name. */
+  tip?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      data-tip={tip}
       aria-pressed={active}
       className={cn(
         "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors disabled:opacity-50",
@@ -79,6 +83,10 @@ export function PreFlight({ onStart }: PreFlightProps) {
   // Translation declined at setup: the remembered setting stays as it was,
   // but nothing here acts as though it were on.
   const translationOn = useSessionStore((s) => s.features.translator);
+  // Something has to be recorded: turning the mic off requires system audio,
+  // and turning system audio off with the mic already off turns the mic back
+  // on rather than leaving the session with no source at all.
+  const micOn = settings.captureMic || !settings.captureSystemAudio;
   const requireFeature = useSessionStore((s) => s.requireFeature);
   const connection = useSessionStore((s) => s.connection);
 
@@ -141,7 +149,7 @@ export function PreFlight({ onStart }: PreFlightProps) {
   // mic — or light the OS indicator — just by sitting on PreFlight. Auto-stops
   // when recording/connecting starts so it never fights useMicrophone.
   const [micTest, setMicTest] = useState(false);
-  const previewEnabled = micTest && !isRecording && !isBusy;
+  const previewEnabled = micTest && micOn && !isRecording && !isBusy;
   const { devices: micDevices, level: previewLevel } = useMicPreview(
     settings.micDeviceId,
     previewEnabled,
@@ -280,13 +288,27 @@ export function PreFlight({ onStart }: PreFlightProps) {
           Mic picker + level meter are live; the screen target list stays empty
           until macOS Screen-Recording permission (a signed build). */}
       <div className="flex w-full max-w-md flex-col gap-2.5 rounded-2xl border border-border/60 bg-card/40 px-4 py-3 text-left">
-        {/* Microphone + live level — its own row (the select wants the width). */}
+        {/* Microphone + live level — its own row (the select wants the width).
+            The mic is a source like the others, so it has the same on/off:
+            "record the meeting, not me" is a real thing to want, and with it
+            off the engine never opens the device at all. */}
         <div className="flex items-center gap-2.5">
-          <Mic className="size-4 shrink-0 text-muted-foreground" />
+          <SourceToggle
+            icon={micOn ? Mic : MicOff}
+            label={t("preflight.microphone")}
+            active={micOn}
+            disabled={isRecording || isBusy || !settings.captureSystemAudio}
+            tip={
+              settings.captureSystemAudio
+                ? t("preflight.micToggleHint")
+                : t("preflight.micNeedsSystem")
+            }
+            onClick={() => updateSettings({ captureMic: !settings.captureMic })}
+          />
           <select
             value={settings.micDeviceId}
             onChange={(e) => updateSettings({ micDeviceId: e.target.value })}
-            disabled={isRecording || isBusy}
+            disabled={isRecording || isBusy || !micOn}
             aria-label={t("preflight.microphone")}
             className="min-w-0 flex-1 truncate rounded-md border border-border bg-card px-2 py-1.5 text-[13px] text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50"
           >
@@ -301,10 +323,10 @@ export function PreFlight({ onStart }: PreFlightProps) {
             icon={Activity}
             label={t("preflight.test")}
             active={micTest}
-            disabled={isRecording || isBusy}
+            disabled={isRecording || isBusy || !micOn}
             onClick={() => setMicTest((v) => !v)}
           />
-          {micTest && <MicMeter level={previewLevel} />}
+          {micOn && micTest && <MicMeter level={previewLevel} />}
         </div>
 
         {/* Extra sources as horizontal pill toggles; the screen target picker
@@ -315,7 +337,13 @@ export function PreFlight({ onStart }: PreFlightProps) {
             label={t("preflight.systemAudio")}
             active={settings.captureSystemAudio}
             disabled={isRecording || isBusy}
-            onClick={() => updateSettings({ captureSystemAudio: !settings.captureSystemAudio })}
+            onClick={() =>
+              updateSettings(
+                settings.captureSystemAudio
+                  ? { captureSystemAudio: false, captureMic: true }
+                  : { captureSystemAudio: true },
+              )
+            }
           />
           <SourceToggle
             icon={Monitor}
