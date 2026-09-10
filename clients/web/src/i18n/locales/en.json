@@ -384,7 +384,7 @@
       "moderate_ram": "{ram} RAM",
       "limited_ram": "{ram} RAM — keeping it light",
       "gpu_headroom": "{gpu} — room for a bigger model",
-      "cpu_streaming": "No GPU acceleration ({cpus} CPU cores) — a streaming model keeps live captions real-time; Whisper still does the pass after recording"
+      "cpu_streaming": "No GPU acceleration ({cpus} CPU cores) — Whisper cannot keep up live here, so a streaming model is listed first; read its note before choosing it, and the post-recording pass uses Whisper either way"
     },
     "blocked": {
       "needs_ram": "Needs about {need} of memory"
@@ -397,7 +397,8 @@
       "chat_light": "Lighter, for machines with less memory",
       "chat_default": "Better answers over long transcripts",
       "speaker_default": "Voice embeddings for telling speakers apart",
-      "stt_streaming": "Streaming: text appears as you speak and never rewrites itself; rougher wording, replaced by Whisper after the recording. CPU only, no runtime pack."
+      "stt_streaming": "Streaming: text appears as you speak and never rewrites itself; rougher wording, replaced by Whisper after the recording. CPU only, no runtime pack.",
+      "stt_streaming_rough_en": "Streaming: text appears as you speak and never rewrites itself. CPU only, no runtime pack. Measured on a real English meeting recorded through a laptop microphone it was unusable — \"we discussed\" came out as \"you stay\" — so it suits Chinese-dominant meetings, and the post-recording Whisper pass is what you read afterwards either way."
     }
   },
   "compute": {

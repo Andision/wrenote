@@ -381,7 +381,7 @@
       "moderate_ram": "{ram} 内存",
       "limited_ram": "{ram} 内存 —— 建议选轻量的",
       "gpu_headroom": "{gpu} —— 显存足够跑更大的模型",
-      "cpu_streaming": "没有 GPU 加速（{cpus} 核 CPU）— 流式模型才能让实时字幕跟上；录制后仍由 Whisper 整理"
+      "cpu_streaming": "没有 GPU 加速（{cpus} 个 CPU 核心）——这里 Whisper 跟不上实时，所以流式模型排在最前；选之前先看它的说明，无论如何录制结束后那一遍用的都是 Whisper"
     },
     "blocked": {
       "needs_ram": "大约需要 {need} 内存"
@@ -394,7 +394,8 @@
       "chat_light": "更轻量，适合内存较小的机器",
       "chat_default": "长转写稿上的回答质量更好",
       "speaker_default": "用于区分不同说话人的声纹模型",
-      "stt_streaming": "流式：边说边出字、已出的字不回改；文字较糙，录制后由 Whisper 替换。纯 CPU，不需要算力包。"
+      "stt_streaming": "流式：边说边出字、已出的字不回改；文字较糙，录制后由 Whisper 替换。纯 CPU，不需要算力包。",
+      "stt_streaming_rough_en": "流式：文字随说随出，且不会回改。仅 CPU，不需要运行时包。在一场用笔记本麦克风录的纯英语会议上实测基本不可用（\"we discussed\" 识别成 \"you stay\"），所以它适合以中文为主的会议；无论如何，录制结束后你读到的都是 Whisper 那一遍的结果。"
     }
   },
   "compute": {

@@ -50,7 +50,7 @@ models:
     backend: sherpa_onnx
     tier: small
     name: Zipformer streaming (zh-en, int8)
-    note_code: stt_streaming
+    note_code: stt_streaming_rough_en
     requires: { ram_mb: 2048 }
     files:
       - param: encoder_path

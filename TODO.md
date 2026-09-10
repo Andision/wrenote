@@ -227,11 +227,24 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       meeting against Whisper's partials, and how the endpoint rules feel
       (trailing silence = the "min silence" setting, cap = "max segment").
       Whisper remains the default until that comparison is made — except
-      on a machine with no accelerator, where the wizard now recommends the
-      Zipformer (`defaults.stt_cpu`): whisper-small measured at half real
+      on a machine with no accelerator, where the wizard lists the Zipformer
+      first (`defaults.stt_cpu`): whisper-small measured at half real
       time on four CPU cores with no partial ever finishing, against the
       Zipformer's real time and ~1 s to first text, at similar accuracy on
       the same four clips.
+      **The comparison has now been made, and it is bad.** On a real
+      28-minute English meeting recorded through a MacBook's built-in
+      microphone the Zipformer is unusable: "yesterday we discussed we want
+      to build a standalone service" came out as "yeah you stay which
+      custin own to build / standard / subacist". `modified_beam_search`
+      helps a little ("we discussing yeah we want to build standard room")
+      and is still unusable. The integration is not at fault — the
+      mishearings are phonetically plausible, and Whisper transcribes the
+      same audio well — the model is simply not good enough for far-field
+      conversational English. Its catalogue note says so now, in those
+      words. Open question: whether it *is* good on a real Chinese meeting
+      recorded the same way, which is the only case left where it earns its
+      place.
 - [x] **FunASR streaming Paraformer (bilingual zh-en, int8, ~240 MB)** as
       a second streaming option, same backend. On the four bilingual test
       clips both models ship, fed in real time through the live pipeline
