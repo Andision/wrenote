@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Monitor, Moon, Sun, X } from "lucide-react";
+import { ChevronRight, Monitor, Moon, Sun, X } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { ComputePanel } from "@/components/ComputePanel";
@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { useSessionStore } from "@/store/sessionStore";
 import { LOCALE_LIST, useI18n, useT } from "@/i18n";
 import {
+  ADVANCED_CATEGORIES,
   DEV_CATEGORY,
   SETTINGS_CATEGORIES,
   type CategoryId,
@@ -39,13 +40,16 @@ export function SettingsDrawer() {
 
   const [requested, setCat] = useState<CategoryId>("general");
   const devMode = useDevMode();
-  const categories = devMode
-    ? [...SETTINGS_CATEGORIES, DEV_CATEGORY]
-    : SETTINGS_CATEGORIES;
+  const resetSettings = useSessionStore((s) => s.resetSettings);
+  // Collapsed until asked for, and it stays open once you are in there.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const advanced = devMode ? [...ADVANCED_CATEGORIES, DEV_CATEGORY] : ADVANCED_CATEGORIES;
+  const inAdvanced = advanced.some((c) => c.id === requested);
   // Switching developer mode off from inside its own panel would otherwise
   // leave the drawer on a category that no longer exists. Derived, not reset
   // by an effect, so there is no frame where the header and the body disagree.
   const cat = requested === "dev" && !devMode ? "general" : requested;
+  const showAdvanced = advancedOpen || inAdvanced;
   const close = () => useSessionStore.getState().toggleSettings(false);
 
   useEffect(() => {
@@ -86,7 +90,7 @@ export function SettingsDrawer() {
                 {t("settings.title")}
               </div>
               <div className="flex flex-col gap-0.5">
-                {categories.map((c) => {
+                {SETTINGS_CATEGORIES.map((c) => {
                   const Icon = c.icon;
                   const active = c.id === cat;
                   return (
@@ -104,6 +108,41 @@ export function SettingsDrawer() {
                     </button>
                   );
                 })}
+
+                {/* Advanced — a disclosure, not a warning. The panels behind
+                    it each carry a caution line and a reset, which is the
+                    undo a dialog cannot offer. */}
+                <button
+                  onClick={() => setAdvancedOpen((v) => !v)}
+                  aria-expanded={showAdvanced}
+                  className="mt-1 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                >
+                  <ChevronRight
+                    className={`size-4 shrink-0 transition-transform ${
+                      showAdvanced ? "rotate-90" : ""
+                    }`}
+                  />
+                  {t("settings.advanced")}
+                </button>
+                {showAdvanced &&
+                  advanced.map((c) => {
+                    const Icon = c.icon;
+                    const active = c.id === cat;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setCat(c.id)}
+                        className={`flex items-center gap-2.5 rounded-lg py-2 pl-6 pr-2.5 text-left text-[13px] transition-colors ${
+                          active
+                            ? "bg-accent font-medium text-foreground"
+                            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                        }`}
+                      >
+                        <Icon className="size-4 shrink-0" />
+                        {t(`settings.cat.${c.id}`)}
+                      </button>
+                    );
+                  })}
               </div>
             </nav>
 
@@ -135,12 +174,6 @@ export function SettingsDrawer() {
                       onChange={(v) => updateSettings({ refineAfterStop: v })}
                     />
                     <ToggleField
-                      label={t("settings.speakerLive")}
-                      checked={settings.speakerEnabled}
-                      hint={t("settings.speakerLiveHint")}
-                      onChange={(v) => updateSettings({ speakerEnabled: v })}
-                    />
-                    <ToggleField
                       label={t("settings.continuousPlayback")}
                       checked={settings.playbackMode === "continuous"}
                       hint={t("settings.continuousPlaybackHint")}
@@ -162,6 +195,10 @@ export function SettingsDrawer() {
 
                 {cat === "segmentation" && (
                   <div className="space-y-5">
+                    <AdvancedNote
+                      text={t("settings.segmentationCaution")}
+                      onReset={() => resetSettings(["minSilenceMs", "maxSegmentMs"])}
+                    />
                     {sessionInProgress && <NextSessionNote />}
                     <RangeField
                       label={t("settings.minSilence")}
@@ -188,6 +225,16 @@ export function SettingsDrawer() {
 
                 {cat === "realtime" && (
                   <div className="space-y-5">
+                    <AdvancedNote
+                      text={t("settings.realtimeCaution")}
+                      onReset={() =>
+                        resetSettings([
+                          "partialIntervalMs",
+                          "translatePartials",
+                          "speakerEnabled",
+                        ])
+                      }
+                    />
                     {sessionInProgress && <NextSessionNote />}
                     <RangeField
                       label={t("settings.partialInterval")}
@@ -205,6 +252,14 @@ export function SettingsDrawer() {
                       hint={t("settings.translatePartialsHint")}
                       onChange={(v) => updateSettings({ translatePartials: v })}
                     />
+                    {/* Its own hint says "experimental — unreliable mid-call",
+                        which is the definition of not a General setting. */}
+                    <ToggleField
+                      label={t("settings.speakerLive")}
+                      checked={settings.speakerEnabled}
+                      hint={t("settings.speakerLiveHint")}
+                      onChange={(v) => updateSettings({ speakerEnabled: v })}
+                    />
                   </div>
                 )}
 
@@ -212,12 +267,20 @@ export function SettingsDrawer() {
 
                 {cat === "models" && <ModelsPanel />}
 
-                {cat === "compute" && <ComputePanel />}
+                {cat === "compute" && (
+                  <div className="space-y-5">
+                    <AdvancedNote text={t("settings.computeCaution")} />
+                    <ComputePanel />
+                  </div>
+                )}
 
                 {cat === "dev" && <DevPanel />}
 
                 {cat === "engines" && (
                   <div className="space-y-4">
+                    {/* Read-only, so nothing to reset — but it is diagnostics,
+                        which is why it lives here and not in General. */}
+                    <AdvancedNote text={t("settings.enginesCaution")} />
                     {ready ? (
                       <div className="space-y-2 rounded-lg border border-border/60 bg-muted/30 p-3">
                         <BackendRow label="STT" info={ready.stt} />
@@ -329,6 +392,29 @@ function ThemeField() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The line at the top of an advanced panel: what this page is for, and the
+ * way back. A dialog in front of the section was the alternative; people
+ * learn to dismiss those, and dismissing one undoes nothing. A reset does.
+ */
+function AdvancedNote({ text, onReset }: { text: string; onReset?: () => void }) {
+  const t = useT();
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+      <p className="text-[11px] leading-relaxed text-muted-foreground">{text}</p>
+      {onReset && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="shrink-0 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {t("settings.resetDefaults")}
+        </button>
+      )}
     </div>
   );
 }

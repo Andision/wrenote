@@ -211,6 +211,10 @@ interface Actions {
 
   // Settings + UI
   updateSettings: (patch: Partial<SessionSettings>) => void;
+  /** Put the named settings back to what they shipped as. The undo for the
+   *  advanced panels: being able to get back is the safety net, which is why
+   *  there is no warning dialog in front of them. */
+  resetSettings: (keys: (keyof SessionSettings)[]) => void;
   toggleSettings: (open?: boolean) => void;
   toggleSidebar: (open?: boolean) => void;
   toggleChat: (open?: boolean) => void;
@@ -625,6 +629,14 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
 
   updateSettings: (patch) =>
     set((s) => ({ settings: { ...s.settings, ...patch } })),
+  resetSettings: (keys) =>
+    set((s) => {
+      const settings = { ...s.settings };
+      for (const k of keys) {
+        (settings[k] as SessionSettings[typeof k]) = DEFAULT_SETTINGS[k];
+      }
+      return { settings };
+    }),
   toggleSettings: (open) =>
     set((s) => ({ settingsOpen: open ?? !s.settingsOpen })),
   toggleSidebar: (open) =>
