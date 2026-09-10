@@ -9,8 +9,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { UpdatePanel } from "@/components/UpdatePanel";
 import { I18nProvider } from "@/i18n/provider";
+import { TAPS_BEFORE_HINT, TAPS_REQUIRED, setDevMode } from "@/lib/devMode";
 import type { UpdateStatus } from "@/lib/update";
 
+vi.mock("sonner", () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+}));
 vi.mock("@/lib/update", async (orig) => ({
   ...(await orig<typeof import("@/lib/update")>()),
   getUpdateStatus: vi.fn(),
@@ -20,6 +24,10 @@ vi.mock("@/lib/update", async (orig) => ({
 }));
 
 const update = await import("@/lib/update");
+const { toast } = await import("sonner");
+
+/** Read the persisted flag directly — the hook is covered in devMode.test. */
+const devModeIsOn = () => localStorage.getItem("wrenote.devMode") === "1";
 
 const status = (over: Partial<UpdateStatus> = {}): UpdateStatus => ({
   current: "0.1.0",
@@ -46,6 +54,7 @@ const show = () =>
 
 describe("UpdatePanel", () => {
   beforeEach(() => {
+    setDevMode(false);
     vi.mocked(update.getUpdateStatus).mockResolvedValue(status());
     vi.mocked(update.setUpdateCheck).mockResolvedValue();
   });
@@ -93,6 +102,30 @@ describe("UpdatePanel", () => {
     );
     show();
     expect(await screen.findByText(/Couldn't reach the release index/)).toBeTruthy();
+  });
+
+  it("opens developer mode on the fifth tap of the version, not before", async () => {
+    // The version line is the only affordance for the developer tools; if it
+    // fired on fewer taps, an ordinary double-click would trip it.
+    show();
+    const version = await screen.findByText("Wrenote 0.1.0");
+    for (let i = 0; i < TAPS_REQUIRED - 1; i++) {
+      fireEvent.click(version);
+      expect(devModeIsOn()).toBe(false);
+    }
+    fireEvent.click(version);
+    expect(devModeIsOn()).toBe(true);
+  });
+
+  it("says how many taps are left, but only near the end", async () => {
+    show();
+    const version = await screen.findByText("Wrenote 0.1.0");
+    for (let i = 0; i < TAPS_REQUIRED - TAPS_BEFORE_HINT - 1; i++) {
+      fireEvent.click(version);
+    }
+    expect(toast).not.toHaveBeenCalled();
+    fireEvent.click(version);
+    expect(toast).toHaveBeenCalledWith("2 more taps for developer mode");
   });
 
   it("says when automatic checks are off, and persists the switch", async () => {

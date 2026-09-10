@@ -132,3 +132,45 @@ def test_the_endpoint_will_not_switch_off_a_mandatory_slot(client, slot):
     r = client.post("/v1/models/features", json={slot: False})
     assert r.status_code == 422 or r.json()["features"].get(slot) is None
     assert getattr(client.app.state.config, slot).enabled is True
+
+
+# ---------- deleting a model (the developer tools' one destructive act) ------
+
+
+def test_deleting_a_model_removes_its_files_and_can_be_undone(client, tmp_path):
+    """What makes the first-run flow testable without hunting for files by
+    hand. Recoverable by construction: the catalogue still knows the URL."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir(exist_ok=True)
+    cat = client.app.state.catalogue
+    spec = cat.get("whisper-base-q5")
+    for f in spec.files:
+        f.local_path(models_dir).write_bytes(b"x" * 16)
+    # A half-finished download beside it: deleting the model takes that too,
+    # or a resume would pick up where a file that no longer exists left off.
+    partial = spec.files[0].local_path(models_dir)
+    partial.with_suffix(partial.suffix + ".partial").write_bytes(b"y")
+
+    r = client.delete("/v1/models/whisper-base-q5")
+    assert r.status_code == 200
+    body = r.json()
+    assert sorted(body["removed"]) == sorted(
+        [f.local_path(models_dir).name for f in spec.files]
+        + [partial.name + ".partial"]
+    )
+    assert body["failed"] == []
+    assert not any(f.local_path(models_dir).exists() for f in spec.files)
+
+
+def test_deleting_an_unknown_model_is_a_404(client):
+    assert client.delete("/v1/models/nope").status_code == 404
+
+
+def test_deleting_the_loaded_chat_model_drops_the_backend_first(client):
+    """Windows will not unlink a file the process still has open, so the
+    manager lets go before the delete rather than after."""
+    client.post("/v1/models/select", json={"kind": "chat", "model": "qwen3-4b-instruct-q4"})
+    assert client.app.state.models.chat_backend is not None
+    r = client.delete("/v1/models/qwen3-4b-instruct-q4")
+    assert r.status_code == 200 and r.json()["slots"] == ["chat"]
+    assert client.app.state.models.chat_backend is None

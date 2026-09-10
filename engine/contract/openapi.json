@@ -772,6 +772,48 @@
         "summary": "Models Status"
       }
     },
+    "/v1/models/{model_id}": {
+      "delete": {
+        "description": "Delete a catalogue model's files from ``models.dir``.\n\nFor testing what the app does when a model is absent — the first-run\nwizard, the download progress, a slot with nothing to run — which\notherwise means finding the files by hand. Recoverable by definition:\nthe catalogue knows where every file came from, so the next download\nfetches it again.\n\nA model that is currently loaded is dropped from the manager first;\notherwise Windows would refuse to unlink the file under it.",
+        "operationId": "models_delete_v1_models__model_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "title": "Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Models Delete V1 Models  Model Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Models Delete"
+      }
+    },
     "/v1/recordings/{session_id}.wav": {
       "delete": {
         "operationId": "delete_recording_v1_recordings__session_id__wav_delete",

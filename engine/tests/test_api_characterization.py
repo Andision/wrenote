@@ -21,6 +21,7 @@ from starlette.routing import Mount, WebSocketRoute
 EXPECTED_ROUTES = {
     ("DELETE", "/v1/groups/{group_id}"),
     ("DELETE", "/v1/recordings/{session_id}.wav"),
+    ("DELETE", "/v1/models/{model_id}"),
     ("DELETE", "/v1/sessions/{session_id}"),
     ("DELETE", "/v1/sessions/{session_id}/conversations/{conversation_id}"),
     ("DELETE", "/v1/sessions/{session_id}/conversations/{conversation_id}/chat"),

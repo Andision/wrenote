@@ -9,7 +9,7 @@
 //     The loader reads the default export now — this checks it stayed that way.
 import { describe, expect, it } from "vitest";
 
-import { SETTINGS_CATEGORIES } from "@/components/settingsCategories";
+import { DEV_CATEGORY, SETTINGS_CATEGORIES } from "@/components/settingsCategories";
 import { FALLBACK_LOCALE, LOCALE_LIST, LOCALES } from "@/i18n";
 import { OPTIONAL_FEATURES } from "@/lib/models";
 
@@ -17,6 +17,7 @@ import { OPTIONAL_FEATURES } from "@/lib/models";
 const RUNTIME_KEYS: string[] = [
   // components/settingsCategories.ts
   ...SETTINGS_CATEGORIES.map((c) => `settings.cat.${c.id}`),
+  `settings.cat.${DEV_CATEGORY.id}`,
   // components/ThemeToggle.tsx — ORDER
   ...["light", "dark", "system"].map((m) => `theme.${m}`),
   // components/ExportMenu.tsx — FORMATS

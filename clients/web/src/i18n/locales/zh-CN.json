@@ -250,7 +250,8 @@
       "glossary": "术语表",
       "models": "模型",
       "engines": "引擎",
-      "compute": "算力"
+      "compute": "算力",
+      "dev": "开发者"
     },
     "language": "界面语言",
     "languageHint": "界面显示的语言。「自动」跟随系统设置。",
@@ -275,6 +276,26 @@
     "enginesEmpty": "开始一个会话后即可看到正在使用的引擎。",
     "refineAfterStop": "录制结束后重新转写",
     "refineAfterStopHint": "录制停止后，把整段录音再过一遍语音引擎，替换实时转写结果。更准确；长会议会多花一点时间。"
+  },
+  "dev": {
+    "enabled": "已开启开发者模式",
+    "disabled": "已关闭开发者模式",
+    "tapsLeft_other": "再点 {count} 次开启开发者模式",
+    "setupTitle": "首次运行流程",
+    "setupHint": "重新走一遍设置流程——功能、运行时、模型——不会删除任何东西。",
+    "setupRun": "运行",
+    "modelsTitle": "已下载的模型",
+    "modelsHint": "删掉某个模型，看看没有它时应用是什么样。目录里始终能重新下载。",
+    "modelsNone": "还没有下载任何模型。",
+    "delete": "删除文件",
+    "deleted": "已删除 · 释放 {mb} MB",
+    "deleteFailed": "删除失败：{error}",
+    "pathsTitle": "这个进程写入的位置",
+    "configTitle": "已加载的配置",
+    "configHint": "合并后的配置——默认值、仓库内的文件、~/.wrenote/config.yaml，最后是环境变量。适合贴进问题报告。",
+    "offTitle": "关闭开发者模式",
+    "offHint": "这个分类会消失。在版本号上点五次可以再开出来。",
+    "off": "关闭"
   },
   "setup": {
     "step": "第 {current} 步，共 {total} 步",

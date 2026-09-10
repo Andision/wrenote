@@ -5,13 +5,20 @@
 // judgement here is what to say when there is nothing to report — "checked at
 // … , up to date" versus "automatic checks are off" — because a blank line
 // reads as "didn't work".
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useI18n, useT } from "@/i18n";
+import {
+  TAPS_BEFORE_HINT,
+  TAPS_REQUIRED,
+  setDevMode,
+  useDevMode,
+} from "@/lib/devMode";
 import {
   checkForUpdate,
   downloadTarget,
@@ -22,6 +29,9 @@ import {
 } from "@/lib/update";
 
 export function UpdatePanel() {
+  const devMode = useDevMode();
+  // Not state: a half-finished tap run should not re-render anything.
+  const tapsRef = useRef(0);
   const t = useT();
   const { locale } = useI18n();
   const [status, setStatus] = useState<UpdateStatus | null>(null);
@@ -65,6 +75,21 @@ export function UpdatePanel() {
   };
 
   const target = status ? downloadTarget(status) : null;
+
+  const countTap = () => {
+    if (devMode) return;
+    const taps = tapsRef.current + 1;
+    tapsRef.current = taps;
+    if (taps >= TAPS_REQUIRED) {
+      tapsRef.current = 0;
+      setDevMode(true);
+      toast.success(t("dev.enabled"));
+      return;
+    }
+    const left = TAPS_REQUIRED - taps;
+    if (left <= TAPS_BEFORE_HINT) toast(t("dev.tapsLeft", { count: left }));
+  };
+
   const showWhatsNew =
     status?.available && status.release_url && status.download_url && status.release_url !== status.download_url;
 
@@ -72,7 +97,12 @@ export function UpdatePanel() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-0.5">
-          <Label className="text-xs text-foreground">
+          {/* Five taps on the version turns developer mode on — see
+              lib/devMode.ts for why it is here and not a setting. */}
+          <Label
+            className="cursor-default select-none text-xs text-foreground"
+            onClick={countTap}
+          >
             {t("update.version", { version: status?.current ?? "…" })}
           </Label>
           <p className="text-[11px] leading-snug text-muted-foreground">

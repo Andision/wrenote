@@ -250,7 +250,8 @@
       "glossary": "Glossary",
       "models": "Models",
       "engines": "Engines",
-      "compute": "Compute"
+      "compute": "Compute",
+      "dev": "Developer"
     },
     "language": "Language",
     "languageHint": "The interface language. Auto follows your system.",
@@ -275,6 +276,27 @@
     "enginesEmpty": "Start a session to see the active backends.",
     "refineAfterStop": "Re-transcribe after recording",
     "refineAfterStopHint": "When a recording stops, run the whole file through the speech engine once more and replace the live transcript. More accurate; takes a moment on long meetings."
+  },
+  "dev": {
+    "enabled": "Developer mode on",
+    "disabled": "Developer mode off",
+    "tapsLeft_one": "{count} more tap for developer mode",
+    "tapsLeft_other": "{count} more taps for developer mode",
+    "setupTitle": "First-run setup",
+    "setupHint": "Open the setup flow again — features, runtime, models — without deleting anything.",
+    "setupRun": "Run it",
+    "modelsTitle": "Models on disk",
+    "modelsHint": "Delete one to see what the app does without it. The catalogue can always fetch it again.",
+    "modelsNone": "Nothing downloaded.",
+    "delete": "Delete the files",
+    "deleted": "Deleted · {mb} MB freed",
+    "deleteFailed": "Delete failed: {error}",
+    "pathsTitle": "Where this process writes",
+    "configTitle": "Loaded configuration",
+    "configHint": "The merged config — defaults, the repo file, ~/.wrenote/config.yaml, then the environment. Worth pasting into a bug report.",
+    "offTitle": "Turn developer mode off",
+    "offHint": "This category disappears. Five taps on the version brings it back.",
+    "off": "Turn off"
   },
   "setup": {
     "step": "Step {current} of {total}",

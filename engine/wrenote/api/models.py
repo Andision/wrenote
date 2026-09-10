@@ -192,6 +192,64 @@ async def models_features(
     }
 
 
+@router.delete("/models/{model_id}")
+async def models_delete(
+    model_id: str,
+    request: Request,
+    cfg: Config = Depends(get_config),
+    catalogue: ModelCatalogue = Depends(get_catalogue),
+) -> dict[str, Any]:
+    """Delete a catalogue model's files from ``models.dir``.
+
+    For testing what the app does when a model is absent — the first-run
+    wizard, the download progress, a slot with nothing to run — which
+    otherwise means finding the files by hand. Recoverable by definition:
+    the catalogue knows where every file came from, so the next download
+    fetches it again.
+
+    A model that is currently loaded is dropped from the manager first;
+    otherwise Windows would refuse to unlink the file under it.
+    """
+    spec = catalogue.get(model_id)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"no model {model_id!r} in the catalogue")
+
+    resolved = resolve_all(cfg, catalogue)
+    in_use = [slot for slot, r in resolved.items() if r.spec and r.spec.id == model_id]
+    manager = request.app.state.models
+    if "chat" in in_use:
+        await manager.replace_chat(None)
+    if "speaker" in in_use:
+        await manager.replace_diarize_speaker(None)
+
+    models_dir = Path(cfg.models.dir).expanduser()
+    removed: list[str] = []
+    failed: list[dict[str, str]] = []
+    freed = 0
+    for f in spec.files:
+        target = f.local_path(models_dir)
+        for path in (target, target.with_suffix(target.suffix + ".partial")):
+            if not path.exists():
+                continue
+            try:
+                size = path.stat().st_size
+                await asyncio.to_thread(path.unlink)
+            except OSError as e:
+                failed.append({"filename": path.name, "error": str(e)})
+                continue
+            removed.append(path.name)
+            freed += size
+    return {
+        "model": model_id,
+        "removed": removed,
+        "failed": failed,
+        "freed_mb": freed >> 20,
+        # Which slots now have no files. The client re-reads status anyway;
+        # this is what makes the response readable on its own.
+        "slots": in_use,
+    }
+
+
 @router.post("/models/download")
 async def models_download(
     cfg: Config = Depends(get_config),

@@ -125,6 +125,31 @@ export async function setFeatures(patch: Partial<Features>): Promise<Features> {
   return ((await res.json()) as { features: Features }).features;
 }
 
+/** Remove a model's files from disk (developer tools). Recoverable: the
+ *  catalogue still knows where each file came from. */
+export async function deleteModel(modelId: string): Promise<{
+  model: string;
+  removed: string[];
+  failed: { filename: string; error: string }[];
+  freed_mb: number;
+  slots: string[];
+}> {
+  const res = await fetch(`${BASE}/models/${encodeURIComponent(modelId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`delete failed (${res.status}): ${text}`);
+  }
+  return (await res.json()) as {
+    model: string;
+    removed: string[];
+    failed: { filename: string; error: string }[];
+    freed_mb: number;
+    slots: string[];
+  };
+}
+
 export async function startModelDownload(): Promise<{
   job_id: string | null;
   all_present: boolean;

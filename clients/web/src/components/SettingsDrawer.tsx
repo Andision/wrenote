@@ -13,9 +13,12 @@ import { Switch } from "@/components/ui/switch";
 import { useSessionStore } from "@/store/sessionStore";
 import { LOCALE_LIST, useI18n, useT } from "@/i18n";
 import {
+  DEV_CATEGORY,
   SETTINGS_CATEGORIES,
   type CategoryId,
 } from "@/components/settingsCategories";
+import { DevPanel } from "@/components/DevPanel";
+import { useDevMode } from "@/lib/devMode";
 
 
 /**
@@ -33,7 +36,15 @@ export function SettingsDrawer() {
   const sessionInProgress =
     connection === "recording" || connection === "stopping";
 
-  const [cat, setCat] = useState<CategoryId>("general");
+  const [requested, setCat] = useState<CategoryId>("general");
+  const devMode = useDevMode();
+  const categories = devMode
+    ? [...SETTINGS_CATEGORIES, DEV_CATEGORY]
+    : SETTINGS_CATEGORIES;
+  // Switching developer mode off from inside its own panel would otherwise
+  // leave the drawer on a category that no longer exists. Derived, not reset
+  // by an effect, so there is no frame where the header and the body disagree.
+  const cat = requested === "dev" && !devMode ? "general" : requested;
   const close = () => useSessionStore.getState().toggleSettings(false);
 
   useEffect(() => {
@@ -74,7 +85,7 @@ export function SettingsDrawer() {
                 {t("settings.title")}
               </div>
               <div className="flex flex-col gap-0.5">
-                {SETTINGS_CATEGORIES.map((c) => {
+                {categories.map((c) => {
                   const Icon = c.icon;
                   const active = c.id === cat;
                   return (
@@ -201,6 +212,8 @@ export function SettingsDrawer() {
                 {cat === "models" && <ModelsPanel />}
 
                 {cat === "compute" && <ComputePanel />}
+
+                {cat === "dev" && <DevPanel />}
 
                 {cat === "engines" && (
                   <div className="space-y-4">
