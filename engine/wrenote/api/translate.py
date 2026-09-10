@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..core import glossary
+from ..core.catalogue import feature_enabled
 from ..core.config import Config
 from ..core.jobs import JobRegistry, Phase
 from ..core.registry import make_translator
@@ -42,6 +43,8 @@ async def translate_session(
     overrides the session's target lang.
     """
     sid = safe_session_id(session_id)
+    if not feature_enabled(cfg, "translator"):
+        raise HTTPException(status_code=503, detail="feature_off")
     body: dict[str, Any] = {}
     raw = await request.body()
     if raw:

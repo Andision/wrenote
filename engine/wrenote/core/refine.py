@@ -30,7 +30,7 @@ from typing import Any
 
 from . import glossary
 from .batch import normalize_src_lang, read_wav_pcm, transcribe_pcm
-from .catalogue import ModelCatalogue, resolve
+from .catalogue import ModelCatalogue, feature_enabled, resolve
 from .config import Config
 from .jobs import JobRegistry, Phase
 from .recording import resolve_recording_path
@@ -241,6 +241,9 @@ async def launch(
             r.get("trans_status") in ("final", "partial") and (r.get("trans_text") or "")
             for r in session.get("segments") or []
         )
+    # A recording made while translation was on, replayed after it was
+    # switched off: the pass still runs, without the translation half.
+    translate = translate and feature_enabled(cfg, "translator")
 
     job = registry.create(
         kind="refine",

@@ -24,7 +24,7 @@ from .api._common import SAFE_SESSION_ID
 from .auth import AUTH_COOKIE, AUTH_TOKEN, origin_allowed
 from .core import glossary, screenrec
 from .core import refine as refine_mod
-from .core.catalogue import resolve
+from .core.catalogue import feature_enabled, resolve
 from .core.config import Config
 from .core.events import (
     ErrorEvent,
@@ -181,7 +181,12 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         partial_interval_ms = int(session_cfg.get("partial_interval_ms", 800))
         partial_min_audio_ms = int(session_cfg.get("partial_min_audio_ms", 500))
         translate_partials = bool(session_cfg.get("translate_partials", True))
-        translate_enabled = bool(session_cfg.get("translate_enabled", True))
+        # The client hides the toggle when translation is off, but an older
+        # client (or a script) can still ask; the session then just doesn't
+        # translate rather than dying on a model that was never downloaded.
+        translate_enabled = bool(
+            session_cfg.get("translate_enabled", True)
+        ) and feature_enabled(cfg, "translator")
         extended_silence_factor = float(session_cfg.get("extended_silence_factor", 2.25))
         speaker_enabled = bool(session_cfg.get("speaker_enabled", True))
         speaker_threshold = float(session_cfg.get("speaker_threshold", 0.65))
@@ -197,11 +202,19 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             catalogue = ws.app.state.catalogue
             stt = make_stt(cfg.stt.backend, resolve(cfg, "stt", catalogue).params)
             vad = make_vad(cfg.vad.backend, cfg.vad.params)  # no model file
-            translator = make_translator(
-                cfg.translator.backend, resolve(cfg, "translator", catalogue).params
+            translator = (
+                make_translator(
+                    cfg.translator.backend, resolve(cfg, "translator", catalogue).params
+                )
+                if translate_enabled
+                else make_translator("disabled")
             )
             speaker = None
-            if speaker_enabled and cfg.speaker.backend not in (None, "", "disabled"):
+            if (
+                speaker_enabled
+                and feature_enabled(cfg, "speaker")
+                and cfg.speaker.backend not in (None, "", "disabled")
+            ):
                 speaker = make_speaker(cfg.speaker.backend, resolve(cfg, "speaker", catalogue).params)
         except ValueError as e:
             await _send_error(ws, "BAD_CONFIG", str(e), recoverable=False)

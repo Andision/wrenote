@@ -13,7 +13,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from ..core.catalogue import SLOT_KIND, SLOTS, ModelCatalogue, resolve, resolve_all
+from ..core.catalogue import (
+    OPTIONAL_SLOTS,
+    SLOT_KIND,
+    SLOTS,
+    ModelCatalogue,
+    resolve,
+    resolve_all,
+)
 from ..core.config import Config, write_user_config
 from ..core.jobs import JobRegistry, Phase
 from ..core.models import download_model, required_models
@@ -56,6 +63,10 @@ async def models_status(
         "selected": {
             kind: (r.spec.id if r.spec else None) for kind, r in resolved.items()
         },
+        # Which optional features are on. A slot that is off contributes no
+        # entry above, so `all_present` — which decides whether the first-run
+        # wizard appears at all — ignores what it would have downloaded.
+        "features": {slot: getattr(cfg, slot).enabled for slot in OPTIONAL_SLOTS},
     }
 
 
@@ -119,6 +130,64 @@ async def models_select(
         "model": body.model,
         "applies": applies,
         "restart_required": False,
+        "config_path": str(path),
+    }
+
+
+class FeaturesRequest(BaseModel):
+    """The optional features to switch on or off; omitted slots are left alone."""
+
+    translator: bool | None = None
+    chat: bool | None = None
+    speaker: bool | None = None
+
+
+@router.post("/models/features")
+async def models_features(
+    body: FeaturesRequest,
+    request: Request,
+    cfg: Config = Depends(get_config),
+    catalogue: ModelCatalogue = Depends(get_catalogue),
+) -> dict[str, Any]:
+    """Switch optional features on or off, persisting to the user config.
+
+    Switching one on does not download anything: the caller follows with
+    ``POST /models/download``, which now sees the slot in ``required_models``.
+    Switching one off keeps the files — deleting a 2.5 GB model because a
+    toggle moved is not a thing to do silently — but drops the running
+    backend, so the memory goes back.
+    """
+    changed = {
+        slot: value
+        for slot, value in body.model_dump(exclude_none=True).items()
+        if slot in OPTIONAL_SLOTS
+    }
+    if not changed:
+        return {"features": {s: getattr(cfg, s).enabled for s in OPTIONAL_SLOTS}}
+
+    path = await asyncio.to_thread(
+        write_user_config, {slot: {"enabled": value} for slot, value in changed.items()}
+    )
+    for slot, value in changed.items():
+        getattr(cfg, slot).enabled = value
+
+    # chat and speaker are held by ModelManager for the process's lifetime, so
+    # they are swapped here; the translator is built per session and needs no
+    # such handling.
+    manager = request.app.state.models
+    if "chat" in changed:
+        r = resolve(cfg, "chat", catalogue)
+        await manager.replace_chat(
+            None if r.disabled else make_chat(cfg.chat.backend, r.params)
+        )
+    if "speaker" in changed:
+        r = resolve(cfg, "speaker", catalogue)
+        await manager.replace_diarize_speaker(
+            None if r.disabled or cfg.speaker.backend in (None, "", "disabled")
+            else make_speaker(cfg.speaker.backend, r.params)
+        )
+    return {
+        "features": {s: getattr(cfg, s).enabled for s in OPTIONAL_SLOTS},
         "config_path": str(path),
     }
 

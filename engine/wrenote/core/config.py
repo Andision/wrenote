@@ -45,10 +45,18 @@ class BackendConfig(BaseModel):
     ``model`` names an entry in the catalogue (``engine/models.yaml``); the file
     paths it implies are merged into ``params`` at resolution time. An explicit
     ``params.model_path`` overrides it — see :mod:`wrenote.core.catalogue`.
+
+    ``enabled`` is the user saying they don't want this feature at all: the
+    slot then needs no download (the default set is 4.3 GB, and chat alone is
+    2.5 GB of it) and the feature reports itself off rather than failing when
+    something reaches for it. It is deliberately separate from the model
+    choice, so turning a feature back on remembers which model it had.
+    Optional slots only — see ``catalogue.OPTIONAL_SLOTS``.
     """
 
     backend: str
     model: str | None = None
+    enabled: bool = True
     params: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from ..core import glossary
-from ..core.catalogue import ModelCatalogue, resolve
+from ..core.catalogue import ModelCatalogue, feature_enabled, resolve
 from ..core.config import Config
 from ..core.jobs import JobRegistry
 from ..core.registry import make_translator
@@ -55,6 +55,8 @@ async def upload_session(
     whisper_model_path = str(resolve(cfg, "stt_offline", catalogue).params.get("model_path") or "")
     if not whisper_model_path:
         raise HTTPException(status_code=500, detail="stt model not configured")
+    if translate and not feature_enabled(cfg, "translator"):
+        raise HTTPException(status_code=503, detail="feature_off")
 
     tmpdir = Path(tempfile.mkdtemp(prefix="wrenote-upload-"))
     saved_paths: list[Path] = []

@@ -130,13 +130,17 @@ def _make_lifespan(config: Config | None):
         app.state.catalogue = catalogue
         log.info("model catalogue: %d entries", len(catalogue))
 
+        # A feature the user switched off (`<slot>.enabled`) has no model on
+        # disk, so it gets no backend at all; the manager answers 503 for it.
+        speaker_r = resolve(cfg, "speaker", catalogue)
         diarize_speaker = (
-            make_speaker(cfg.speaker.backend, resolve(cfg, "speaker", catalogue).params)
-            if cfg.speaker.backend not in (None, "", "disabled")
+            make_speaker(cfg.speaker.backend, speaker_r.params)
+            if not speaker_r.disabled and cfg.speaker.backend not in (None, "", "disabled")
             else None
         )
+        chat_r = resolve(cfg, "chat", catalogue)
         app.state.models = ModelManager(
-            chat_backend=make_chat(cfg.chat.backend, resolve(cfg, "chat", catalogue).params),
+            chat_backend=None if chat_r.disabled else make_chat(cfg.chat.backend, chat_r.params),
             diarize_speaker=diarize_speaker,
         )
         # In-memory job registry for async upload + diarize.

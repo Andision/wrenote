@@ -45,6 +45,10 @@ KINDS = ("stt", "translator", "chat", "speaker")
 # whole recording goes through afterwards (`stt_offline`, Whisper). Models
 # are catalogued by kind; a slot names which kind it takes.
 SLOTS = ("stt", "stt_offline", "translator", "chat", "speaker")
+#: Slots the user may switch off entirely (config ``<slot>.enabled``). Speech
+#: recognition is not among them: it is what the app is. Each of these is a
+#: feature the UI can offer or hide, and a download a first run can skip.
+OPTIONAL_SLOTS = ("translator", "chat", "speaker")
 SLOT_KIND = {"stt": "stt", "stt_offline": "stt", "translator": "translator",
              "chat": "chat", "speaker": "speaker"}
 TIERS = ("small", "medium", "large")
@@ -430,7 +434,12 @@ class ResolvedModel:
     backend: str
     params: dict[str, Any]  # ready to hand to the registry factory
     spec: ModelSpec | None  # None = a custom path; nothing to download
-    reason: str  # "path" | "id" | "default" | "backend-needs-no-model"
+    reason: str  # "path" | "id" | "default" | "backend-needs-no-model" | "disabled"
+
+    @property
+    def disabled(self) -> bool:
+        """The user switched this feature off; nothing to download or load."""
+        return self.reason == "disabled"
 
     @property
     def downloadable(self) -> bool:
@@ -446,6 +455,11 @@ def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
     section = getattr(cfg, kind)
     backend = section.backend or ""
     params = dict(section.params or {})
+    # Switched off: keep the backend and model on record (turning it back on
+    # should remember them) but resolve to nothing, so `required_models` skips
+    # the download and every caller sees a slot with no model.
+    if kind in OPTIONAL_SLOTS and not section.enabled:
+        return ResolvedModel(kind, backend, params, None, "disabled")
     if backend in _NO_MODEL:
         return ResolvedModel(kind, backend, params, None, "backend-needs-no-model")
 
@@ -483,6 +497,12 @@ def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
     # the user's config tunes it (n_ctx, temperature, …).
     merged = {**spec.backend_params(models_dir), **params}
     return ResolvedModel(kind, backend, merged, spec, reason)
+
+
+def feature_enabled(cfg: Config, slot: str) -> bool:
+    """Whether an optional feature is switched on. Mandatory slots are always
+    on, so callers can ask about any slot without special-casing."""
+    return slot not in OPTIONAL_SLOTS or bool(getattr(cfg, slot).enabled)
 
 
 def resolve_all(cfg: Config, catalogue: ModelCatalogue) -> dict[str, ResolvedModel]:

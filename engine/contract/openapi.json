@@ -38,6 +38,46 @@
         "title": "Body_upload_session_v1_sessions_upload_post",
         "type": "object"
       },
+      "FeaturesRequest": {
+        "description": "The optional features to switch on or off; omitted slots are left alone.",
+        "properties": {
+          "chat": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat"
+          },
+          "speaker": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker"
+          },
+          "translator": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translator"
+          }
+        },
+        "title": "FeaturesRequest",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -627,6 +667,47 @@
           }
         },
         "summary": "Models Download"
+      }
+    },
+    "/v1/models/features": {
+      "post": {
+        "description": "Switch optional features on or off, persisting to the user config.\n\nSwitching one on does not download anything: the caller follows with\n``POST /models/download``, which now sees the slot in ``required_models``.\nSwitching one off keeps the files — deleting a 2.5 GB model because a\ntoggle moved is not a thing to do silently — but drops the running\nbackend, so the memory goes back.",
+        "operationId": "models_features_v1_models_features_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeaturesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Models Features V1 Models Features Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Models Features"
       }
     },
     "/v1/models/select": {

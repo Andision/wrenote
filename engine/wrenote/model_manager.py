@@ -23,7 +23,7 @@ class ModelManager:
     def __init__(
         self,
         *,
-        chat_backend: ChatBackend,
+        chat_backend: ChatBackend | None,
         diarize_speaker: SpeakerBackend | None,
     ) -> None:
         self._chat_backend = chat_backend
@@ -34,11 +34,19 @@ class ModelManager:
         self._diarize_lock = asyncio.Lock()
 
     @property
-    def chat_backend(self) -> ChatBackend:
+    def chat_backend(self) -> ChatBackend | None:
         return self._chat_backend
 
     async def ensure_chat_loaded(self) -> ChatBackend:
-        """Idempotent lazy-load of the chat model; returns the loaded backend."""
+        """Idempotent lazy-load of the chat model; 503 when the feature is off.
+
+        ``None`` means the user switched chat off (``chat.enabled``), so its
+        2.5 GB was never downloaded. The client turns ``feature_off`` into an
+        offer to enable it, which is why the detail is a code and not a
+        sentence.
+        """
+        if self._chat_backend is None:
+            raise HTTPException(status_code=503, detail="feature_off")
         if not self._chat_loaded:
             async with self._chat_lock:
                 if not self._chat_loaded:
@@ -59,7 +67,7 @@ class ModelManager:
                     self._diarize_loaded = True
         return self._diarize_speaker
 
-    async def replace_chat(self, backend: ChatBackend) -> None:
+    async def replace_chat(self, backend: ChatBackend | None) -> None:
         """Swap the chat backend (a different model was chosen).
 
         Under the same lock ``ensure_chat_loaded`` uses, so a request that is
@@ -70,7 +78,7 @@ class ModelManager:
         async with self._chat_lock:
             old, was_loaded = self._chat_backend, self._chat_loaded
             self._chat_backend, self._chat_loaded = backend, False
-        if was_loaded:
+        if was_loaded and old is not None:
             try:
                 await old.unload()
             except Exception:
@@ -89,7 +97,7 @@ class ModelManager:
 
     async def aclose(self) -> None:
         """Unload whatever was loaded. Best-effort; logs and continues."""
-        if self._chat_loaded:
+        if self._chat_loaded and self._chat_backend is not None:
             try:
                 await self._chat_backend.unload()
             except Exception:

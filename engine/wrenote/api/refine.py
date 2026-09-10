@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..core import refine
-from ..core.catalogue import ModelCatalogue
+from ..core.catalogue import ModelCatalogue, feature_enabled
 from ..core.config import Config
 from ..core.jobs import JobRegistry
 from ..core.store import Store
@@ -62,6 +62,8 @@ async def refine_endpoint(
     translate = body.get("translate")
     if translate is not None and not isinstance(translate, bool):
         raise HTTPException(status_code=400, detail="translate must be a boolean")
+    if translate and not feature_enabled(cfg, "translator"):
+        raise HTTPException(status_code=503, detail="feature_off")
 
     session = await store.get_session(sid)
     if session is None:

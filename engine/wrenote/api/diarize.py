@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..core import glossary
+from ..core.catalogue import feature_enabled
 from ..core.config import Config
 from ..core.diarize import diarize_session
 from ..core.jobs import JobRegistry, Phase
@@ -64,7 +65,10 @@ async def diarize_endpoint(
             detail="no recording on file for this session",
         )
     segments = session.get("segments", [])
-    should_retranslate = has_real_translations(segments)
+    # Re-segmentation invalidates the old translations, so a transcript that
+    # had them gets them again — unless translation has since been switched
+    # off, in which case this stays a diarize-only pass rather than failing.
+    should_retranslate = has_real_translations(segments) and feature_enabled(cfg, "translator")
 
     job = registry.create(
         kind="diarize",
