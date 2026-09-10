@@ -42,6 +42,7 @@ from .api import (
     upload,
 )
 from .auth import AUTH_TOKEN, install_loopback_auth
+from .core.batch import set_pass_limit
 from .core.catalogue import ModelCatalogue, resolve
 from .core.config import Config, load_config
 from .core.jobs import JobRegistry
@@ -117,6 +118,8 @@ def _make_lifespan(config: Config | None):
         app.state.store = store
         # Jobs don't survive a restart; sessions that were mid-job shouldn't
         # claim otherwise forever.
+        # One whole-file pass at a time unless the config says otherwise.
+        set_pass_limit(cfg.session.max_parallel_passes)
         settled = await store.recover_statuses()
         if settled:
             log.info("settled %d session(s) left mid-flight by a previous run", settled)

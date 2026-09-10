@@ -68,6 +68,13 @@ class SessionConfig(BaseModel):
     # its own choice in the WS start config; this is the default for one that
     # doesn't.
     refine_after_stop: bool = True
+    # How many whole-file passes (a post-recording pass, or an upload being
+    # transcribed) may run at once. Each one is its own whisper.cpp context
+    # with its own copy of the weights and eight compute threads, so on a
+    # laptop two at once is slower than two in a row and neither finishes.
+    # Raise it only on a machine with cores to spare — see
+    # core/batch.whole_file_slot, and `pending` in core/store.
+    max_parallel_passes: int = 1
 
 
 # Where everything lives unless the config says otherwise. Kept as the
@@ -86,6 +93,10 @@ class DataConfig(BaseModel):
     dir: str = DEFAULT_DATA_DIR
     db_path: str = ""  # "" → <dir>/data.db
     recordings_dir: str = ""  # "" → <dir>/recordings
+    # Where "save the transcript" writes. A blob download in a WebView goes
+    # somewhere the app can neither choose nor name, so the engine writes the
+    # file and reports the path — and this is the key that moves it.
+    exports_dir: str = ""  # "" → <dir>/exports
 
 
 class ModelsConfig(BaseModel):
@@ -170,6 +181,9 @@ class Config(BaseSettings):
         self.data.recordings_dir = str(
             Path(self.data.recordings_dir).expanduser() if self.data.recordings_dir else root / "recordings"
         )
+        self.data.exports_dir = str(
+            Path(self.data.exports_dir).expanduser() if self.data.exports_dir else root / "exports"
+        )
         self.models.dir = str(Path(self.models.dir).expanduser() if self.models.dir else root / "models")
         self.compute.runtimes_dir = str(
             Path(self.compute.runtimes_dir).expanduser() if self.compute.runtimes_dir else root / "runtimes"
@@ -182,6 +196,7 @@ class Config(BaseSettings):
             "data_dir": self.data.dir,
             "db_path": self.data.db_path,
             "recordings_dir": self.data.recordings_dir,
+            "exports_dir": self.data.exports_dir,
             "models_dir": self.models.dir,
             "runtimes_dir": self.compute.runtimes_dir,
             "user_config": str(user_config_path()),

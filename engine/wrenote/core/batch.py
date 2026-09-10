@@ -9,6 +9,15 @@ session that just ended) — so the pass lives here, once, and they differ only
 in where the PCM comes from and what happens to the rows.
 
 Times come out in seconds; whisper.cpp's centiseconds stop at this boundary.
+
+Only one such pass runs at a time (see :func:`whole_file_slot`). It is the
+heaviest thing the engine does — its own whisper.cpp context, its own copy of
+the weights, ``n_threads=8`` of compute — and it used to go straight to the
+default executor, which has ``cpu_count + 4`` workers. Three recordings queued
+after a morning of meetings therefore ran *concurrently*: 24 compute threads on
+8 cores and three copies of the model in memory, so all three crawled and none
+finished. Serialised they take the same total time and the first one is done in
+a third of it.
 """
 from __future__ import annotations
 
@@ -16,6 +25,8 @@ import asyncio
 import logging
 import re
 import wave
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +35,49 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
+
+#: How many whole-file passes may run at once, and the gate that holds them
+#: to it. Built on first use, because a Semaphore made at import time is fine
+#: in 3.10+ but the limit comes from the config, which is read later.
+_pass_limit = 1
+_pass_gate: asyncio.Semaphore | None = None
+
+
+def set_pass_limit(limit: int) -> None:
+    """Set the whole-file pass concurrency (``session.max_parallel_passes``).
+
+    Called once at startup. Raising it is a deliberate choice for a machine
+    with cores to spare; 1 is right for a laptop, and is why a queued
+    recording reports ``pending`` rather than looking stuck at ``processing``.
+    """
+    global _pass_limit, _pass_gate
+    limit = max(1, int(limit))
+    if _pass_gate is not None and limit != _pass_limit:
+        log.warning("whole-file pass limit changed after the gate was built; ignoring")
+        return
+    _pass_limit = limit
+
+
+def _gate() -> asyncio.Semaphore:
+    global _pass_gate
+    if _pass_gate is None:
+        _pass_gate = asyncio.Semaphore(_pass_limit)
+    return _pass_gate
+
+
+@asynccontextmanager
+async def whole_file_slot(on_wait: Callable[[], None] | None = None) -> AsyncIterator[None]:
+    """Hold a slot for one whole-file pass, waiting for a free one.
+
+    ``on_wait`` fires only when there is nothing free — the caller uses it to
+    say so (a ``pending`` session, a log line), which is the difference
+    between "queued behind another recording" and "started and stuck".
+    """
+    gate = _gate()
+    if gate.locked() and on_wait is not None:
+        on_wait()
+    async with gate:
+        yield
 
 
 def read_wav_pcm(path: Path) -> bytes:
@@ -144,6 +198,15 @@ def transcribe_pcm_sync(
 
 
 async def transcribe_pcm(pcm: bytes, **kwargs: Any) -> list[tuple[str, float, float]]:
-    """:func:`transcribe_pcm_sync` off the event loop."""
+    """:func:`transcribe_pcm_sync` off the event loop.
+
+    Callers that want to report the wait take :func:`whole_file_slot`
+    themselves and pass ``queued=False``; the default acquires it here, so no
+    path can reach whisper.cpp without going through the gate.
+    """
+    queued = bool(kwargs.pop("queued", True))
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: transcribe_pcm_sync(pcm, **kwargs))
+    if not queued:
+        return await loop.run_in_executor(None, lambda: transcribe_pcm_sync(pcm, **kwargs))
+    async with whole_file_slot():
+        return await loop.run_in_executor(None, lambda: transcribe_pcm_sync(pcm, **kwargs))

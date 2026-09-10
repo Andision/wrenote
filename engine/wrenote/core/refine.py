@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from . import glossary
-from .batch import normalize_src_lang, read_wav_pcm, transcribe_pcm
+from .batch import normalize_src_lang, read_wav_pcm, transcribe_pcm, whole_file_slot
 from .catalogue import ModelCatalogue, feature_enabled, resolve
 from .config import Config
 from .jobs import JobRegistry, Phase
@@ -140,6 +140,8 @@ async def refine_session(
         model_path=whisper_model_path,
         language=requested_lang,
         initial_prompt=glossary.stt_initial_prompt(entries),
+        # The caller holds the pass slot (the semaphore is not reentrant).
+        queued=False,
     )
     tick(1.0, f"{len(rows_raw)} segments")
     fallback_lang = requested_lang or "en"
@@ -251,26 +253,37 @@ async def launch(
         session_id=sid,
     )
 
+    def queued() -> None:
+        registry.advance(job.id, log_line="Queued behind another recording")
+        log.info("refine job %s is queued behind another whole-file pass", job.id)
+
     async def runner() -> None:
         translator: Any | None = None
         try:
-            entries = await store.list_glossary()
-            if translate:
-                translator = make_translator(
-                    cfg.translator.backend, resolve(cfg, "translator", catalogue).params
+            # One whole-file pass at a time. The slot is held across the
+            # translator too, not just the Whisper call: a 1.8B translator
+            # competing with the next recording's Whisper is the same
+            # oversubscription this gate exists to stop.
+            async with whole_file_slot(on_wait=queued):
+                await store.set_session_status(sid, "processing")
+                entries = await store.list_glossary()
+                if translate:
+                    translator = make_translator(
+                        cfg.translator.backend,
+                        resolve(cfg, "translator", catalogue).params,
+                    )
+                    glossary.apply_to_backends(entries, translator=translator)
+                result = await refine_session(
+                    job_id=job.id,
+                    registry=registry,
+                    session=session,
+                    wav_path=wav,
+                    whisper_model_path=model_path,
+                    translator=translator,
+                    translate=translate,
+                    store=store,
+                    glossary_entries=entries,
                 )
-                glossary.apply_to_backends(entries, translator=translator)
-            result = await refine_session(
-                job_id=job.id,
-                registry=registry,
-                session=session,
-                wav_path=wav,
-                whisper_model_path=model_path,
-                translator=translator,
-                translate=translate,
-                store=store,
-                glossary_entries=entries,
-            )
             registry.complete(job.id, result=result)
         except Exception as e:
             log.exception("refine job %s (session %s) failed", job.id, sid)
@@ -287,7 +300,9 @@ async def launch(
                 except Exception:
                     pass
 
-    await store.set_session_status(sid, "processing")
+    # `pending` until the runner holds a slot: a queued pass reporting
+    # `processing` looks exactly like a stuck one.
+    await store.set_session_status(sid, "pending")
     task = asyncio.create_task(runner(), name=f"refine-{job.id[:8]}")
     # Hold a reference: the event loop keeps only a weak one, so an
     # unreferenced task can be collected mid-flight (RUF006).

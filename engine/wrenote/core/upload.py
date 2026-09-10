@@ -21,7 +21,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..translator.base import TranslatorBackend
-from .batch import merge_whisper_segments, normalize_src_lang, transcribe_pcm
+from .batch import (
+    merge_whisper_segments,
+    normalize_src_lang,
+    transcribe_pcm,
+    whole_file_slot,
+)
 from .jobs import JobRegistry, Phase
 from .recording import resolve_recording_path
 from .store import Store
@@ -138,8 +143,8 @@ async def process_upload(
     # has something visible to advance through.
     requested_lang = normalize_src_lang(src_lang)
     created_at = datetime.now(UTC).isoformat()
-    # `processing` from the first moment the row exists: the client's list
-    # shows the upload as in progress rather than as an empty session.
+    # A row from the first moment: the client's list shows the upload as in
+    # progress rather than as an empty session.
     await store.upsert_session(
         session_id=session_id,
         title=title,
@@ -147,81 +152,92 @@ async def process_upload(
         src_lang=src_lang or "auto",
         tgt_lang=tgt_lang,
         duration_s=duration_s,
-        status="processing",
+        # `pending`, not `processing`: the pass may be queued behind another
+        # recording, and a queued job that says "processing" looks stuck.
+        status="pending",
     )
     tick(1.0)
 
-    # ---- Phase 3: transcribe ----
-    advance(3, 0.0, "Transcribing")
-    paragraphs = await transcribe_pcm(
-        full_pcm,
-        model_path=whisper_model_path,
-        language=requested_lang,
-        initial_prompt=initial_prompt,
-    )
-    tick(1.0, f"Prepared {len(paragraphs)} dialogue turns")
+    # One whole-file pass at a time (core/batch): an upload queued behind a
+    # recording's pass waits here, and says so rather than sitting on
+    # `processing` looking stuck.
+    def queued() -> None:
+        tick(0.0, "Queued behind another recording")
 
-    fallback_lang = requested_lang or "en"
-
-    if translate:
-        # ---- Phase 4: translate ----
-        if translator is None:
-            raise ValueError("translate=True but no translator provided")
-        advance(4, 0.0, "Translating")
-    else:
-        # No translate phase in this weight schedule — go straight to finalize.
-        advance(3, 1.0, "Transcribe-only mode: skipping translation")
-
-    texts = [text for text, _t0, _t1 in paragraphs]
-    for i, (text, t0, t1) in enumerate(paragraphs):
-        sid = f"u-{i:04d}"
-        seg_lang = fallback_lang
-
-        await store.upsert_segment_orig(
-            session_id=session_id,
-            segment_id=sid,
-            ord_=i,
-            started_at=t0,
-            ended_at=t1,
-            orig_text=text,
-            orig_status="final",
-            orig_lang=seg_lang,
+    async with whole_file_slot(on_wait=queued):
+        await store.set_session_status(session_id, "processing")
+        # ---- Phase 3: transcribe ----
+        advance(3, 0.0, "Transcribing")
+        paragraphs = await transcribe_pcm(
+            full_pcm,
+            model_path=whisper_model_path,
+            language=requested_lang,
+            initial_prompt=initial_prompt,
+            queued=False,  # we hold the slot
         )
+        tick(1.0, f"Prepared {len(paragraphs)} dialogue turns")
 
-        if not translate:
-            await store.upsert_segment_trans(
-                session_id=session_id,
-                segment_id=sid,
-                ord_=i,
-                trans_text="",
-                trans_status="skipped",
-                trans_lang=tgt_lang,
-            )
+        fallback_lang = requested_lang or "en"
+
+        if translate:
+            # ---- Phase 4: translate ----
+            if translator is None:
+                raise ValueError("translate=True but no translator provided")
+            advance(4, 0.0, "Translating")
         else:
-            assert translator is not None
-            translated, status = await translate_one_for_segment(
-                translator=translator,
-                text=text,
-                audio_lang=seg_lang,
-                tgt_lang=tgt_lang,
-                context=context_before(texts, i),
-            )
-            await store.upsert_segment_trans(
+            # No translate phase in this weight schedule — go straight to finalize.
+            advance(3, 1.0, "Transcribe-only mode: skipping translation")
+
+        texts = [text for text, _t0, _t1 in paragraphs]
+        for i, (text, t0, t1) in enumerate(paragraphs):
+            sid = f"u-{i:04d}"
+            seg_lang = fallback_lang
+
+            await store.upsert_segment_orig(
                 session_id=session_id,
                 segment_id=sid,
                 ord_=i,
-                trans_text=translated,
-                trans_status=status,
-                trans_lang=tgt_lang,
+                started_at=t0,
+                ended_at=t1,
+                orig_text=text,
+                orig_status="final",
+                orig_lang=seg_lang,
             )
 
-        if translate and paragraphs:
-            tick(
-                (i + 1) / len(paragraphs),
-                f"Translated {i + 1}/{len(paragraphs)}"
-                if (i + 1) % 5 == 0 or i + 1 == len(paragraphs)
-                else None,
-            )
+            if not translate:
+                await store.upsert_segment_trans(
+                    session_id=session_id,
+                    segment_id=sid,
+                    ord_=i,
+                    trans_text="",
+                    trans_status="skipped",
+                    trans_lang=tgt_lang,
+                )
+            else:
+                assert translator is not None
+                translated, status = await translate_one_for_segment(
+                    translator=translator,
+                    text=text,
+                    audio_lang=seg_lang,
+                    tgt_lang=tgt_lang,
+                    context=context_before(texts, i),
+                )
+                await store.upsert_segment_trans(
+                    session_id=session_id,
+                    segment_id=sid,
+                    ord_=i,
+                    trans_text=translated,
+                    trans_status=status,
+                    trans_lang=tgt_lang,
+                )
+
+            if translate and paragraphs:
+                tick(
+                    (i + 1) / len(paragraphs),
+                    f"Translated {i + 1}/{len(paragraphs)}"
+                    if (i + 1) % 5 == 0 or i + 1 == len(paragraphs)
+                    else None,
+                )
 
     # ---- Final phase: finalize ----
     final_idx = 5 if translate else 4

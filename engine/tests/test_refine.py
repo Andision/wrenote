@@ -150,7 +150,7 @@ def _cfg(tmp_path, backend: str = "whisper_cpp") -> Config:
 
 
 class TestLaunch:
-    async def test_marks_processing_then_ready_and_the_job_is_findable(
+    async def test_marks_pending_then_processing_then_ready_and_the_job_is_findable(
         self, store, tmp_path, monkeypatch
     ):
         session = await _session_with_live_rows(store)
@@ -163,8 +163,10 @@ class TestLaunch:
             session=session, cfg=cfg, catalogue=ModelCatalogue.load(user=None), store=store,
             registry=registry, recordings_dir=Path(cfg.data.recordings_dir),
         )
-        # Processing from the moment launch() returns: a list fetched now shows it.
-        assert (await store.get_session("s1"))["status"] == "processing"
+        # `pending` from the moment launch() returns — a list fetched now
+        # shows it, and the runner has not had a turn yet, so it has not
+        # taken its pass slot. `processing` is that slot being held.
+        assert (await store.get_session("s1"))["status"] == "pending"
         assert registry.get(job_id).session_id == "s1"
         assert registry.active_for("s1").id == job_id
 

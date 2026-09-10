@@ -41,13 +41,20 @@ SCHEMA_VERSION = 5
 
 # sessions.status — where a session is in its life:
 #   recording   the WS session is live; segments arrive as the user speaks
+#   pending     a pass is queued behind another one. Only one whole-file pass
+#               runs at a time (core/batch.whole_file_slot), and a queued one
+#               reporting `processing` is indistinguishable from a stuck one —
+#               which is the whole reason this value exists
 #   processing  a job is rewriting the transcript from the recording (the
 #               post-recording pass, or an upload being transcribed); the
 #               rows on file stay readable until the job replaces them
 #   ready       the transcript is what the user gets
 #   failed      the last processing pass died; status_detail says why and the
 #               previous transcript is still there
-SESSION_STATUSES = ("recording", "processing", "ready", "failed")
+#
+# A new value needs no migration: the column is TEXT with no CHECK, and this
+# tuple is the only thing that validates it.
+SESSION_STATUSES = ("recording", "pending", "processing", "ready", "failed")
 
 # One statement per entry: a migration replays these inside its transaction,
 # and executescript() would commit that transaction first. Every statement is
@@ -494,10 +501,12 @@ class Store:
 
         Run once at startup. A session still ``recording`` belongs to a
         connection that no longer exists — its rows are whatever got
-        persisted before the crash, so it is ``ready``. A session still
-        ``processing`` was in a job this process knows nothing about; the
-        previous transcript is intact, so mark it ``failed`` with a reason the
-        client can show and let the user re-run it.
+        persisted before the crash, so it is ``ready``. A session left
+        ``pending`` or ``processing`` was in a job this process knows nothing
+        about; the previous transcript is intact either way, so mark it
+        ``failed`` with a reason the client can show and let the user re-run
+        it. (``pending`` never started, but it was asked for and did not
+        happen, which is the same thing to tell someone.)
         """
         async with self._conn() as db:
             cur = await db.execute(
@@ -506,7 +515,7 @@ class Store:
             n = cur.rowcount
             cur = await db.execute(
                 "UPDATE sessions SET status = 'failed', status_detail = 'interrupted' "
-                "WHERE status = 'processing'"
+                "WHERE status IN ('pending', 'processing')"
             )
             n += cur.rowcount
             await db.commit()
