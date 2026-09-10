@@ -104,6 +104,19 @@
         "title": "InstallRequest",
         "type": "object"
       },
+      "RevealRequest": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "RevealRequest",
+        "type": "object"
+      },
       "SaveExportRequest": {
         "description": "Which rendering to write, and — for the markdown/text formats — which\nlanguage's minutes to put in front of it.",
         "properties": {
@@ -906,6 +919,49 @@
           }
         },
         "summary": "Get Recording"
+      }
+    },
+    "/v1/reveal": {
+      "post": {
+        "description": "Show a file or folder in the OS file manager.\n\nThe client cannot do this: a page may not navigate to `file://`, so the\n\"Show folder\" button on a save toast was a silent no-op in a browser tab\nand blocked by the shell's opener scope under Tauri. The engine is a\nlocal process and can just ask the desktop.\n\nOnly paths under a directory this engine writes to — the data root, and\nthe exports folder, which since it defaults to the user's Downloads is\nusually somewhere else entirely. Anything else is refused: this takes a\npath from the client and hands it to the window server, so the set of\nthings it can open has to be ours, not whatever was asked for.",
+        "operationId": "reveal_v1_reveal_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevealRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Reveal V1 Reveal Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reveal"
       }
     },
     "/v1/search": {

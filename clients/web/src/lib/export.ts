@@ -1,5 +1,4 @@
 import { API_BASE as BASE } from "./api";
-import { openExternal } from "./update";
 // Transcript export. The formatting lives in core/export.py, so both paths
 // here go through the engine: `fetchExport` for copy-to-clipboard, and
 // `saveExport` to write the file.
@@ -70,9 +69,20 @@ export async function saveMinutes(sessionId: string, lang: string): Promise<Save
   return (await res.json()) as SavedFile;
 }
 
-/** Ask the shell to show a saved file's folder. No-op in a plain browser,
- *  which is why the toast names the path as well as offering this. */
-export function revealSaved(file: SavedFile): void {
-  openExternal(`file://${encodeURI(file.dir)}`);
+/**
+ * Show a saved file in the OS file manager.
+ *
+ * Through the engine, not the shell: a page may not navigate to `file://`
+ * — the browser blocks it silently — and Tauri's opener refuses the scheme
+ * too, so the button did nothing at all. The engine is a local process and
+ * can just ask the desktop; it only accepts paths in directories it writes.
+ */
+export async function revealSaved(file: SavedFile): Promise<void> {
+  const res = await fetch(`${BASE}/reveal`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: file.path }),
+  });
+  if (!res.ok) throw new Error(`reveal failed (${res.status})`);
 }
 

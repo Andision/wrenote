@@ -62,9 +62,12 @@ describe("ExportMenu", () => {
     expect(message).toBe("Saved Standup.md");
     expect(opts.description).toBe("/home/u/.wrenote/exports");
 
-    // …and the toast can open the folder, for the shells that can.
+    // …and the toast's button opens the folder. It used to do nothing at
+    // all: a page may not navigate to file://, so it goes via the engine.
     opts.action.onClick();
-    expect(exportLib.revealSaved).toHaveBeenCalled();
+    expect(exportLib.revealSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/home/u/.wrenote/exports/Standup.md" }),
+    );
   });
 
   it("reports a failure rather than looking like it worked", async () => {

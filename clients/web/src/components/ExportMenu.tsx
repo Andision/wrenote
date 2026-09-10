@@ -103,7 +103,7 @@ export function ExportMenu({ sessionId, hasTranslations }: ExportMenuProps) {
       // the copy action had a toast, the save had nothing.
       toast.success(t("export.saved", { filename: saved.filename }), {
         description: saved.dir,
-        action: { label: t("export.showFolder"), onClick: () => revealSaved(saved) },
+        action: { label: t("export.showFolder"), onClick: () => void revealSaved(saved) },
       });
     });
 

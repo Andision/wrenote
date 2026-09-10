@@ -201,8 +201,67 @@ class TestSave:
         ).status_code == 400
 
     def test_the_directory_is_a_config_key(self, client):
-        assert client.app.state.config.data.exports_dir.endswith("exports")
         assert (
             client.get("/v1/info").json()["paths"]["exports_dir"]
             == client.app.state.config.data.exports_dir
         )
+
+
+class TestReveal:
+    """"Show folder" was a silent no-op: a page may not navigate to
+    `file://`, and the shell's opener refuses it too. The engine is a local
+    process, so it asks the desktop — but only for paths it owns."""
+
+    def test_opens_a_saved_file_and_says_which(self, client, monkeypatch):
+        import wrenote.api.sessions as sessions_api
+
+        seen: list[list[str]] = []
+
+        async def fake_exec(*argv, **kw):
+            seen.append(list(argv))
+
+            class P:
+                pass
+
+            return P()
+
+        monkeypatch.setattr(
+            sessions_api.asyncio, "create_subprocess_exec", fake_exec
+        )
+        _seed(client)
+        saved = client.post("/v1/sessions/s1/export/save", json={"fmt": "md"}).json()
+
+        r = client.post("/v1/reveal", json={"path": saved["path"]})
+        assert r.status_code == 200 and r.json()["path"] == saved["path"]
+        # A list, never a shell string: the path is user data and a session
+        # title can contain anything.
+        assert seen and saved["filename"] in " ".join(seen[0])
+
+    def test_refuses_a_path_that_is_not_ours(self, client):
+        """It hands a client-supplied path to the window server, so the set
+        of things it can open has to be ours."""
+        r = client.post("/v1/reveal", json={"path": "/etc/passwd"})
+        assert r.status_code == 400 and r.json()["detail"] == "path_not_ours"
+
+    def test_refuses_an_escape_from_the_data_dir(self, client):
+        exports = client.app.state.config.data.exports_dir
+        r = client.post("/v1/reveal", json={"path": f"{exports}/../../../../etc/passwd"})
+        assert r.status_code == 400
+
+    def test_a_path_inside_the_root_that_does_not_exist_is_a_404(self, client):
+        root = client.app.state.config.data.dir
+        r = client.post("/v1/reveal", json={"path": f"{root}/nope.md"})
+        assert r.status_code == 404
+
+
+def test_exports_default_to_the_download_folder_not_a_dotfolder():
+    """A saved transcript is a thing the user takes away; burying it in
+    ~/.wrenote is the wrong default, and was the complaint."""
+    from pathlib import Path
+
+    from wrenote.core.config import Config, default_exports_dir
+
+    cfg = Config.model_validate({"data": {"dir": "/moved"}})
+    assert cfg.data.exports_dir == str(default_exports_dir())
+    assert not cfg.data.exports_dir.startswith("/moved")
+    assert Path(cfg.data.exports_dir).name in ("Downloads", Path.home().name)

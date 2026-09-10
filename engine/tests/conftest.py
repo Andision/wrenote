@@ -36,7 +36,10 @@ def _mock_config(data_dir) -> Config:
             "translator": {"backend": "mock"},
             "speaker": {"backend": "disabled"},
             "chat": {"backend": "mock"},
-            "data": {"dir": str(data_dir)},
+            # exports_dir defaults to the user's *real* Downloads folder
+            # (see config.default_exports_dir), so a test that saves an
+            # export would drop files in it. Pin it under the tmp root.
+            "data": {"dir": str(data_dir), "exports_dir": str(data_dir / "exports")},
             # Never touch the network: no runtime index, no update check.
             "compute": {"runtimes_index_url": ""},
             "update": {"check": False, "index_url": ""},

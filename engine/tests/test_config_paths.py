@@ -59,7 +59,9 @@ def test_the_bundled_config_leaves_the_root_in_charge(tmp_path, monkeypatch):
         "data_dir": "/moved",
         "db_path": "/moved/data.db",
         "recordings_dir": "/moved/recordings",
-        "exports_dir": "/moved/exports",
+        # Not under the root: a saved transcript goes where the user's other
+        # downloads go (see config.default_exports_dir).
+        "exports_dir": str(config_mod.default_exports_dir()),
         "models_dir": "/moved/models",
         "runtimes_dir": "/moved/runtimes",
         "user_config": str(config_mod.user_config_path()),

@@ -82,6 +82,53 @@ class SessionConfig(BaseModel):
 DEFAULT_DATA_DIR = "~/.wrenote"
 
 
+def default_exports_dir() -> Path:
+    """The OS download folder, or the home directory if there isn't one.
+
+    Not `~/.wrenote/exports`: a saved transcript is a thing the user takes
+    away, and it should land where everything else they save lands.
+    """
+    if sys.platform == "win32":  # pragma: no cover - exercised on Windows only
+        folder = _windows_downloads()
+        if folder is not None:
+            return folder
+    downloads = Path.home() / "Downloads"
+    return downloads if downloads.is_dir() else Path.home()
+
+
+def _windows_downloads() -> Path | None:
+    """Windows' Downloads folder, which is relocatable and often relocated,
+    so the conventional path is a guess and the known-folder API is not."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class GUID(ctypes.Structure):
+            _fields_ = [
+                ("Data1", wintypes.DWORD),
+                ("Data2", wintypes.WORD),
+                ("Data3", wintypes.WORD),
+                ("Data4", ctypes.c_byte * 8),
+            ]
+
+        # FOLDERID_Downloads {374DE290-123F-4565-9164-39C4925E467B}
+        downloads = GUID(
+            0x374DE290, 0x123F, 0x4565,
+            (ctypes.c_byte * 8)(0x91, 0x64, 0x39, 0xC4, 0x92, 0x5E, 0x46, 0x7B),
+        )
+        out = ctypes.c_wchar_p()
+        shell32 = ctypes.windll.shell32  # type: ignore[attr-defined]
+        if shell32.SHGetKnownFolderPath(ctypes.byref(downloads), 0, None, ctypes.byref(out)) != 0:
+            return None
+        try:
+            path = Path(out.value) if out.value else None
+        finally:
+            ctypes.windll.ole32.CoTaskMemFree(out)  # type: ignore[attr-defined]
+        return path if path and path.is_dir() else None
+    except Exception:
+        return None
+
+
 class DataConfig(BaseModel):
     """Where the user's data lives.
 
@@ -96,7 +143,12 @@ class DataConfig(BaseModel):
     # Where "save the transcript" writes. A blob download in a WebView goes
     # somewhere the app can neither choose nor name, so the engine writes the
     # file and reports the path — and this is the key that moves it.
-    exports_dir: str = ""  # "" → <dir>/exports
+    #
+    # Unlike the rest, its default is *not* under `dir`: a transcript is
+    # something the user takes away, and burying it in a dotfolder they have
+    # to be told about is the wrong default. It goes to the OS download
+    # folder like anything else you save.
+    exports_dir: str = ""  # "" → the user's Downloads folder
 
 
 class ModelsConfig(BaseModel):
@@ -182,7 +234,9 @@ class Config(BaseSettings):
             Path(self.data.recordings_dir).expanduser() if self.data.recordings_dir else root / "recordings"
         )
         self.data.exports_dir = str(
-            Path(self.data.exports_dir).expanduser() if self.data.exports_dir else root / "exports"
+            Path(self.data.exports_dir).expanduser()
+            if self.data.exports_dir
+            else default_exports_dir()
         )
         self.models.dir = str(Path(self.models.dir).expanduser() if self.models.dir else root / "models")
         self.compute.runtimes_dir = str(

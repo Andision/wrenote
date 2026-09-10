@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,10 +15,11 @@ from pydantic import BaseModel
 
 from ..core import export as export_mod
 from ..core import minutes as minutes_mod
+from ..core.config import Config
 from ..core.jobs import JobRegistry
 from ..core.recording import resolve_recording_path
 from ..core.store import Store
-from ..deps import get_exports_dir, get_jobs, get_recordings_dir, get_store
+from ..deps import get_config, get_exports_dir, get_jobs, get_recordings_dir, get_store
 from ._common import SAFE_SESSION_ID, safe_session_id
 
 log = logging.getLogger(__name__)
@@ -178,6 +181,68 @@ def write_unique(directory: Path, base: str, ext: str, text: str) -> Path:
         n += 1
     candidate.write_text(text, encoding="utf-8")
     return candidate
+
+
+class RevealRequest(BaseModel):
+    path: str
+
+
+@router.post("/reveal")
+async def reveal(
+    body: RevealRequest,
+    cfg: Config = Depends(get_config),
+) -> dict[str, str]:
+    """Show a file or folder in the OS file manager.
+
+    The client cannot do this: a page may not navigate to `file://`, so the
+    "Show folder" button on a save toast was a silent no-op in a browser tab
+    and blocked by the shell's opener scope under Tauri. The engine is a
+    local process and can just ask the desktop.
+
+    Only paths under a directory this engine writes to — the data root, and
+    the exports folder, which since it defaults to the user's Downloads is
+    usually somewhere else entirely. Anything else is refused: this takes a
+    path from the client and hands it to the window server, so the set of
+    things it can open has to be ours, not whatever was asked for.
+    """
+    target = Path(body.path).expanduser()
+    roots = [
+        Path(p).expanduser().resolve()
+        for p in (cfg.data.dir, cfg.data.exports_dir, cfg.data.recordings_dir)
+    ]
+    try:
+        resolved = target.resolve()
+    except OSError:
+        raise HTTPException(status_code=400, detail="bad_path") from None
+    if not any(resolved.is_relative_to(r) for r in roots):
+        raise HTTPException(status_code=400, detail="path_not_ours")
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="not_found")
+
+    folder = resolved if resolved.is_dir() else resolved.parent
+    argv = _reveal_argv(resolved, folder)
+    if argv is None:
+        raise HTTPException(status_code=501, detail="unsupported_platform")
+    try:
+        # No shell: the path is user data and may contain anything.
+        await asyncio.create_subprocess_exec(
+            *argv, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        )
+    except Exception as e:
+        log.exception("reveal failed for %s", resolved)
+        raise HTTPException(status_code=500, detail="reveal_failed") from e
+    return {"path": str(resolved)}
+
+
+def _reveal_argv(target: Path, folder: Path) -> list[str] | None:
+    """The command that shows ``target`` in a file manager, per platform.
+    macOS and Windows can select the file itself; Linux opens the folder."""
+    if sys.platform == "darwin":
+        return ["open", "-R", str(target)] if target.is_file() else ["open", str(folder)]
+    if sys.platform == "win32":
+        return ["explorer", f"/select,{target}"] if target.is_file() else ["explorer", str(folder)]
+    opener = shutil.which("xdg-open")
+    return [opener, str(folder)] if opener else None
 
 
 @router.patch("/sessions/{session_id}")

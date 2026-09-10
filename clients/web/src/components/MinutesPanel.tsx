@@ -165,7 +165,7 @@ export function MinutesBody({ sessionId }: { sessionId: string | null }) {
       const saved = await saveMinutes(sessionId, current.lang);
       toast.success(t("export.saved", { filename: saved.filename }), {
         description: saved.dir,
-        action: { label: t("export.showFolder"), onClick: () => revealSaved(saved) },
+        action: { label: t("export.showFolder"), onClick: () => void revealSaved(saved) },
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
