@@ -1,15 +1,27 @@
-// Tracks long-running backend jobs (upload, diarize). The ProgressOverlay
-// component reads from here. State persists to localStorage so a page
-// refresh during a long-running job picks the progress UI back up
-// automatically — backend jobs survive disconnect (registry caps at 64).
+// Tracks long-running backend jobs (upload, diarize, a recording's pass…).
+// Two components read from here: the toasts bottom-right (ProgressOverlay)
+// and the list bottom-left (TaskList).
+//
+// Dismissing hides the toast; it does not forget the job. It used to delete
+// it, and `syncFromSessions` — which learns about the engine's own passes
+// from the session list — put it straight back the next time that list was
+// refreshed, i.e. on the next session switch. A dismissed job stays here,
+// marked, so the list can still show it and nothing resurrects the toast.
+//
+// State persists to localStorage so a page refresh during a long-running job
+// picks the progress UI back up — backend jobs survive disconnect (registry
+// caps at 64) — and `dismissed` persists with it, so a refresh doesn't bring
+// a hidden toast back either.
 import { create } from "zustand";
 
 import { subscribeJob, type JobSnapshot } from "@/lib/jobs";
 import { useSessionStore } from "@/store/sessionStore";
-import type { SessionMeta } from "@/types";
+import { isPassInFlight, type SessionMeta } from "@/types";
 
 const STORAGE_KEY = "wrenote.activeJobs";
 const LINGER_MS = 4000;
+/** Finished jobs kept for the list. A session's history, not a permanent log. */
+const KEEP_FINISHED = 20;
 
 /** Kind tells us how to rebuild onDone after a refresh. */
 export type JobKind = "upload" | "diarize" | "translate" | "refine" | "minutes";
@@ -21,6 +33,8 @@ interface PersistedJob {
   kind: JobKind;
   /** Session this job is operating on; needed by both kinds' onDone. */
   sessionId: string;
+  /** The user closed its toast. Persisted, or a refresh would re-raise it. */
+  dismissed?: boolean;
 }
 
 export interface TrackedJob {
@@ -29,9 +43,13 @@ export interface TrackedJob {
   kind: JobKind;
   sessionId: string;
   snapshot: JobSnapshot | null;
-  /** Brief "we just finished" state — overlay holds the success frame
-   * for a moment before removing the row. */
+  /** Brief "we just finished" state — the toast holds the success frame
+   * for a moment before hiding itself. */
   lingerUntil: number | null;
+  /** Hidden from the toasts. Still in the list — that is the point. */
+  dismissed: boolean;
+  /** When we started tracking it, so the list can order and trim by age. */
+  startedAt: number;
 }
 
 interface JobsState {
@@ -45,7 +63,14 @@ interface JobsState {
     kind: JobKind;
     sessionId: string;
   }) => void;
+  /** Hide a job's toast. It stays in the list. */
   dismiss: (jobId: string) => void;
+  /** Drop a job entirely — the list's per-row remove. */
+  forget: (jobId: string) => void;
+  /** Drop every finished job from the list. */
+  clearFinished: () => void;
+  /** Keep only the newest KEEP_FINISHED finished jobs. */
+  trimFinished: () => void;
   /** Called once at app mount: re-track every persisted job. */
   hydrateFromStorage: () => void;
   /** Follow the jobs the engine reports on sessions in `processing` — the
@@ -138,6 +163,7 @@ export const useJobsStore = create<JobsState>((set, get) => {
         label: j.label,
         kind: j.kind,
         sessionId: j.sessionId,
+        dismissed: j.dismissed,
       });
     }
     writePersisted(out);
@@ -159,9 +185,14 @@ export const useJobsStore = create<JobsState>((set, get) => {
               void runOnError(cur);
             }
             window.setTimeout(() => {
-              const live = useJobsStore.getState().jobs[job.id];
+              const s2 = useJobsStore.getState();
+              const live = s2.jobs[job.id];
               if (live && live.snapshot?.status !== "running") {
-                useJobsStore.getState().dismiss(job.id);
+                // Hide the toast, keep the row: the list is where a finished
+                // job is still findable. Trim the oldest finished ones so it
+                // stays a recent history rather than a log.
+                s2.dismiss(job.id);
+                s2.trimFinished();
               }
             }, LINGER_MS + 100);
           }
@@ -190,6 +221,8 @@ export const useJobsStore = create<JobsState>((set, get) => {
         sessionId,
         snapshot: null,
         lingerUntil: null,
+        dismissed: false,
+        startedAt: Date.now(),
       };
       set((s) => ({
         jobs: { ...s.jobs, [jobId]: tracked },
@@ -201,13 +234,47 @@ export const useJobsStore = create<JobsState>((set, get) => {
 
     dismiss: (jobId) => {
       set((s) => {
+        const cur = s.jobs[jobId];
+        if (!cur || cur.dismissed) return {};
+        return { jobs: { ...s.jobs, [jobId]: { ...cur, dismissed: true } } };
+      });
+      persist();
+    },
+
+    forget: (jobId) => {
+      set((s) => {
         if (!s.jobs[jobId]) return {};
         const rest = { ...s.jobs };
         delete rest[jobId];
-        return {
-          jobs: rest,
-          order: s.order.filter((id) => id !== jobId),
-        };
+        return { jobs: rest, order: s.order.filter((id) => id !== jobId) };
+      });
+      persist();
+    },
+
+    trimFinished: () => {
+      set((s) => {
+        const finished = s.order.filter((id) => {
+          const st = s.jobs[id]?.snapshot?.status;
+          return st === "done" || st === "error";
+        });
+        if (finished.length <= KEEP_FINISHED) return {};
+        const drop = new Set(finished.slice(0, finished.length - KEEP_FINISHED));
+        const order = s.order.filter((id) => !drop.has(id));
+        const jobs: Record<string, TrackedJob> = {};
+        for (const id of order) jobs[id] = s.jobs[id];
+        return { jobs, order };
+      });
+    },
+
+    clearFinished: () => {
+      set((s) => {
+        const keep = s.order.filter((id) => {
+          const st = s.jobs[id]?.snapshot?.status;
+          return st !== "done" && st !== "error";
+        });
+        const jobs: Record<string, TrackedJob> = {};
+        for (const id of keep) jobs[id] = s.jobs[id];
+        return { jobs, order: keep };
       });
       persist();
     },
@@ -224,6 +291,8 @@ export const useJobsStore = create<JobsState>((set, get) => {
           sessionId: p.sessionId,
           snapshot: null,
           lingerUntil: null,
+          dismissed: Boolean(p.dismissed),
+          startedAt: Date.now(),
         };
         set((s) => ({
           jobs: { ...s.jobs, [p.jobId]: tracked },
@@ -235,7 +304,9 @@ export const useJobsStore = create<JobsState>((set, get) => {
 
     syncFromSessions: (sessions) => {
       for (const s of sessions) {
-        if (s.status !== "processing" || !s.jobId || get().jobs[s.jobId]) continue;
+        // Queued counts: the job exists and has a progress stream from the
+        // moment it is created, it just hasn't taken its pass slot yet.
+        if (!isPassInFlight(s.status) || !s.jobId || get().jobs[s.jobId]) continue;
         // The label is the session title; the overlay words it per kind
         // (this runs outside React, so no `t()` here).
         get().track({ jobId: s.jobId, label: s.title, kind: "refine", sessionId: s.id });

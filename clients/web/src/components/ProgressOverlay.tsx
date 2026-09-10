@@ -1,15 +1,18 @@
-import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { CheckCircle2, ChevronDown, ChevronUp, X, XCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, X, XCircle } from "lucide-react";
 
 import { formatEta } from "@/lib/jobs";
+import { jobLabel } from "@/lib/jobText";
 import { useJobsStore, type TrackedJob } from "@/store/jobsStore";
+import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
 
 /**
- * Floating popover (bottom-right) listing every backend job we're
- * subscribed to. Hides itself when no jobs are tracked. Each card shows a
- * bar + ETA; "details" expands the raw log for the curious.
+ * The toasts, bottom-right: one card per job in flight, with a bar and an
+ * ETA. Dismissing hides the card, not the job — the list bottom-left
+ * (TaskList) is where a dismissed or finished one is still findable, which is
+ * also why the raw-log expander is gone from here: a toast you have to unfold
+ * is a toast doing the list's job.
  */
 export function ProgressOverlay() {
   const jobs = useJobsStore((s) => s.jobs);
@@ -20,7 +23,7 @@ export function ProgressOverlay() {
       <AnimatePresence initial={false}>
         {order.map((id) => {
           const tracked = jobs[id];
-          if (!tracked) return null;
+          if (!tracked || tracked.dismissed) return null;
           return <JobCard key={id} tracked={tracked} />;
         })}
       </AnimatePresence>
@@ -30,15 +33,16 @@ export function ProgressOverlay() {
 
 function JobCard({ tracked }: { tracked: TrackedJob }) {
   const dismiss = useJobsStore((s) => s.dismiss);
-  const [expanded, setExpanded] = useState(false);
+  const currentSessionId = useSessionStore((s) => s.sessionId);
+  const loadSession = useSessionStore((s) => s.loadSession);
   const t = useT();
   const snap = tracked.snapshot;
   const status = snap?.status ?? "running";
   const pct = Math.round(((snap?.fraction ?? 0) * 100) || 0);
-  // Refine jobs are tracked with the bare session title (they may be started
-  // by the engine, outside React); the wording is added here.
-  const label =
-    tracked.kind === "refine" ? t("topbar.refine.jobLabel", { title: tracked.label }) : tracked.label;
+  const label = jobLabel(t, tracked);
+  // A job on some other session: say so, and offer the way there. Without it
+  // the card names a session you can't get to from the card.
+  const elsewhere = tracked.sessionId !== "" && tracked.sessionId !== currentSessionId;
 
   return (
     <motion.div
@@ -69,17 +73,16 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
                 : snap?.phase || t("progress.starting")}
           </div>
         </div>
-        <button
-          onClick={() => setExpanded((x) => !x)}
-          data-tip={expanded ? t("progress.hideLog") : t("progress.showLog")}
-          className="rounded p-1 text-muted-foreground hover:bg-accent"
-        >
-          {expanded ? (
-            <ChevronDown className="size-3.5" />
-          ) : (
-            <ChevronUp className="size-3.5" />
-          )}
-        </button>
+        {elsewhere && (
+          <button
+            onClick={() => void loadSession(tracked.sessionId)}
+            data-tip={t("progress.openSession")}
+            aria-label={t("progress.openSession")}
+            className="rounded p-1 text-muted-foreground hover:bg-accent"
+          >
+            <ArrowRight className="size-3.5" />
+          </button>
+        )}
         <button
           onClick={() => dismiss(tracked.id)}
           data-tip={t("common.dismiss")}
@@ -111,23 +114,6 @@ function JobCard({ tracked }: { tracked: TrackedJob }) {
           )}
         </div>
       </div>
-
-      {/* Log (expandable) */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="border-t border-border/70 bg-muted/30"
-          >
-            <pre className="max-h-32 overflow-y-auto px-3 py-2 font-mono text-[10.5px] leading-snug text-muted-foreground">
-              {(snap?.log ?? []).join("\n") || "(no log yet)"}
-            </pre>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }

@@ -13,6 +13,7 @@ import {
   VolumeX,
 } from "lucide-react";
 
+import { TaskList } from "@/components/TaskList";
 import { usePlaybackControls } from "@/hooks/playbackContext";
 import { useSessionStore } from "@/store/sessionStore";
 import { useT } from "@/i18n";
@@ -38,7 +39,8 @@ export function StatusBar() {
 
   return (
     <footer className="flex h-10 shrink-0 items-center gap-3 border-t bg-card px-4 text-[11.5px] text-muted-foreground">
-      {/* Left: mic meter — only while capturing. */}
+      {/* Left: the task record, then the mic meter while capturing. */}
+      <TaskList />
       {showLevelMeters && showMic && (
         <div className="flex shrink-0 items-center gap-3">
           <MicMeter level={micLevel} isLive={isLive} />
