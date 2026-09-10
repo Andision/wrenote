@@ -218,6 +218,35 @@ built and smoke-checked real `cpu`, `vulkan` and `cuda` packs on Windows
 runners (the CUDA pack is ~770 MB, almost all of it cuBLAS). VAD and the
 speaker model stay on CPU (ONNX Runtime) by design.
 
+## Capture sources (`core/syscap.py`, `packaging/{macos,windows}/`)
+
+What a recording is made of is three independent choices: the microphone,
+the system output, and (for video) a window or display.
+
+* **The microphone is optional, and that cost a clock.** The pipeline used to
+  be driven by mic frames — `mix(mic_pcm)` ran once per arriving frame — so
+  with no mic nothing advanced. `SystemAudioPump` is the replacement clock:
+  one 100 ms frame from the system source every 100 ms on a monotonic
+  schedule, padded with silence when the source falls behind, because a gap
+  in the audio *is* silence and the transcript's timeline has to say so.
+* **The system output can be one application.** `audio_source: {type: "app",
+  id}` in the WS start config, where the id is the platform's own handle:
+  a bundle identifier on macOS (`syscap --app`, an `including:`
+  ScreenCaptureKit filter, matched across every process of that bundle
+  because the app that owns the window is rarely the one making the sound),
+  a process id on Windows (`procloop.exe`, WASAPI process loopback — a
+  different activation path from the endpoint loopback `soundcard` uses, and
+  reachable from no Python binding, hence a helper).
+* **A platform that cannot scope says so** (`audio_scope` on
+  `/v1/capture/targets`) and the client doesn't offer the choice; the source
+  refuses rather than widening. Capturing the whole desktop when someone
+  asked for one app records more than they agreed to, and that is the wrong
+  direction to fail in.
+* Both helpers have the same contract — raw 16 kHz mono s16le on stdout,
+  diagnostics on stderr, exit on stdin EOF — so the two `SystemAudioSource`
+  implementations are the same shape, and a missing helper degrades to what
+  the app did before it existed.
+
 ## Localization (`clients/web/src/i18n/`)
 
 * Locales are **data**: `src/i18n/locales/<tag>.json`, discovered with
@@ -515,8 +544,8 @@ it on is mid-task and about to restart something.
 ## Checks (`.github/workflows/checks.yml`)
 
 Everything that can fail without a Mac, a Windows box or a 40-minute compile
-runs on every push: engine lint + 359 tests + the API-contract drift check, and
-for the client types, lint, locale parity, accessible names, 126 tests and the build. The
+runs on every push: engine lint + 367 tests + the API-contract drift check, and
+for the client types, lint, locale parity, accessible names, 141 tests and the build. The
 platform-specific packaging workflows stay slow and separate.
 
 * **The frozen engine is smoke-tested** in `.github/actions/build-engine`: a
