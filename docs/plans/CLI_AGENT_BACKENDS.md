@@ -8,11 +8,55 @@ already installed and logged in.
 capable model on their machine, authenticated, with no API key to paste. Can
 Wrenote's chat and minutes use it instead of the 2.5 GB Qwen3-4B download?
 
-**Short answer.** Yes, both fit `wrenote/chat/base.py`'s `ChatBackend`
-interface as a subprocess. Claude Code streams token-by-token; Codex does
-not. Both carry a large per-call overhead that a chat model does not, and
-both send the transcript to a third party, which is the part that decides
-whether this ships and how.
+**Short answer, revised.** Technically yes — both fit `wrenote/chat/base.py`'s
+`ChatBackend` as a subprocess, and §2–§4 below are how. But the premise
+mostly collapsed on two findings, so read §0 first:
+
+* **Anthropic ended subscription access for third-party tools on 2026-04-04.**
+  Using your Claude Pro/Max login from another program is no longer covered;
+  it needs an API key or a usage bundle. The whole pitch was "no key to
+  paste", and for Claude that pitch is gone.
+* **Nobody who does this well spawns the CLI from inside their app.** The
+  OpenClaw-shaped tools put an OpenAI-compatible HTTP shim in front of the
+  CLIs. Wrenote should speak to that shim, not to a subprocess.
+
+## 0. What the ecosystem actually does, and what changed
+
+**The policy.** From 2026-04-04, Claude Pro / Max / Team subscriptions no
+longer cover usage through third-party agentic tools — OpenClaw, OpenCode,
+and any other harness that routes requests through Claude over OAuth. Users
+need a pay-as-you-go usage bundle or the API directly; official API keys,
+Bedrock and Vertex are unaffected. Wrenote driving `claude` would be exactly
+such a harness. So the "reuse the login you already have" argument holds only
+for Codex (whose terms this investigation did *not* establish either way).
+
+Once an API key is needed anyway, an ordinary OpenAI-compatible HTTP adapter
+— `TODO.md` item **b**, already on the roadmap — beats driving a CLI on every
+axis: no flag-stability coupling, no subprocess lifecycle, no 15k tokens of
+agent scaffolding per call (§3).
+
+**The architecture.** OpenClaw's own Claude backend spawns exactly the
+command line §2 measured, but adds the two things that make it viable:
+
+* **A warm subprocess** kept alive across consecutive turns, and
+* **`--session-id <uuid>`** to resume, so a turn is a turn rather than a cold
+  start. This is the answer to the per-call scaffolding cost below.
+
+It does *not* bundle a Codex CLI backend; Codex runs through the
+`codex app-server` harness instead — which matches what §3 found, that
+`codex exec --json` gives no incremental output.
+
+Tools in that family (e.g. `claw-orchestrator`) then expose
+**`POST /v1/chat/completions`**, OpenAI-compatible and streaming, in front of
+whichever CLI. Which is the shape Wrenote should target: one adapter it wants
+anyway, pointed at a `base_url` the user chooses. The CLI question becomes
+the user's configuration rather than our code, and swapping Claude for Codex
+for OpenCode costs us nothing.
+
+**So the recommendation changed.** Not "write `claude_cli` and `codex_cli`
+backends" (§6, now superseded) but "write the OpenAI-compatible adapter, and
+document pointing it at a local CLI shim". §2–§5 stay because they are the
+measurements behind that conclusion.
 
 ---
 
@@ -119,7 +163,7 @@ easier for the user (no API key) and heavier per call, but it is not more
 local. The same rule applies, and the UI must stop claiming otherwise while
 it is on.
 
-## 6. If it gets built
+## 6. If it gets built as a subprocess backend after all — superseded, see §0
 
 1. `chat/cli_agent.py` with two registrations, `claude_cli` and `codex_cli`,
    sharing the subprocess plumbing and differing only in argv and the event
@@ -138,10 +182,24 @@ it is on.
 
 ## 7. Not investigated
 
-* Whether either CLI's terms permit an application driving it on the user's
-  behalf. **This needs answering before any of the above.**
+* **Whether OpenAI's terms allow an application driving `codex` on the user's
+  behalf.** Anthropic's answer is now known and is no (§0); OpenAI's is not,
+  and it decides whether the Codex half of this has a point.
 * The Claude Agent SDK, which is the supported way to embed rather than
-  driving the CLI, and would not depend on flag stability.
-* Latency on a real transcript — both measurements above are one trivial
+  driving the CLI, and would not depend on flag stability. Note it spawns the
+  same CLI over the same stdio protocol underneath, so the policy in §0
+  applies to it too.
+* Latency on a real transcript — every measurement above is one trivial
   prompt, and the interesting number is time-to-first-token with 30k tokens
-  of meeting in the prompt.
+  of meeting in the prompt, against a *warm* session rather than a cold one.
+* Whether a warm subprocess plus `--session-id` actually removes the
+  scaffolding cost in §3, or only amortises it.
+
+## 8. Sources
+
+* Anthropic's third-party access change, 2026-04-04 —
+  <https://dev.to/mcrolly/anthropic-kills-claude-subscription-access-for-third-party-tools-like-openclaw-what-it-means-for-3ipc>
+* OpenClaw, CLI backends (the command line, the warm subprocess, the session
+  args) — <https://docs.openclaw.ai/gateway/cli-backends>
+* `claw-orchestrator`, an OpenAI-compatible endpoint over five agent CLIs —
+  <https://github.com/Enderfga/claw-orchestrator>

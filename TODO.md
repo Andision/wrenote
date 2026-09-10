@@ -66,14 +66,17 @@ that same question.
 - [ ] Adapters for common third-party APIs (OpenAI-compatible chat/completions,
       whisper-style transcription) so a user can point at a remote model —
       strictly opt-in, and the privacy claim in the UI must change when it is on
-- [ ] **A local `claude` / `codex` CLI as the chat backend** — investigated,
-      not built: `docs/plans/CLI_AGENT_BACKENDS.md`. Both fit `ChatBackend`
-      as a subprocess and use the login the user already has. Claude streams
-      token-by-token, Codex only whole messages; both bill ~15k tokens of
-      agent scaffolding per call, and `claude --bare` (the clean-context
-      flag) refuses OAuth, so an embedded call can't have both. Blocked on
-      the same rule as the item above, plus one question the doc raises and
-      does not answer: whether the CLIs' terms permit it.
+- [ ] ~~A local `claude` / `codex` CLI as the chat backend~~ — **folded into
+      the item above.** Second pass (`docs/plans/CLI_AGENT_BACKENDS.md` §0)
+      killed the premise twice over: Anthropic stopped covering third-party
+      tools with Pro/Max/Team subscriptions on 2026-04-04, so "reuse the
+      login you already have" no longer holds for Claude and an API key is
+      needed anyway; and the tools that do this well (OpenClaw and
+      relatives) don't spawn CLIs from inside the app — they put an
+      OpenAI-compatible HTTP shim in front of them. So the work is the
+      adapter above, plus a paragraph of documentation about pointing its
+      `base_url` at such a shim. One thing still unanswered: whether
+      OpenAI's terms allow driving `codex` on a user's behalf.
 
 ### c. Tests and CI/CD
 
