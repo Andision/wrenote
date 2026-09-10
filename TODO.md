@@ -68,9 +68,17 @@ that same question.
       optional: the app is a transcriber. Not measured: whether skipping the
       chat model actually shortens a first run enough to notice, on a real
       connection.
-- [ ] Adapters for common third-party APIs (OpenAI-compatible chat/completions,
-      whisper-style transcription) so a user can point at a remote model —
-      strictly opt-in, and the privacy claim in the UI must change when it is on
+- [ ] **An `openai_compatible` chat/translator backend, and then no
+      in-process LLM at all** — the plan is `docs/plans/LLM_OUT_OF_PROCESS.md`.
+      The engine stops loading language models itself and speaks HTTP to
+      whatever answers, including a `llama-server` it starts and supervises
+      for the local case, so a local model and a remote one stop being two
+      different things. The strongest reason is crash isolation: a
+      llama.cpp segfault today takes the engine down, and the likeliest
+      moment for it is mid-recording. Speech recognition stays embedded.
+      Three shippable steps in that doc; step 1 is this adapter, which is
+      needed either way. Strictly opt-in for anything remote, and the
+      privacy claim in the UI must change when it is on.
 - [ ] ~~A local `claude` / `codex` CLI as the chat backend~~ — **folded into
       the item above.** Second pass (`docs/plans/CLI_AGENT_BACKENDS.md` §0)
       killed the premise twice over: Anthropic stopped covering third-party
@@ -277,7 +285,16 @@ Measurements for everything in this section: `docs/plans/TRANSCRIPTION_QUALITY.m
       the token mapping). The glossary reaches Whisper as a prompt today
       and the streaming model not at all.
 - [ ] Apple SpeechAnalyzer (macOS 26+) as a third live backend on the Mac
-      shell — system-provided, streaming, Chinese-capable, free.
+      shell — system-provided, streaming, Chinese-capable, free, and no
+      model to download or hold in memory. Caveat to establish first: it
+      transcribes **per locale**, so a sentence that switches between
+      Chinese and English mid-way is likely to come out as one of them.
+      That is this app's central case, so a locale-based recogniser may be
+      excellent for a single-language meeting and wrong for the meeting
+      Wrenote exists for — check that before building it, not after. On a
+      machine with an accelerator it competes with whisper-large-v3-turbo
+      at 935 ms per utterance (`docs/plans/TRANSCRIPTION_QUALITY.md`), so
+      the case for it is CPU-only Macs and memory, not accuracy.
 
 - [x] **About, with the licences.** `GET /v1/about`: Wrenote's own AGPL, the
       models, the native libraries, the front end, and the engine's Python
@@ -321,6 +338,56 @@ Measurements for everything in this section: `docs/plans/TRANSCRIPTION_QUALITY.m
       in `~/.wrenote/recordings/` with no retention policy, no disk-usage view
       and no bulk cleanup. Heavy users lose tens of GB without knowing to what.
 
+### Making the transcript better after the fact
+
+- [ ] **An AI clean-up pass over a finished transcript.** Distinct from the
+      punctuation item above, which must not change words: this one is
+      allowed to, and that is exactly what makes it dangerous. A meeting
+      transcript is a record of what people said, and a model that "fixes"
+      a sentence into something the speaker did not say produces a
+      confident, readable, wrong document — worse than the rough one,
+      because nobody can tell by reading it.
+      So the design question comes before the feature: what is the unit of
+      correction, and how does a reader see what was changed? Candidates,
+      cheapest and safest first:
+      * **Terms only.** The glossary already biases Whisper's prompt; a pass
+        that only substitutes known terms ("cloud fair" → "Cloudflare",
+        which this exact recording got wrong repeatedly) is bounded,
+        auditable, and needs no model at all beyond fuzzy matching.
+      * **Suggestions, not edits.** The model proposes; the row keeps the
+        original and shows the alternative until someone accepts it.
+      * **A rewrite, with the original kept.** Only with a visible diff and
+        a way back to what was recorded.
+      What must exist either way: the original text stays in the database.
+      A schema column, not a replacement.
+      Measurements to inform it: `docs/plans/TRANSCRIPTION_QUALITY.md` —
+      note in particular that a style prompt improved punctuation *and*
+      corrupted words on the same audio, which is this feature's failure
+      mode in miniature.
+- [ ] **The same, live.** Much harder and probably second: a correction
+      that arrives after the line is on screen has to change text the user
+      already read, and the live path's whole promise (a decoded prefix
+      never changes) is the opposite of that. Worth deciding whether live
+      correction is wanted at all before building it.
+
+### Talking to other tools
+
+- [ ] **MCP.** Two different features share the name; decide which first.
+      * **Wrenote as an MCP server** — expose the library to other agents:
+        search transcripts, read a session, read its minutes. The engine
+        already has all of it behind HTTP (`core/search.py`,
+        `/v1/sessions`, `/v1/sessions/{id}/minutes`), so this is mostly a
+        protocol adapter over what exists, and it is the direction that
+        makes Wrenote useful *inside* someone's existing agent setup.
+        Access is the real question, not the protocol: an MCP server is a
+        way for another program to read every meeting the user has ever
+        recorded, so it needs to be off by default, explicitly enabled, and
+        clear about what it exposes.
+      * **Wrenote's chat panel as an MCP client** — let the transcript chat
+        call tools. Bigger, and it changes what the chat *is*; it also
+        lands more naturally after `LLM_OUT_OF_PROCESS.md`, since a shim
+        speaking OpenAI-compatible HTTP may already be doing tool calls.
+
 ### Findability
 
 - [x] **Search.** FTS5 over `segments` and a paged list — see item 2 above.
@@ -348,10 +415,11 @@ Measurements for everything in this section: `docs/plans/TRANSCRIPTION_QUALITY.m
       argument path runs, but capture needs the Screen Recording grant, so
       the filter has never actually been exercised — check that a Zoom-scoped
       recording really excludes a browser playing video, and what happens
-      when the app quits mid-recording. Windows: `procloop.cpp` is
-      **unverified** — nothing in this environment compiles MSVC or runs
-      Windows, so its first tests are the CI build and a real machine.
-      Confirm the Windows 10 2004+ floor there too. Core Audio process taps
+      when the app quits mid-recording. Windows: `procloop.cpp` **compiles
+      in CI** (2026-09-10) and has never been *run* — nothing in this
+      environment runs Windows. Check that it captures the target's process
+      tree and nothing else, and confirm the Windows 10 2004+ floor.
+      Core Audio process taps
       (macOS 14.2+) remain the alternative that needs no screen-recording
       permission. Linux stays mic-only.
 - [x] **Update notice.** The engine reads `latest.json` from the latest GitHub

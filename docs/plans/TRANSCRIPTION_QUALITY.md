@@ -95,7 +95,26 @@ meeting.
 
 ---
 
-## 4. What has not been measured
+## 4. Reproducing any of this
+
+The engine's own venv has neither speech binding by default — they are
+platform-specific extras. For a measurement run:
+
+```bash
+cd engine && python -m venv .venv && .venv/bin/pip install -e ".[dev]"
+.venv/bin/pip install pywhispercpp sherpa-onnx   # the two used above
+```
+
+Then feed a recording from `~/.wrenote/recordings/` through
+`wrenote.core.batch.transcribe_pcm_sync` for the offline pass, or through
+`sherpa_onnx.OnlineRecognizer` in 100 ms frames for the streaming path —
+which is the framing `core/pipeline.py` uses, and the reason a model that
+looks fine on a whole clip can fall apart in the live path.
+
+Measure on **at least the whole recording**. Section 2's VAD row is the
+warning: fifteen minutes said one thing and twenty-eight said the opposite.
+
+## 5. What has not been measured
 
 * **Anything in Chinese, or code-switched.** Every recording available was
   100% English. The zh-en case — the one this app is for — is untested end
@@ -112,3 +131,9 @@ meeting.
   labels are assigned by time overlap, so they are coarser by construction.
 * Any recording made with a headset or a real meeting microphone. Everything
   above is the worst case.
+
+**The next measurement to take**, in order: set a session's main language to
+Chinese with English as a secondary, record a real mixed meeting, and run
+that recording through the offline pass, through whisper in the live
+framing, and through SenseVoice. That answers all three open questions above
+at once, and none of them can be answered without it.
