@@ -8,7 +8,10 @@
 //
 // Keys built at runtime (`t(`theme.${mode}`)`) can't be found by reading the
 // source, so their prefixes are declared below. Keep that list short: a prefix
-// is a hole in check 3.
+// is a hole in check 1 *and* check 3 — a missing `settings.cat.models` gets
+// through it. The closed sets the client owns are pinned instead by
+// src/i18n/runtimeKeys.test.ts; a prefix here should mean codes the *engine*
+// chooses, which no static check can enumerate.
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

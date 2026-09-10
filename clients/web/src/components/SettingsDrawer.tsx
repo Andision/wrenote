@@ -1,19 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import {
-  BookMarked,
-  Boxes,
-  Cpu,
-  Gauge,
-  Monitor,
-  Moon,
-  Scissors,
-  SlidersHorizontal,
-  Sun,
-  X,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+import { Monitor, Moon, Sun, X } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { ComputePanel } from "@/components/ComputePanel";
@@ -25,26 +12,11 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useSessionStore } from "@/store/sessionStore";
 import { LOCALE_LIST, useI18n, useT } from "@/i18n";
+import {
+  SETTINGS_CATEGORIES,
+  type CategoryId,
+} from "@/components/settingsCategories";
 
-type CategoryId =
-  | "general"
-  | "segmentation"
-  | "realtime"
-  | "glossary"
-  | "models"
-  | "engines"
-  | "compute";
-
-// Labels are message keys; the rail resolves them at render.
-const CATEGORIES: { id: CategoryId; icon: LucideIcon }[] = [
-  { id: "general", icon: SlidersHorizontal },
-  { id: "segmentation", icon: Scissors },
-  { id: "realtime", icon: Zap },
-  { id: "glossary", icon: BookMarked },
-  { id: "models", icon: Boxes },
-  { id: "engines", icon: Cpu },
-  { id: "compute", icon: Gauge },
-];
 
 /**
  * Settings modal — a centered floating panel with a category rail on the
@@ -102,7 +74,7 @@ export function SettingsDrawer() {
                 {t("settings.title")}
               </div>
               <div className="flex flex-col gap-0.5">
-                {CATEGORIES.map((c) => {
+                {SETTINGS_CATEGORIES.map((c) => {
                   const Icon = c.icon;
                   const active = c.id === cat;
                   return (

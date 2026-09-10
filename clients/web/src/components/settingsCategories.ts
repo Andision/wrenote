@@ -1,0 +1,34 @@
+// The Settings rail's categories. Data, not a component, and in its own file
+// so a test can import the list and hold every id to having a label: the ids
+// are composed into `settings.cat.<id>` at render, which is invisible to a
+// scan of the source for literal `t(...)` keys — that is how `settings.cat.models`
+// shipped with no message and rendered as its own key.
+import {
+  BookMarked,
+  Boxes,
+  Cpu,
+  Gauge,
+  Scissors,
+  SlidersHorizontal,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+
+export type CategoryId =
+  | "general"
+  | "segmentation"
+  | "realtime"
+  | "glossary"
+  | "models"
+  | "engines"
+  | "compute";
+
+export const SETTINGS_CATEGORIES: { id: CategoryId; icon: LucideIcon }[] = [
+  { id: "general", icon: SlidersHorizontal },
+  { id: "segmentation", icon: Scissors },
+  { id: "realtime", icon: Zap },
+  { id: "glossary", icon: BookMarked },
+  { id: "models", icon: Boxes },
+  { id: "engines", icon: Cpu },
+  { id: "compute", icon: Gauge },
+];

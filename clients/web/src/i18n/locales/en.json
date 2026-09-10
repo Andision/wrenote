@@ -241,6 +241,7 @@
       "segmentation": "Segmentation",
       "realtime": "Real-time",
       "glossary": "Glossary",
+      "models": "Models",
       "engines": "Engines",
       "compute": "Compute"
     },

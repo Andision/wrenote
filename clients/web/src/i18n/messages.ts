@@ -23,9 +23,19 @@ interface LocaleFile {
   [key: string]: unknown;
 }
 
+/** A JSON module's namespace: the whole file under `default`, plus a named
+ *  export per top-level key — except the ones that are reserved words, which
+ *  cannot be bindings at all. `"export": {...}` silently had no named export
+ *  and the whole section went missing, so read `default` and never the
+ *  namespace. */
+interface LocaleModule {
+  default?: LocaleFile;
+  [key: string]: unknown;
+}
+
 /** The language every other locale falls back to, key by key. */
 export const FALLBACK_LOCALE = "en";
-const files = import.meta.glob<LocaleFile>("./locales/*.json", { eager: true });
+const files = import.meta.glob<LocaleModule>("./locales/*.json", { eager: true });
 
 function flatten(obj: unknown, prefix = "", out: Messages = {}): Messages {
   if (typeof obj !== "object" || obj === null) return out;
@@ -47,7 +57,7 @@ export interface Locale {
 export const LOCALES: Record<string, Locale> = Object.fromEntries(
   Object.entries(files).map(([path, mod]) => {
     const tag = path.replace(/^.*\/(.+)\.json$/, "$1");
-    const { $meta, ...rest } = mod;
+    const { $meta, ...rest } = mod.default ?? (mod as LocaleFile);
     return [tag, { tag, name: $meta?.name ?? tag, messages: flatten(rest) }];
   }),
 );
