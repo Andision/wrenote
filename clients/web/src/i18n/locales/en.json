@@ -355,6 +355,12 @@
     "sizeMb": "{mb} MB",
     "loading": "Loading models…",
     "featureOff": "switched off",
+    "deleteFiles": "Delete the downloaded files ({mb} MB)",
+    "deleted": "Deleted {name} · {mb} MB freed",
+    "deleteFailed": "Delete failed: {error}",
+    "deleteInUseTitle": "Delete {name}?",
+    "deleteInUseBody": "This slot is using it. The files go; the choice stays, so the next session downloads it again unless you pick something else first.",
+    "deleteConfirm": "Delete the files",
     "tier": {
       "small": "Rough",
       "medium": "Balanced",

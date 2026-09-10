@@ -12,11 +12,14 @@ import { kindReason } from "@/lib/modelText";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
 import { formatEta, subscribeJob } from "@/lib/jobs";
+import { confirmDialog } from "@/lib/confirm";
 import {
   type ModelKind,
+  type ModelOption,
   type ModelStatus,
   type OptionalFeature,
   OPTIONAL_FEATURES,
+  deleteModel,
   getModelStatus,
   selectModel,
   setFeatures,
@@ -73,6 +76,39 @@ export function ModelsPanel() {
       }
     },
     [refresh, setFeatureState, t],
+  );
+
+  /** Remove a downloaded model's files. Deleting the one a slot is *using*
+   *  is allowed — it is the honest way to reclaim the space, and the slot
+   *  says what happened — but it is asked about first, because the next
+   *  session would otherwise fail on a file that vanished. */
+  const remove = useCallback(
+    async (option: ModelOption) => {
+      if (option.selected) {
+        const ok = await confirmDialog({
+          title: t("models.deleteInUseTitle", { name: option.name }),
+          description: t("models.deleteInUseBody"),
+          confirmLabel: t("models.deleteConfirm"),
+          destructive: true,
+        });
+        if (!ok) return;
+      }
+      setBusy(true);
+      try {
+        const res = await deleteModel(option.id);
+        if (res.failed.length > 0) {
+          toast.error(t("models.deleteFailed", { error: res.failed[0].error }));
+        } else {
+          toast.success(t("models.deleted", { name: option.name, mb: res.freed_mb }));
+        }
+        await refresh();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refresh, t],
   );
 
   const choose = useCallback(
@@ -169,7 +205,12 @@ export function ModelsPanel() {
               )}
             </div>
             {on && (
-              <ModelPicker kind={kind} busy={busy} onPick={(id) => void choose(kind.kind, id)} />
+              <ModelPicker
+                kind={kind}
+                busy={busy}
+                onPick={(id) => void choose(kind.kind, id)}
+                onDelete={(o) => void remove(o)}
+              />
             )}
           </section>
         );

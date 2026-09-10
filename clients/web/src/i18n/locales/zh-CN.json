@@ -353,6 +353,12 @@
     "sizeMb": "{mb} MB",
     "loading": "正在加载模型列表…",
     "featureOff": "已关闭",
+    "deleteFiles": "删除已下载的文件（{mb} MB）",
+    "deleted": "已删除 {name} · 释放 {mb} MB",
+    "deleteFailed": "删除失败：{error}",
+    "deleteInUseTitle": "删除 {name}？",
+    "deleteInUseBody": "当前这个槽位正在用它。文件会被删掉，但选择保留——除非你先换一个模型，否则下次会话会重新下载它。",
+    "deleteConfirm": "删除文件",
     "tier": {
       "small": "较粗略",
       "medium": "均衡",
