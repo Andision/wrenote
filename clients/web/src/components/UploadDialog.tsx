@@ -45,6 +45,8 @@ export function UploadDialog({ open, onClose }: UploadDialogProps) {
 function UploadDialogBody({ onClose }: { onClose: () => void }) {
   const settings = useSessionStore((s) => s.settings);
   const updateSettings = useSessionStore((s) => s.updateSettings);
+  const translationOn = useSessionStore((s) => s.features.translator);
+  const requireFeature = useSessionStore((s) => s.requireFeature);
   const trackJob = useJobsStore((s) => s.track);
 
   const [files, setFiles] = useState<File[]>([]);
@@ -90,7 +92,7 @@ function UploadDialogBody({ onClose }: { onClose: () => void }) {
         title: finalTitle,
         srcLang: settings.srcLang,
         tgtLang: settings.tgtLang,
-        translate: settings.translateEnabled,
+        translate: translationOn && settings.translateEnabled,
       });
       // Register with the floating progress overlay. The kind-aware
       // onDone lives inside jobsStore so a refresh can reconstruct it.
@@ -241,7 +243,7 @@ function UploadDialogBody({ onClose }: { onClose: () => void }) {
           {/* Lang strip + translate toggle (mirrors PreFlight) */}
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card/40 p-3">
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              {settings.translateEnabled ? t("lang.from") : t("lang.language")}
+              {translationOn && settings.translateEnabled ? t("lang.from") : t("lang.language")}
             </span>
             <LanguageSelect
               value={settings.srcLang}
@@ -250,7 +252,7 @@ function UploadDialogBody({ onClose }: { onClose: () => void }) {
               disabled={submitting}
               ariaLabel={t("lang.source")}
             />
-            {settings.translateEnabled && (
+            {translationOn && settings.translateEnabled && (
               <>
                 <ArrowRight className="size-4 text-muted-foreground/60" />
                 <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -267,10 +269,11 @@ function UploadDialogBody({ onClose }: { onClose: () => void }) {
             )}
             <div className="ml-auto flex items-center gap-2 text-[12px] text-muted-foreground">
               <Switch
-                checked={settings.translateEnabled}
-                onCheckedChange={(v) =>
-                  updateSettings({ translateEnabled: v })
-                }
+                checked={translationOn && settings.translateEnabled}
+                onCheckedChange={(v) => {
+                  if (v && !requireFeature("translator")) return;
+                  updateSettings({ translateEnabled: v });
+                }}
                 disabled={submitting}
               />
               <span>{t("upload.translate")}</span>

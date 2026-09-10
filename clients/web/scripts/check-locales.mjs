@@ -37,6 +37,9 @@ const DYNAMIC_PREFIXES = [
   "session.refuse.", // session.refuse.${code}, from the engine
   "lang.", // LanguageSelect resolves "lang.*" labels
   "export.format.", // the FORMATS table holds keys
+  // Client-owned closed sets: exempt here so they don't read as unused, and
+  // pinned key-by-key in src/i18n/runtimeKeys.test.ts so a missing one fails.
+  "setup.feature.",
 ];
 
 // Test files are skipped: their `t("plain")` fixtures are made-up keys, not

@@ -201,6 +201,13 @@
     "failed": "Export failed",
     "withMinutes": "Include minutes ({lang})"
   },
+  "feature": {
+    "offTitle": "{feature} isn't set up yet",
+    "offBody": "Its model hasn't been downloaded.",
+    "offBodySized": "Turning it on downloads about {mb} MB.",
+    "ignore": "Not now",
+    "enable": "Turn it on"
+  },
   "upload": {
     "title": "Transcribe from file",
     "drop": "Drop files or click to choose",
@@ -271,6 +278,20 @@
   },
   "setup": {
     "step": "Step {current} of {total}",
+    "featuresTitle": "What should Wrenote do?",
+    "featuresBlurb": "Each feature is a model that runs on your device, so each one is a download. Leave out what you won't use — you can turn it on later.",
+    "featuresFootnote": "Turning something on later downloads it then; nothing is deleted when you turn it off.",
+    "feature": {
+      "always": "always on",
+      "transcribe": "Transcription",
+      "transcribeHint": "Speech to text, live and again after the recording.",
+      "translator": "Translation",
+      "translatorHint": "A second language alongside the transcript, line by line.",
+      "chat": "Meeting minutes & chat",
+      "chatHint": "Summary, decisions and action items, and questions about the transcript.",
+      "speaker": "Speaker identification",
+      "speakerHint": "Tells voices apart and labels who said what."
+    },
     "computeTitle": "Choose how Wrenote runs",
     "computeBlurb": "Everything runs on your device. Pick the build that matches your hardware — you can change this later in Settings.",
     "modelsTitle": "Set up Wrenote",
@@ -295,6 +316,7 @@
     "onDisk": "on disk",
     "sizeMb": "{mb} MB",
     "loading": "Loading models…",
+    "featureOff": "switched off",
     "missing_one": "1 file to download · {mb} MB",
     "missing_other": "{count} files to download · {mb} MB",
     "downloadMissing": "Download",

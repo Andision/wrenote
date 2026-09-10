@@ -201,6 +201,13 @@
     "failed": "导出失败",
     "withMinutes": "附上会议纪要（{lang}）"
   },
+  "feature": {
+    "offTitle": "还没有启用{feature}",
+    "offBody": "它的模型还没有下载。",
+    "offBodySized": "启用会下载约 {mb} MB。",
+    "ignore": "以后再说",
+    "enable": "启用"
+  },
   "upload": {
     "title": "从文件转写",
     "drop": "拖入文件，或点击选择",
@@ -271,6 +278,20 @@
   },
   "setup": {
     "step": "第 {current} 步，共 {total} 步",
+    "featuresTitle": "Wrenote 要做哪些事？",
+    "featuresBlurb": "每项功能都是一个在你设备上运行的模型，也就是一次下载。用不到的可以不选，之后随时能开。",
+    "featuresFootnote": "之后开启会在那时下载；关闭不会删除已下载的文件。",
+    "feature": {
+      "always": "必备",
+      "transcribe": "转写",
+      "transcribeHint": "语音转文字，实时一遍，录制结束后再整理一遍。",
+      "translator": "翻译",
+      "translatorHint": "在转写旁边逐句给出另一种语言。",
+      "chat": "会议纪要与对话",
+      "chatHint": "摘要、决定和待办事项，以及针对转写内容提问。",
+      "speaker": "说话人识别",
+      "speakerHint": "区分不同的声音，标出每句话是谁说的。"
+    },
     "computeTitle": "选择 Wrenote 的运行方式",
     "computeBlurb": "全部在本机运行。选择与你硬件匹配的版本 — 之后随时可在设置中更改。",
     "modelsTitle": "设置 Wrenote",
@@ -295,6 +316,7 @@
     "onDisk": "已下载",
     "sizeMb": "{mb} MB",
     "loading": "正在加载模型列表…",
+    "featureOff": "已关闭",
     "missing_other": "需下载 {count} 个文件 · {mb} MB",
     "downloadMissing": "下载",
     "nextSession": "新模型将在下一个会话生效。",

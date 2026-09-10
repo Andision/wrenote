@@ -43,6 +43,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
   const title = useSessionStore((s) => s.sessionTitle);
   const renameSession = useSessionStore((s) => s.renameSession);
   const toggleChat = useSessionStore((s) => s.toggleChat);
+  const requireFeature = useSessionStore((s) => s.requireFeature);
   const chatOpen = useSessionStore((s) => s.chatOpen);
   const toggleMinutes = useSessionStore((s) => s.toggleMinutes);
   const minutesOpen = useSessionStore((s) => s.minutesOpen);
@@ -130,6 +131,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
 
   const runDiarize = async () => {
     if (!sessionId || activeDiarizeForThis || activeTranslateForThis || processing) return;
+    if (!requireFeature("speaker")) return;
     if (hasCustomSpeakerLabel) {
       const ok = await confirmDialog({
         title: t("topbar.diarize.confirmTitle"),
@@ -165,6 +167,7 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
 
   const runTranslate = async () => {
     if (!sessionId || activeTranslateForThis || activeDiarizeForThis || processing) return;
+    if (!requireFeature("translator")) return;
     let retranslate = false;
     if (!hasUntranslated) {
       const ok = await confirmDialog({
@@ -423,7 +426,10 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => toggleMinutes()}
+          onClick={() => {
+            // Minutes are written by the chat model; one feature, two buttons.
+            if (requireFeature("chat")) toggleMinutes();
+          }}
           data-tip={t("topbar.minutes")}
           aria-pressed={minutesOpen}
           className={minutesOpen ? "size-9 bg-accent text-foreground" : "size-9"}
@@ -435,7 +441,9 @@ export function TopBar({ onStop, onPause, onResume, inPreFlight }: TopBarProps) 
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => toggleChat()}
+        onClick={() => {
+          if (requireFeature("chat")) toggleChat();
+        }}
         data-tip={t("topbar.chat")}
         aria-pressed={chatOpen}
         className={

@@ -76,6 +76,10 @@ export function PreFlight({ onStart }: PreFlightProps) {
   const t = useT();
   const settings = useSessionStore((s) => s.settings);
   const updateSettings = useSessionStore((s) => s.updateSettings);
+  // Translation declined at setup: the remembered setting stays as it was,
+  // but nothing here acts as though it were on.
+  const translationOn = useSessionStore((s) => s.features.translator);
+  const requireFeature = useSessionStore((s) => s.requireFeature);
   const connection = useSessionStore((s) => s.connection);
 
   // "connected" is the post-socket, pre-`ready` gap — still starting up, so the
@@ -184,7 +188,7 @@ export function PreFlight({ onStart }: PreFlightProps) {
         className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 shadow-sm backdrop-blur-sm"
       >
         <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          {settings.translateEnabled ? t("lang.from") : t("lang.language")}
+          {translationOn && settings.translateEnabled ? t("lang.from") : t("lang.language")}
         </span>
         <LanguageSelect
           value={settings.srcLang}
@@ -198,7 +202,7 @@ export function PreFlight({ onStart }: PreFlightProps) {
           disabled={isRecording || isBusy}
           ariaLabel={t("lang.source")}
         />
-        {settings.translateEnabled && (
+        {translationOn && settings.translateEnabled && (
           <>
             <ArrowRight className="size-4 text-muted-foreground/60" />
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -255,12 +259,19 @@ export function PreFlight({ onStart }: PreFlightProps) {
       <div className="flex items-center gap-3 text-[13px] text-muted-foreground">
         <Switch
           id="translate-toggle"
-          checked={settings.translateEnabled}
-          onCheckedChange={(v) => updateSettings({ translateEnabled: v })}
+          checked={translationOn && settings.translateEnabled}
+          onCheckedChange={(v) => {
+            // Switching it on when translation was declined offers the
+            // download instead of promising something that can't happen.
+            if (v && !requireFeature("translator")) return;
+            updateSettings({ translateEnabled: v });
+          }}
           disabled={isRecording || isBusy}
         />
         <label htmlFor="translate-toggle" className="cursor-pointer">
-          {settings.translateEnabled ? t("preflight.translateOn") : t("preflight.translateOff")}
+          {translationOn && settings.translateEnabled
+            ? t("preflight.translateOn")
+            : t("preflight.translateOff")}
         </label>
       </div>
 

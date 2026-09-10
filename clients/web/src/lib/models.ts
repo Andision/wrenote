@@ -11,6 +11,26 @@ import { API_BASE as BASE } from "./api";
  *  recording goes through afterwards (`stt_offline`, Whisper). */
 export type ModelKind = "stt" | "stt_offline" | "translator" | "chat" | "speaker";
 
+/** The slots a user may decline. Speech recognition is not one: the app is a
+ *  transcriber. A declined feature downloads nothing and reports itself off,
+ *  which is what turns its buttons into an offer to fetch the model. */
+export type OptionalFeature = "translator" | "chat" | "speaker";
+
+export const OPTIONAL_FEATURES: OptionalFeature[] = ["translator", "chat", "speaker"];
+
+export type Features = Record<OptionalFeature, boolean>;
+
+/** Everything on until the engine says otherwise, so a slow status fetch
+ *  never briefly greys out features the user does have. */
+export const ALL_FEATURES_ON: Features = { translator: true, chat: true, speaker: true };
+
+/** The model slot a feature is: what to read a download size off. */
+export const SLOT_FOR_FEATURE: Record<OptionalFeature, ModelKind> = {
+  translator: "translator",
+  chat: "chat",
+  speaker: "speaker",
+};
+
 export interface ModelStatusItem {
   key: ModelKind;
   filename: string;
@@ -52,6 +72,7 @@ export interface ModelStatus {
   all_present: boolean;
   options: KindOptions[];
   selected: Record<string, string | null>;
+  features: Features;
 }
 
 export async function getModelStatus(): Promise<ModelStatus> {
@@ -86,6 +107,21 @@ export async function selectModel(
     model: string;
     applies: "now" | "next_session";
   };
+}
+
+/** Switch optional features on or off. Omitted ones are left alone.
+ *  Switching one on downloads nothing — follow with `startModelDownload`. */
+export async function setFeatures(patch: Partial<Features>): Promise<Features> {
+  const res = await fetch(`${BASE}/models/features`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`features failed (${res.status}): ${text}`);
+  }
+  return ((await res.json()) as { features: Features }).features;
 }
 
 export async function startModelDownload(): Promise<{

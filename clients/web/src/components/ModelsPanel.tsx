@@ -15,10 +15,15 @@ import { formatEta, subscribeJob } from "@/lib/jobs";
 import {
   type ModelKind,
   type ModelStatus,
+  type OptionalFeature,
+  OPTIONAL_FEATURES,
   getModelStatus,
   selectModel,
+  setFeatures,
   startModelDownload,
 } from "@/lib/models";
+import { Switch } from "@/components/ui/switch";
+import { useSessionStore } from "@/store/sessionStore";
 
 export function ModelsPanel() {
   const t = useT();
@@ -50,6 +55,25 @@ export function ModelsPanel() {
       cancelled = true;
     };
   }, [t]);
+
+  const setFeatureState = useSessionStore((s) => s.setFeatureState);
+
+  /** Turn a feature on or off from here, rather than only at first run. What
+   *  it needs is then in `missing` below, so the download offer covers it. */
+  const toggleFeature = useCallback(
+    async (feature: OptionalFeature, on: boolean) => {
+      setBusy(true);
+      try {
+        setFeatureState(await setFeatures({ [feature]: on }));
+        await refresh();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : t("models.selectFailed"));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refresh, setFeatureState, t],
+  );
 
   const choose = useCallback(
     async (kind: ModelKind, id: string) => {
@@ -113,19 +137,43 @@ export function ModelsPanel() {
   const missing = status.models.filter((m) => !m.present);
   const missingMb = Math.round(missing.reduce((a, m) => a + m.size, 0) / 1048576);
 
+  // A feature that is off has no model to download, so its slot shows the
+  // switch and nothing else — the model choice is only a question once the
+  // answer to "do you want this at all" is yes.
+  const featureFor = (kind: ModelKind): OptionalFeature | null =>
+    (OPTIONAL_FEATURES as string[]).includes(kind) ? (kind as OptionalFeature) : null;
+
   return (
     <div className="space-y-5">
-      {status.options.map((kind) => (
-        <section key={kind.kind} className="space-y-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              {t(`models.kind.${kind.kind}`)}
-            </h3>
-            <span className="text-[11px] text-muted-foreground/70">{kindReason(t, kind)}</span>
-          </div>
-          <ModelPicker kind={kind} busy={busy} onPick={(id) => void choose(kind.kind, id)} />
-        </section>
-      ))}
+      {status.options.map((kind) => {
+        const feature = featureFor(kind.kind);
+        const on = feature === null || status.features[feature];
+        return (
+          <section key={kind.kind} className="space-y-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t(`models.kind.${kind.kind}`)}
+              </h3>
+              {feature === null ? (
+                <span className="text-[11px] text-muted-foreground/70">{kindReason(t, kind)}</span>
+              ) : (
+                <label className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground/70">
+                  {on ? kindReason(t, kind) : t("models.featureOff")}
+                  <Switch
+                    checked={on}
+                    disabled={busy}
+                    onCheckedChange={(v) => void toggleFeature(feature, v)}
+                    aria-label={t(`setup.feature.${feature}`)}
+                  />
+                </label>
+              )}
+            </div>
+            {on && (
+              <ModelPicker kind={kind} busy={busy} onPick={(id) => void choose(kind.kind, id)} />
+            )}
+          </section>
+        );
+      })}
 
       {missing.length > 0 && (
         <div className="space-y-2 rounded-lg border border-border/60 bg-muted/30 p-3">

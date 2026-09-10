@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { SETTINGS_CATEGORIES } from "@/components/settingsCategories";
 import { FALLBACK_LOCALE, LOCALE_LIST, LOCALES } from "@/i18n";
+import { OPTIONAL_FEATURES } from "@/lib/models";
 
 /** Closed sets the client itself owns, each named by where it is declared. */
 const RUNTIME_KEYS: string[] = [
@@ -24,6 +25,14 @@ const RUNTIME_KEYS: string[] = [
   ...["stt", "stt_offline", "translator", "chat", "speaker"].map(
     (k) => `models.kind.${k}`,
   ),
+  // lib/models.ts — the features the setup step and its prompt name
+  "setup.feature.always",
+  "setup.feature.transcribe",
+  "setup.feature.transcribeHint",
+  ...OPTIONAL_FEATURES.flatMap((f) => [
+    `setup.feature.${f}`,
+    `setup.feature.${f}Hint`,
+  ]),
 ];
 
 describe("runtime-composed message keys", () => {

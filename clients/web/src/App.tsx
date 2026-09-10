@@ -4,6 +4,7 @@ import { AnimatePresence, LayoutGroup } from "motion/react";
 import { ChatPanel } from "@/components/ChatPanel";
 import { MinutesPanel } from "@/components/MinutesPanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { FeaturePrompt } from "@/components/FeaturePrompt";
 import { SetupGate } from "@/components/SetupGate";
 import { PreFlight } from "@/components/PreFlight";
 import { ProgressOverlay } from "@/components/ProgressOverlay";
@@ -156,6 +157,7 @@ export default function App() {
       <UpdateNotice />
       <ConfirmDialog />
       <SetupGate />
+      <FeaturePrompt />
       <TooltipLayer />
     </TooltipProvider>
   );

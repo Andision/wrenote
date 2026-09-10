@@ -1,31 +1,51 @@
-// First-run setup. Two things have to happen before Wrenote can transcribe
-// anything: pick the compute runtime, and download the models. Both are
-// downloads, so they belong in one flow rather than one gate and a settings
-// page the user never visits — on Windows, skipping the runtime step silently
-// means CPU inference forever.
+// First-run setup. Three things happen before Wrenote can transcribe:
+// choose which features you want, pick the compute runtime, and download the
+// models they imply. All three feed one download, so they belong in one flow
+// rather than a gate plus a settings page the user never visits — on Windows,
+// skipping the runtime step silently means CPU inference forever.
 //
-// Runtime first, deliberately: while no native backend has been imported the
+// Features first: they decide what there is to download (the full set is
+// 4.3 GB, and the chat model alone is 2.5 GB), and on a machine with no
+// accelerator they decide whether the runtime question is worth asking.
+// Runtime next, deliberately: while no native backend has been imported the
 // engine can swap runtimes in place (see RuntimeManager.can_reactivate), so
 // choosing here costs no restart. Loading a model is what pins the process.
 //
-// Returning users (models already present) never see this.
+// Returning users (models already present) never see this — unless they ask
+// for it back: `openSetup(feature)` re-enters the flow from the dialog a
+// switched-off feature raises, and from the developer menu.
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Check, Cpu, Download, Loader2, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
+import {
+  Check,
+  Cpu,
+  Download,
+  ListChecks,
+  Loader2,
+  ShieldCheck,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { formatEta, subscribeJob } from "@/lib/jobs";
 import { hardwareText, optionText } from "@/lib/computeText";
 import { useT } from "@/i18n";
 import {
+  ALL_FEATURES_ON,
+  type Features,
   type KindOptions,
   type ModelKind,
   type ModelStatusItem,
+  OPTIONAL_FEATURES,
   getModelStatus,
   selectModel,
+  setFeatures as setRemoteFeatures,
   startModelDownload,
 } from "@/lib/models";
 import { ModelPicker } from "@/components/ModelPicker";
+import { Switch } from "@/components/ui/switch";
+import { useSessionStore } from "@/store/sessionStore";
 import { kindReason } from "@/lib/modelText";
 import {
   type ComputeStatus,
@@ -37,7 +57,7 @@ import {
   selectAccelerator,
 } from "@/lib/compute";
 
-type Step = "checking" | "compute" | "models";
+type Step = "checking" | "features" | "compute" | "models";
 
 function gb(bytes: number): string {
   return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -53,10 +73,21 @@ export function SetupGate() {
   const t = useT();
   const [step, setStep] = useState<Step>("checking");
   const [done, setDone] = useState(false);
+  // Set when someone asks for this flow back (a switched-off feature's
+  // dialog, or the developer menu); cleared when the flow finishes.
+  const setupRequest = useSessionStore((s) => s.setupRequest);
+  const closeSetup = useSessionStore((s) => s.closeSetup);
+  const setFeatureState = useSessionStore((s) => s.setFeatureState);
+
+  // The feature switches, edited locally and sent on Continue: a half-made
+  // choice should not change what the rest of the app offers.
+  const [features, setFeatures] = useState<Features>(ALL_FEATURES_ON);
+  const [featuresBusy, setFeaturesBusy] = useState(false);
 
   const [compute, setCompute] = useState<ComputeStatus | null>(null);
-  // Whether the runtime step was ever shown — decides if this is a 2-step flow.
-  const [twoStep, setTwoStep] = useState(false);
+  // Whether the runtime step is part of this run — it is skipped where there
+  // is no accelerator worth installing.
+  const [withCompute, setWithCompute] = useState(false);
   const [chosen, setChosen] = useState<Variant | null>(null);
   const [runtimeBusy, setRuntimeBusy] = useState(false);
 
@@ -69,18 +100,34 @@ export function SetupGate() {
   const [error, setError] = useState("");
   const [restartNeeded, setRestartNeeded] = useState(false);
 
+  // Everything present and nobody asking for the flow back → never shown.
+  const requested = setupRequest !== null;
+  const focus = setupRequest?.focus ?? null;
+
+  /** Leave the flow: hide it, and clear a request so it stays hidden. */
+  const finish = useCallback(() => {
+    setDone(true);
+    closeSetup();
+  }, [closeSetup]);
+
   useEffect(() => {
     let alive = true;
     // The models decide whether this is a first run; the compute status only
-    // decides whether the first step is worth showing, so it must not block.
+    // decides whether the runtime step is worth showing, so it must not block.
     void (async () => {
       try {
         const st = await getModelStatus();
         if (!alive) return;
-        if (st.all_present) {
+        setFeatureState(st.features);
+        if (st.all_present && !requested) {
           setDone(true);
           return;
         }
+        setDone(false);
+        // Re-entered to turn one feature on: it starts switched on, so the
+        // user lands on the screen with the thing they asked for already
+        // chosen and only has to confirm.
+        setFeatures(focus ? { ...st.features, [focus]: true } : st.features);
         setModels(st.models);
         setModelOptions(st.options ?? []);
         let comp: ComputeStatus | null = null;
@@ -95,12 +142,11 @@ export function SetupGate() {
         setChosen(offered.find((o) => o.recommended)?.variant ?? null);
         // Only ask when there is a real choice: an accelerator this machine can
         // use, not already installed, and actually published. On a Mac (Metal
-        // is built in) or offline, that's nothing — go straight to the models.
-        const decidable = offered.some(
-          (o) => o.accelerated && !o.installed && o.download_mb != null,
+        // is built in) or offline, that's nothing — skip the step.
+        setWithCompute(
+          offered.some((o) => o.accelerated && !o.installed && o.download_mb != null),
         );
-        setTwoStep(decidable);
-        setStep(decidable ? "compute" : "models");
+        setStep("features");
       } catch (e) {
         if (alive) {
           setError(e instanceof Error ? e.message : String(e));
@@ -111,7 +157,30 @@ export function SetupGate() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [requested, focus, setFeatureState]);
+
+  /** Send the feature switches, then re-read what that leaves to download. */
+  const confirmFeatures = useCallback(async () => {
+    setFeaturesBusy(true);
+    setError("");
+    try {
+      setFeatureState(await setRemoteFeatures(features));
+      const st = await getModelStatus();
+      setModels(st.models);
+      setModelOptions(st.options ?? []);
+      // Everything the chosen features need is already here — a re-entry that
+      // only switched something back on, with the files still on disk.
+      if (st.all_present) {
+        finish();
+        return;
+      }
+      setStep(withCompute ? "compute" : "models");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFeaturesBusy(false);
+    }
+  }, [features, finish, setFeatureState, withCompute]);
 
   /** Apply the runtime choice (installing its pack first when needed). */
   const confirmRuntime = useCallback(async () => {
@@ -181,7 +250,7 @@ export function SetupGate() {
     startModelDownload()
       .then((res) => {
         if (res.all_present || !res.job_id) {
-          setDone(true);
+          finish();
           return;
         }
         subscribeJob(res.job_id, {
@@ -191,7 +260,7 @@ export function SetupGate() {
               eta: snap.eta_s,
               label: snap.log[snap.log.length - 1] ?? snap.phase,
             });
-            if (snap.status === "done") setDone(true);
+            if (snap.status === "done") finish();
             if (snap.status === "error") {
               setProgress(null);
               setError(snap.error ?? t("setup.downloadFailed"));
@@ -207,12 +276,17 @@ export function SetupGate() {
         setProgress(null);
         setError(e instanceof Error ? e.message : String(e));
       });
-  }, [t]);
+  }, [finish, t]);
 
-  if (done || step === "checking") return null;
+  if ((done && !requested) || step === "checking") return null;
 
   const totalModelSize = models.reduce((a, m) => a + m.size, 0);
+  const onFeatures = step === "features";
   const onCompute = step === "compute";
+  const steps: Step[] = withCompute
+    ? ["features", "compute", "models"]
+    : ["features", "models"];
+  const stepNo = steps.indexOf(step) + 1;
 
   return (
     <motion.div
@@ -231,26 +305,57 @@ export function SetupGate() {
         <div className="-mx-2 min-h-0 flex-1 overflow-y-auto px-2">
         <div className="flex items-start justify-between">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-brand-500/15 ring-1 ring-inset ring-brand-500/25">
-            {onCompute ? (
+            {onFeatures ? (
+              <ListChecks className="size-7 text-brand-600 dark:text-brand-400" />
+            ) : onCompute ? (
               <Sparkles className="size-7 text-brand-600 dark:text-brand-400" />
             ) : (
               <Download className="size-7 text-brand-600 dark:text-brand-400" />
             )}
           </div>
-          {twoStep && (
-            <span className="mt-1 text-[11px] tabular-nums text-muted-foreground/70">
-              {t("setup.step", { current: onCompute ? 1 : 2, total: 2 })}
-            </span>
-          )}
+          <span className="mt-1 text-[11px] tabular-nums text-muted-foreground/70">
+            {t("setup.step", { current: stepNo, total: steps.length })}
+          </span>
         </div>
 
         <h1 className="mt-5 text-xl font-semibold tracking-tight text-foreground">
-          {onCompute ? t("setup.computeTitle") : t("setup.modelsTitle")}
+          {onFeatures
+            ? t("setup.featuresTitle")
+            : onCompute
+              ? t("setup.computeTitle")
+              : t("setup.modelsTitle")}
         </h1>
         <p className="mt-2 flex items-start gap-1.5 text-[13px] leading-relaxed text-muted-foreground">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-brand-500" />
-          {onCompute ? t("setup.computeBlurb") : t("setup.modelsBlurb")}
+          {onFeatures
+            ? t("setup.featuresBlurb")
+            : onCompute
+              ? t("setup.computeBlurb")
+              : t("setup.modelsBlurb")}
         </p>
+
+        {onFeatures && (
+          <div className="mt-5 space-y-1.5">
+            {/* Transcription is not a switch: it is what the app is. Showing
+                it, fixed on, is what makes the list read as the whole set. */}
+            <FeatureRow fixed label={t("setup.feature.transcribe")}
+                        hint={t("setup.feature.transcribeHint")} />
+            {OPTIONAL_FEATURES.map((f) => (
+              <FeatureRow
+                key={f}
+                label={t(`setup.feature.${f}`)}
+                hint={t(`setup.feature.${f}Hint`)}
+                checked={features[f]}
+                highlighted={f === focus}
+                disabled={featuresBusy}
+                onChange={(v) => setFeatures((prev) => ({ ...prev, [f]: v }))}
+              />
+            ))}
+            <p className="pt-2 text-[11px] leading-relaxed text-muted-foreground/70">
+              {t("setup.featuresFootnote")}
+            </p>
+          </div>
+        )}
 
         {onCompute && compute && (
           <div className="mt-5 space-y-1.5">
@@ -270,7 +375,7 @@ export function SetupGate() {
             choice are shown — a single-entry kind is not a decision — and the
             after-recording recogniser stays on its default here: it is a
             Settings → Models choice, not a first-run one. */}
-        {!onCompute &&
+        {step === "models" &&
           modelOptions
             .filter((k) => k.options.length > 1 && k.kind !== "stt_offline")
             .map((k) => (
@@ -287,7 +392,7 @@ export function SetupGate() {
               </section>
             ))}
 
-        {!onCompute && (
+        {step === "models" && (
           <ul className="mt-5 space-y-1.5">
             {models.map((m) => (
               <li
@@ -339,7 +444,16 @@ export function SetupGate() {
         )}
 
         </div>
-        {onCompute ? (
+        {onFeatures ? (
+          <Button
+            onClick={() => void confirmFeatures()}
+            className="mt-6 w-full"
+            size="lg"
+            disabled={featuresBusy}
+          >
+            {featuresBusy ? t("progress.starting") : t("common.continue")}
+          </Button>
+        ) : onCompute ? (
           <>
             <Button
               onClick={() => void confirmRuntime()}
@@ -371,13 +485,63 @@ export function SetupGate() {
           )
         )}
 
-        {restartNeeded && !onCompute && (
+        {restartNeeded && step === "models" && (
           <p className="mt-3 text-center text-[11px] text-amber-600 dark:text-amber-400">
             {t("setup.restart")}
           </p>
         )}
       </motion.div>
     </motion.div>
+  );
+}
+
+/** One feature switch. `fixed` renders transcription: shown, always on, so
+ *  the list reads as everything the app does rather than only the extras. */
+function FeatureRow({
+  label,
+  hint,
+  checked = true,
+  fixed = false,
+  highlighted = false,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked?: boolean;
+  fixed?: boolean;
+  highlighted?: boolean;
+  disabled?: boolean;
+  onChange?: (next: boolean) => void;
+}) {
+  const t = useT();
+  return (
+    <div
+      className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+        highlighted
+          ? "border-brand-500 bg-brand-500/10"
+          : "border-border/50 bg-background/40"
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+          {label}
+          {fixed && (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {t("setup.feature.always")}
+            </span>
+          )}
+        </div>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground/80">{hint}</p>
+      </div>
+      <Switch
+        checked={checked}
+        disabled={fixed || disabled}
+        onCheckedChange={(v) => onChange?.(v)}
+        aria-label={label}
+        className="mt-0.5 shrink-0"
+      />
+    </div>
   );
 }
 

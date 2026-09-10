@@ -20,6 +20,11 @@ import {
   suggestSessionTitle,
 } from "../lib/storage";
 import type { CaptureTarget } from "../lib/capture";
+import {
+  ALL_FEATURES_ON,
+  type Features,
+  type OptionalFeature,
+} from "../lib/models";
 import type {
   ConnectionState,
   ReadyInfo,
@@ -124,6 +129,16 @@ interface State {
   /** The minutes panel shares the right-hand column with chat: one at a time. */
   minutesOpen: boolean;
 
+  // Optional features (translation, chat + minutes, speaker identification).
+  // Declining one at first run means its model was never downloaded, so its
+  // buttons stay visible but offer to fetch it instead of doing the thing.
+  features: Features;
+  /** The feature whose "not downloaded" dialog is open, if any. */
+  featurePrompt: OptionalFeature | null;
+  /** Set to re-enter the first-run flow after it is done — from that dialog,
+   *  or from the developer menu. `focus` is switched on when it opens. */
+  setupRequest: { focus: OptionalFeature | null } | null;
+
   // Playback (the actual <audio> element lives in usePlayback; this is
   // just the bit of state every segment card needs to read to highlight
   // itself or swap its play/pause icon).
@@ -199,6 +214,13 @@ interface Actions {
   toggleSidebar: (open?: boolean) => void;
   toggleChat: (open?: boolean) => void;
   toggleMinutes: (open?: boolean) => void;
+  setFeatureState: (features: Features) => void;
+  /** Ask for a feature. Returns false and raises the dialog when it is off,
+   *  so a caller reads `if (!requireFeature("chat")) return;`. */
+  requireFeature: (feature: OptionalFeature) => boolean;
+  dismissFeaturePrompt: () => void;
+  openSetup: (focus?: OptionalFeature | null) => void;
+  closeSetup: () => void;
 
   // Speaker post-processing (offline). Patches local segment state to
   // mirror the backend after a diarize / rename round-trip — avoids a
@@ -319,6 +341,9 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
   sidebarOpen: loadSidebarOpen(),
   chatOpen: false,
   minutesOpen: false,
+  features: { ...ALL_FEATURES_ON },
+  featurePrompt: null,
+  setupRequest: null,
   playingSegmentId: null,
   isPlaying: false,
   playbackCurrentTime: 0,
@@ -612,6 +637,20 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
       const next = open ?? !s.chatOpen;
       return { chatOpen: next, minutesOpen: next ? false : s.minutesOpen };
     }),
+  setFeatureState: (features) => set({ features }),
+
+  requireFeature: (feature) => {
+    if (get().features[feature]) return true;
+    set({ featurePrompt: feature });
+    return false;
+  },
+
+  dismissFeaturePrompt: () => set({ featurePrompt: null }),
+
+  openSetup: (focus = null) => set({ setupRequest: { focus }, featurePrompt: null }),
+
+  closeSetup: () => set({ setupRequest: null }),
+
   toggleMinutes: (open) =>
     set((s) => {
       const next = open ?? !s.minutesOpen;
