@@ -143,6 +143,15 @@ backend. Only the third was ever in the right place.
   where translation is a side effect rather than the ask (a re-diarize, a
   post-recording pass of a session recorded before the switch) — quietly run
   without it.
+* **A row is a sentence, not a caption.** The whole-file pass used to set
+  whisper.cpp's `max_len=80`, which is a subtitle setting: it chops at 80
+  characters wherever they land, so the tail becomes its own row. And
+  `merge_whisper_segments` only ever split — nothing joined the utterances
+  back up, and in a meeting most utterances are "Yeah." A real 28-minute
+  recording came out as 830 rows with a median of 16 characters; the same
+  audio now gives 291 rows with a median of 66. An `initial_prompt` that
+  models punctuated style was tried and rejected: it works, and it costs
+  accuracy on the same audio.
 * **A model row is tags, not prose.** The tier and the `requires` memory floor,
   the second turning red and becoming the blocker when the machine is short.
   The catalogue's `note_code` sentence is the row's tooltip. A paragraph per
@@ -246,6 +255,34 @@ the system output, and (for video) a window or display.
   diagnostics on stderr, exit on stdin EOF — so the two `SystemAudioSource`
   implementations are the same shape, and a missing helper degrades to what
   the app did before it existed.
+
+## Settings (`clients/web/src/components/settingsCategories.ts`)
+
+Grouped by what someone is looking for, not by subsystem. General is the app
+— language, appearance, playback, where saved transcripts go. Recording is
+what happens to what you say, during and after. Glossary, Models and About
+are themselves. Advanced holds the rest behind a disclosure: Tuning (the
+line-splitting thresholds), Compute, Engines, and Developer mode.
+
+Two rules that keep it from drifting back:
+
+* **A category is a place to look, not a subsystem.** "Segmentation" and
+  "Real-time" were separate categories of two settings each, both of them
+  thresholds on the same live pipeline. They are one panel.
+* **Experimental marks a setting, not a section.** An "Experimental" category
+  becomes a graveyard nobody empties; a chip stays attached to the thing it
+  is true of and disappears when it stops being true.
+
+No warning dialog in front of Advanced. That is the about:config pattern and
+people learn to click it away; each panel carries one line on what it is for
+and a reset for its own settings, which is the undo a dialog cannot offer.
+
+`GET /v1/about` answers Settings → About: Wrenote's own licence, and what it
+is built on. The Python dependencies are read from the installed
+distributions at request time, so that list cannot go stale; the rest is
+`wrenote/credits.yaml` and the model catalogue. An entry that does not assert
+a licence gives only its upstream link — a licence half-remembered is worse
+than a link, and the UI says "see upstream" rather than guessing.
 
 ## Localization (`clients/web/src/i18n/`)
 

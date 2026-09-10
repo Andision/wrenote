@@ -28,6 +28,11 @@ codes and facts, never sentences to display.
       messages, HTTP `detail` payloads — same code+params treatment.
       `feature_off` and `session.refuse.*` are the pattern to follow.
 - [ ] Date/duration formatting through the active locale everywhere
+- [x] Settings copy rewritten and regrouped: categories are places to look
+      (General / Recording / Glossary / Models / About, with Advanced over
+      Tuning / Compute / Engines / Developer), not one per subsystem, and
+      "experimental" marks the one setting it is true of rather than a
+      section that would become a graveyard.
 
 ### b. Models: configuration, not a hard-coded set
 
@@ -268,6 +273,20 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       and the streaming model not at all.
 - [ ] Apple SpeechAnalyzer (macOS 26+) as a third live backend on the Mac
       shell — system-provided, streaming, Chinese-capable, free.
+
+- [x] **About, with the licences.** `GET /v1/about`: Wrenote's own AGPL, the
+      models, the native libraries, the front end, and the engine's Python
+      dependencies — those read from the installed distributions at request
+      time so the list cannot go stale. `wrenote/credits.yaml` and the model
+      catalogue carry the rest, and an entry that does not assert a licence
+      gives only its upstream link.
+- [ ] **Verify the licences that are asserted, once, before a public
+      release.** `models.yaml` claims MIT for the Whisper weights and
+      Apache-2.0 for Qwen3 and the ECAPA model; those are the base models'
+      terms and the catalogue points at the *quantised* re-uploads, whose
+      repos should be read to confirm they redistribute under the same. The
+      three that assert nothing (both sherpa-onnx models, Hunyuan MT2) are
+      already link-only and stay that way until someone reads them.
 
 ### Data safety
 

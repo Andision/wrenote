@@ -46,6 +46,26 @@ It does *not* bundle a Codex CLI backend; Codex runs through the
 `codex app-server` harness instead — which matches what §3 found, that
 `codex exec --json` gives no incremental output.
 
+**Hermes Agent** (Nous Research) is the third data point and it agrees. Its
+Claude Code skill prefers **print mode** — `claude -p '<task>' --allowedTools
+'Read,Edit' --max-turns 10`, with `--output-format json` or `stream-json` —
+and falls back to driving the **TUI inside tmux** (`tmux send-keys`,
+`capture-pane`) when it wants a real conversation, because Claude Code
+interactive is a full terminal application. Sessions resume with `--resume
+<id>`, and only from the same directory.
+
+Two things to take from it. First, everybody spawns the same command; the
+only real variation is whether the process is kept warm. Second, tmux-driving
+a TUI settles the question for us: an app embedding this cannot go that way,
+so print mode is the only shape available, and print mode is the one whose
+cold-start cost §3 measured.
+
+Hermes also *"reads directly from the Claude Code credential store"*. That is
+the technique the §0 policy change is about, and it is the one thing here
+Wrenote should specifically not copy: lifting a token out of another
+program's credential store to bill a subscription that no longer covers this
+use is not a licensing grey area, it is the thing that was withdrawn.
+
 Tools in that family (e.g. `claw-orchestrator`) then expose
 **`POST /v1/chat/completions`**, OpenAI-compatible and streaming, in front of
 whichever CLI. Which is the shape Wrenote should target: one adapter it wants
@@ -201,5 +221,7 @@ it is on.
   <https://dev.to/mcrolly/anthropic-kills-claude-subscription-access-for-third-party-tools-like-openclaw-what-it-means-for-3ipc>
 * OpenClaw, CLI backends (the command line, the warm subprocess, the session
   args) — <https://docs.openclaw.ai/gateway/cli-backends>
+* Hermes Agent's Claude Code skill (print mode, tmux, `--resume`) —
+  <https://github.com/NousResearch/hermes-agent/blob/main/skills/autonomous-ai-agents/claude-code/SKILL.md>
 * `claw-orchestrator`, an OpenAI-compatible endpoint over five agent CLIs —
   <https://github.com/Enderfga/claw-orchestrator>
