@@ -394,6 +394,40 @@ Measurements for everything in this section: `docs/plans/TRANSCRIPTION_QUALITY.m
 
 ### Product
 
+- [ ] **A global hotkey that starts recording.** The moment you want to
+      record is the moment the meeting starts, and at that moment Wrenote
+      is not the focused window — Zoom is. Pressing a key without leaving
+      the call is the whole feature.
+      What it needs, in order:
+      * `tauri-plugin-global-shortcut` in `Cargo.toml` and its permission
+        in `capabilities/default.json`. On macOS this registers a Carbon
+        hotkey and needs no Accessibility grant; media keys would.
+      * **An event in the other direction.** Today `window.wrenoteDesktop`
+        is client→shell only (toggle the overlay, open a URL). A hotkey is
+        shell→client, which the bridge has no channel for.
+        `withGlobalTauri` is already on, so Tauri's own event API is the
+        cheap answer; Electron's preload would need an `ipcRenderer.on`.
+      * **It must be configurable**, and a combination another app already
+        owns must fail loudly. Registration returns an error; swallowing it
+        gives the user a key that silently does nothing.
+      * Starting with no pre-flight means starting with the remembered
+        settings, which is already how PreFlight works — it edits the
+        persisted settings directly — so there is nothing to invent there.
+      Two questions to settle before building:
+      * **Does it also show the overlay?** The floating subtitle window
+        already exists and is the natural companion: press the key, the
+        recording starts and a small window appears over the call, without
+        Wrenote taking focus. That may be the actual feature, with "start
+        recording" as its side effect.
+      * **What happens when Wrenote is not running?** A hotkey needs a
+        process. Making it work from cold means a menu-bar / tray presence
+        and a login item, which is a larger decision about what kind of app
+        this is — and probably the thing that makes the hotkey worth
+        having at all.
+      Scheduling note: this, the in-place updater (section **d**) and the
+      native save dialog all need the same kind of change — a Tauri plugin,
+      a capability, and a build to verify. Nothing in the current
+      environment compiles Rust, so they are one trip, not three.
 - [ ] **Speaker identity across sessions.** ECAPA embeddings are computed and
       discarded — no table stores them — so every meeting starts at
       "Speaker 1/2/3" and the user renames the same colleagues again. Voice
