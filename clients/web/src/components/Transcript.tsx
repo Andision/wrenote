@@ -127,32 +127,38 @@ export function Transcript() {
       {/* Post-recording pass in progress / failed — the rows below stay
           readable; the strip says what is about to happen to them. */}
       <ProcessingBanner onRetry={() => void runRefine({ confirm: false })} />
-      <TimelineMinimap scrollRef={ref} segments={ordered} />
-      <div ref={ref} className="flex-1 overflow-y-auto">
-        {/* Extra right padding keeps card borders clear of the timeline rail
-            (~36px of visuals on the right edge) when the column is narrow,
-            e.g. with both the sidebar and chat panel open. */}
-        <div className="mx-auto w-full max-w-3xl py-8 pl-6 pr-12">
-          {ordered.length === 0 ? (
-            <ListeningState />
-          ) : (
-            <div className="space-y-2.5">
-              <AnimatePresence initial={false}>
-                {turns.map((t) => (
-                  <SegmentCard
-                    key={t.segment.segmentId}
-                    seg={t.segment}
-                    relatedIds={t.relatedIds}
-                    srcLang={srcLang}
-                    tgtLang={tgtLang}
-                    color={colorFor(t.segment.speaker ?? null)}
-                    diarized={diarized}
-                  />
-                ))}
-              </AnimatePresence>
-              <div className="h-8" />
-            </div>
-          )}
+      {/* The rail is positioned against the scroll viewport, not the column:
+          it maps scroll offsets onto its own height, so a banner above it
+          would both overlap the banner's right end and shift every tick by
+          the banner's height. */}
+      <div className="relative min-h-0 flex-1">
+        <TimelineMinimap scrollRef={ref} segments={ordered} />
+        <div ref={ref} className="h-full overflow-y-auto">
+          {/* Extra right padding keeps card borders clear of the timeline rail
+              (~36px of visuals on the right edge) when the column is narrow,
+              e.g. with both the sidebar and chat panel open. */}
+          <div className="mx-auto w-full max-w-3xl py-8 pl-6 pr-12">
+            {ordered.length === 0 ? (
+              <ListeningState />
+            ) : (
+              <div className="space-y-2.5">
+                <AnimatePresence initial={false}>
+                  {turns.map((t) => (
+                    <SegmentCard
+                      key={t.segment.segmentId}
+                      seg={t.segment}
+                      relatedIds={t.relatedIds}
+                      srcLang={srcLang}
+                      tgtLang={tgtLang}
+                      color={colorFor(t.segment.speaker ?? null)}
+                      diarized={diarized}
+                    />
+                  ))}
+                </AnimatePresence>
+                <div className="h-8" />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </motion.div>

@@ -1,10 +1,10 @@
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Clock, Loader2, RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { useActiveSessionMeta, useRefineProgress } from "@/hooks/useSessionStatus";
 import { useT } from "@/i18n";
-import type { SessionStatus } from "@/types";
+import { isPassInFlight, type SessionStatus } from "@/types";
 
 /**
  * The small marker next to a session in the sidebar. Only the states that
@@ -14,6 +14,17 @@ import type { SessionStatus } from "@/types";
  */
 export function StatusBadge({ status }: { status: SessionStatus }) {
   const t = useT();
+  if (status === "pending") {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+        data-tip={t("session.status.pendingHint")}
+      >
+        <Clock className="size-3" />
+        {t("session.status.pending")}
+      </span>
+    );
+  }
   if (status === "processing") {
     return (
       <span
@@ -49,7 +60,25 @@ export function ProcessingBanner({ onRetry }: { onRetry: () => void }) {
   const t = useT();
   const meta = useActiveSessionMeta();
   const progress = useRefineProgress(meta?.id ?? null);
-  if (!meta || (meta.status !== "processing" && meta.status !== "failed")) return null;
+  if (!meta || (!isPassInFlight(meta.status) && meta.status !== "failed")) return null;
+
+  // Queued: no bar, because there is no progress to report yet, and saying
+  // 0% for however long the recording ahead takes is what made this look
+  // stuck in the first place.
+  if (meta.status === "pending") {
+    return (
+      <div
+        role="status"
+        className="flex items-center gap-3 border-b border-border bg-muted/40 px-6 py-2 text-[12.5px] text-foreground"
+      >
+        <Clock className="size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
+          <span className="font-medium">{t("session.pending.title")}</span>
+          <span className="text-muted-foreground"> · {t("session.pending.body")}</span>
+        </div>
+      </div>
+    );
+  }
 
   if (meta.status === "processing") {
     const pct = progress == null ? null : Math.round(progress * 100);
