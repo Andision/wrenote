@@ -317,6 +317,12 @@
     "sizeMb": "{mb} MB",
     "loading": "Loading models…",
     "featureOff": "switched off",
+    "tier": {
+      "small": "Rough",
+      "medium": "Balanced",
+      "large": "Most accurate"
+    },
+    "ramTag": "{gb} GB RAM",
     "missing_one": "1 file to download · {mb} MB",
     "missing_other": "{count} files to download · {mb} MB",
     "downloadMissing": "Download",

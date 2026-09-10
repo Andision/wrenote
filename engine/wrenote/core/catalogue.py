@@ -302,6 +302,7 @@ class ModelCatalogue:
                 name=spec.name,
                 note_code=spec.note_code,
                 size_mb=max(1, spec.size >> 20),
+                ram_mb=int(spec.requires.get("ram_mb") or 0),
                 installed=installed,
                 fits=ok,
                 recommended=pick is not None and spec.id == pick.id,
@@ -393,6 +394,10 @@ class ModelOption:
     name: str
     note_code: str  # what this model is for, from the catalogue
     size_mb: int
+    #: The memory floor from `requires.ram_mb`; 0 when the entry states none.
+    #: A fact, not a verdict — the client shows it next to the tier as the
+    #: other half of "how good is this, and what does it cost me".
+    ram_mb: int
     installed: bool
     fits: bool  # the machine meets `requires`
     recommended: bool

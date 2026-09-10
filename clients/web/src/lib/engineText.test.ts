@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { LOCALES, translate, type TFunction } from "@/i18n";
 import { hardwareText, optionText } from "@/lib/computeText";
-import { kindReason, modelNote } from "@/lib/modelText";
+import { kindReason, modelNote, modelTags } from "@/lib/modelText";
 import type { AcceleratorNote, RuntimeOption } from "@/lib/compute";
 import type { KindOptions, ModelOption } from "@/lib/models";
 
@@ -116,6 +116,7 @@ const model = (over: Partial<ModelOption> = {}): ModelOption => ({
   name: "Whisper small (Q5)",
   note_code: "stt_balanced",
   size_mb: 181,
+  ram_mb: 4096,
   download_mb: 181,
   installed: false,
   fits: true,
@@ -124,6 +125,33 @@ const model = (over: Partial<ModelOption> = {}): ModelOption => ({
   blocked_code: "",
   blocked_params: {},
   ...over,
+});
+
+describe("modelTags", () => {
+  it("tags the tier and the memory floor", () => {
+    expect(modelTags(t, model({ tier: "large", ram_mb: 6144 }))).toEqual([
+      { key: "tier", label: "Most accurate", tone: "neutral" },
+      { key: "ram", label: "6 GB RAM", tone: "neutral" },
+    ]);
+  });
+
+  it("marks the memory tag as the reason a model can't be chosen", () => {
+    const [, ram] = modelTags(t, model({ ram_mb: 16384, fits: false }));
+    expect(ram).toEqual({ key: "ram", label: "16 GB RAM", tone: "blocked" });
+  });
+
+  it("keeps a half-GB floor readable and omits one it was never given", () => {
+    expect(modelTags(t, model({ ram_mb: 3072 }))[1].label).toBe("3 GB RAM");
+    expect(modelTags(t, model({ ram_mb: 1536 }))[1].label).toBe("1.5 GB RAM");
+    expect(modelTags(t, model({ ram_mb: 0 })).map((x) => x.key)).toEqual(["tier"]);
+  });
+
+  it("reads in the active language", () => {
+    expect(modelTags(tZh, model({ ram_mb: 4096 })).map((x) => x.label)).toEqual([
+      "均衡",
+      "4 GB 内存",
+    ]);
+  });
 });
 
 describe("kindReason", () => {

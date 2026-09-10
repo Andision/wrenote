@@ -7,7 +7,7 @@ import { Check, Cpu, Download } from "lucide-react";
 
 import { useT } from "@/i18n";
 import { type KindOptions, type ModelOption } from "@/lib/models";
-import { modelNote } from "@/lib/modelText";
+import { modelNote, modelTags } from "@/lib/modelText";
 
 export function ModelPicker({
   kind,
@@ -46,6 +46,7 @@ function ModelRow({
       type="button"
       onClick={onPick}
       disabled={busy || blocked}
+      data-tip={modelNote(t, option) || undefined}
       className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${
         option.selected
           ? "border-brand-500 bg-brand-500/10"
@@ -72,8 +73,21 @@ function ModelRow({
             : t("models.sizeMb", { mb: option.size_mb })}
         </span>
       </div>
-      <div className="pl-5.5 text-[11px] text-muted-foreground/80">
-        {modelNote(t, option)}
+      {/* Tier and memory as tags; the sentence the catalogue carries is the
+          tooltip, so a reader who wants it can hover for it. */}
+      <div className="flex flex-wrap gap-1 pl-5.5 pt-1">
+        {modelTags(t, option).map((tag) => (
+          <span
+            key={tag.key}
+            className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+              tag.tone === "blocked"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {tag.label}
+          </span>
+        ))}
       </div>
     </button>
   );

@@ -40,6 +40,7 @@ const DYNAMIC_PREFIXES = [
   // Client-owned closed sets: exempt here so they don't read as unused, and
   // pinned key-by-key in src/i18n/runtimeKeys.test.ts so a missing one fails.
   "setup.feature.",
+  "models.tier.",
 ];
 
 // Test files are skipped: their `t("plain")` fixtures are made-up keys, not

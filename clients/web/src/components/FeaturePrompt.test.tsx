@@ -44,7 +44,7 @@ describe("FeaturePrompt", () => {
           options: [
             {
               id: "qwen3-4b-instruct-q4", kind: "chat", tier: "medium",
-              name: "Qwen3 4B", note_code: "chat_default", size_mb: 2497,
+              name: "Qwen3 4B", note_code: "chat_default", size_mb: 2497, ram_mb: 8192,
               download_mb: 2497, installed: false, fits: true,
               recommended: true, selected: true,
               blocked_code: "", blocked_params: {},

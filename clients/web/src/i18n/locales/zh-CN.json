@@ -317,6 +317,12 @@
     "sizeMb": "{mb} MB",
     "loading": "正在加载模型列表…",
     "featureOff": "已关闭",
+    "tier": {
+      "small": "较粗略",
+      "medium": "均衡",
+      "large": "最准确"
+    },
+    "ramTag": "{gb} GB 内存",
     "missing_other": "需下载 {count} 个文件 · {mb} MB",
     "downloadMissing": "下载",
     "nextSession": "新模型将在下一个会话生效。",

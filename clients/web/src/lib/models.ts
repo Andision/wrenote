@@ -50,6 +50,7 @@ export interface ModelOption {
   name: string;
   note_code: string; // what this model is for
   size_mb: number;
+  ram_mb: number; // the memory floor; 0 when the catalogue states none
   download_mb: number | null; // null = already on disk
   installed: boolean;
   fits: boolean; // the machine meets its requirements

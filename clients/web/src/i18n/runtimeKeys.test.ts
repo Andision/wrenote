@@ -25,6 +25,8 @@ const RUNTIME_KEYS: string[] = [
   ...["stt", "stt_offline", "translator", "chat", "speaker"].map(
     (k) => `models.kind.${k}`,
   ),
+  // lib/modelText.ts — the tier tag on every model row
+  ...["small", "medium", "large"].map((x) => `models.tier.${x}`),
   // lib/models.ts — the features the setup step and its prompt name
   "setup.feature.always",
   "setup.feature.transcribe",

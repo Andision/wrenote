@@ -66,11 +66,11 @@ const kindOptions = (over: Partial<KindOptions> = {}): KindOptions => ({
   reason_params: { ram: "16 GB" },
   options: [
     { id: "small", kind: "stt", tier: "small", name: "Whisper base", note_code: "stt_fast_rough",
-      size_mb: 57, download_mb: 57, installed: false, fits: true, recommended: false,
-      selected: false, blocked_code: "", blocked_params: {} },
+      size_mb: 57, ram_mb: 2048, download_mb: 57, installed: false, fits: true,
+      recommended: false, selected: false, blocked_code: "", blocked_params: {} },
     { id: "large", kind: "stt", tier: "large", name: "Whisper large", note_code: "stt_best",
-      size_mb: 548, download_mb: 548, installed: false, fits: true, recommended: true,
-      selected: true, blocked_code: "", blocked_params: {} },
+      size_mb: 548, ram_mb: 6144, download_mb: 548, installed: false, fits: true,
+      recommended: true, selected: true, blocked_code: "", blocked_params: {} },
   ],
   ...over,
 });

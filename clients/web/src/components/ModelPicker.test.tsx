@@ -18,6 +18,7 @@ const option = (over: Partial<ModelOption> = {}): ModelOption => ({
   name: "Whisper small",
   note_code: "stt_balanced",
   size_mb: 181,
+  ram_mb: 4096,
   download_mb: 181,
   installed: false,
   fits: true,
@@ -52,12 +53,20 @@ describe("ModelPicker", () => {
 
   it("shows a model the machine can't run, but refuses to select it", () => {
     const onPick = show([
-      option({ id: "large", name: "Whisper large", fits: false,
+      option({ id: "large", name: "Whisper large", ram_mb: 16384, fits: false,
                blocked_code: "needs_ram", blocked_params: { need: "16 GB" } }),
     ]);
-    expect(screen.getByText("Needs about 16 GB of memory")).toBeTruthy();
+    // The memory tag is the reason, so it reads as the problem it is.
+    const tag = screen.getByText("16 GB RAM");
+    expect(tag.className).toContain("text-destructive");
     fireEvent.click(screen.getByText("Whisper large"));
     expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("tags where a model sits and what it needs", () => {
+    show([option({ tier: "large", ram_mb: 6144 })]);
+    expect(screen.getByText("Most accurate")).toBeTruthy();
+    expect(screen.getByText("6 GB RAM")).toBeTruthy();
   });
 
   it("never marks an unusable model as recommended", () => {
@@ -76,11 +85,21 @@ describe("ModelPicker", () => {
     expect(screen.getByText("181 MB")).toBeTruthy();
   });
 
-  it("describes what each model is for", () => {
-    show([option({ note_code: "stt_best" })]);
-    expect(
-      screen.getByText("Most accurate, especially with accents and mixed languages"),
-    ).toBeTruthy();
+  it("keeps the catalogue's sentence as the row's tooltip", () => {
+    // Tags carry the comparison; the prose is there for whoever wants it,
+    // and no longer takes two lines on every row.
+    const { container } = render(
+      <I18nProvider>
+        <ModelPicker
+          kind={{ kind: "stt", reason_code: "", reason_params: {},
+                  options: [option({ note_code: "stt_best" })] }}
+          onPick={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    expect(container.querySelector("button")?.getAttribute("data-tip")).toBe(
+      "Most accurate, especially with accents and mixed languages",
+    );
   });
 
   it("marks the recommendation and the current selection separately", () => {
