@@ -253,7 +253,7 @@ Everything the app writes for the user is one SQLite file plus directories of
 large files, and it is the user's only copy.
 
 * **One root.** `data.dir` (default `~/.wrenote`) is where it all goes;
-  `data.db_path`, `data.recordings_dir`, `models.dir` and
+  `data.db_path`, `data.recordings_dir`, `data.exports_dir`, `models.dir` and
   `compute.runtimes_dir` default to subpaths of it and can each be pointed
   elsewhere — a small system drive is the usual reason, and models and
   recordings are the gigabytes. An empty key means "under the root", an
@@ -264,6 +264,14 @@ large files, and it is the user's only copy.
   from. Nothing carries a module-level default path any more — `Store` and the
   recording writer take theirs as a required argument, so a forgotten one is
   a TypeError rather than a file written next to the user's real library.
+* **A saved export is written by the engine**, into `data.exports_dir`, and
+  the response says where. The client used to save it with a blob download,
+  which in a WebView lands somewhere it can neither choose nor name — so the
+  user got a file and no way to tell whether, or where. The engine is local
+  by construction, so it can place the file, and the directory is one of the
+  keys above. Saving twice keeps both files, and a session title is free
+  text: `safe_filename` is why a slash in one cannot write outside that
+  directory.
 * **Everything per event is bounded.** A live session raises an event
   every ~800 ms for hours. The client caches speaker turns so a partial
   re-renders one memoised card, the timeline rail measures card offsets at
@@ -292,9 +300,18 @@ moment the recording stops, none of that applies — the audio is on disk in
 one file, and Whisper does its best work on exactly that. So a session has a
 lifecycle, persisted as `sessions.status` and shown by the client:
 
-    recording ──stop──► ready ──(refine_after_stop)──► processing ──► ready
-                                                              └──► failed
+    recording ──stop──► ready ──(refine_after_stop)──► pending ──► processing ──► ready
+                                                                            └──► failed
 
+* **One pass at a time, and the queue is visible.** The pass is the heaviest
+  thing the engine does, and it used to go to the default executor
+  (`cpu_count + 4` workers), so three recordings queued after a morning of
+  meetings ran concurrently and all three crawled. `core/batch.whole_file_slot`
+  holds them to `session.max_parallel_passes` (1), across the translator too,
+  and a queued session is `pending` rather than `processing` — a queued job
+  reporting "processing" with a 0% bar is indistinguishable from a stuck one.
+  The client treats the two identically for *what they allow* and differently
+  only in what they say (`isPassInFlight`).
 * **`processing` is a state, not a spinner.** After a recording stops (or
   when the user asks, `POST /v1/sessions/{id}/refine`), the whole recording
   goes through the same pass an upload gets (`core/batch.py`, one
@@ -456,6 +473,26 @@ the secondaries as chips under the language strip.
 * Everything is under `/v1` except `/health` (the shell's readiness probe).
   Breaking changes ship under `/v2` with `/v1` kept for a release.
 
+## Jobs the user can see (`store/jobsStore.ts`, `ProgressOverlay`, `TaskList`)
+
+A backend job (an upload, a re-diarize, a recording's pass) is tracked
+client-side so its progress survives a reload: the id, label and kind go to
+localStorage, and the SSE stream is reopened on mount. The engine also starts
+passes by itself, which the client never asked for, so `syncFromSessions`
+learns about those from the session list — every session in flight names its
+`job_id`.
+
+That is why **dismissing a job hides it rather than forgetting it.** Deleting
+it meant the next session-list refresh — i.e. the next session switch — put
+it straight back, so a dismissed toast kept reappearing. A dismissed job
+stays tracked and marked, and the flag persists with the rest.
+
+Two views: the toasts bottom-right for what is in flight, and a list
+bottom-left in the status bar for everything tracked this session — running,
+dismissed, or finished (the newest 20). Both carry the way to the session a
+job belongs to; a card that names a session you cannot reach from it is half
+a notification.
+
 ## Developer mode (`clients/web/src/lib/devMode.ts`)
 
 Five taps on the version line in Settings → General. The first-run flow, a
@@ -478,8 +515,8 @@ it on is mid-task and about to restart something.
 ## Checks (`.github/workflows/checks.yml`)
 
 Everything that can fail without a Mac, a Windows box or a 40-minute compile
-runs on every push: engine lint + 348 tests + the API-contract drift check, and
-for the client types, lint, locale parity, 109 tests and the build. The
+runs on every push: engine lint + 359 tests + the API-contract drift check, and
+for the client types, lint, locale parity, 125 tests and the build. The
 platform-specific packaging workflows stay slow and separate.
 
 * **The frozen engine is smoke-tested** in `.github/actions/build-engine`: a

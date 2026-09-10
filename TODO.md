@@ -81,7 +81,7 @@ The engine has 149 tests; `clients/web` has 10k lines of TypeScript and no test
 script at all. Business rules are leaking into the client (e.g. when the setup
 wizard may skip the runtime step) with nothing holding them.
 
-- [x] Vitest in `clients/web` — 84 tests: the message lookup, the code→words
+- [x] Vitest in `clients/web` — 125 tests: the message lookup, the code→words
       renderers, `SetupGate`'s skip logic, `ModelPicker` with a mocked API,
       and the components the lint clean-up touched
 - [x] Locale key parity in CI (`npm run check:locales`, run before the SPA build)
@@ -267,9 +267,16 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
       each default under it and can point elsewhere. `~/.wrenote/config.yaml`
       itself stays: it is where `data.dir` is read from. No UI for it yet —
       Settings could show `GET /v1/info`'s `paths` with "open folder" buttons.
+- [x] **A saved export goes somewhere you can name.** It was a blob download,
+      which in a WebView lands where the app can neither choose nor name, and
+      nothing was reported either way — the copy action had a toast, the save
+      had silence. The engine writes it now (`POST
+      /v1/sessions/{id}/export/save`, and the minutes equivalent) into
+      `data.exports_dir` and answers with the absolute path; the toast names
+      the file and offers to open the folder.
 - [ ] **Library export/import.** Only per-session export exists
-      (`GET /v1/sessions/{id}/export`). Local-first software owes the user a
-      way to take everything with them.
+      (`GET /v1/sessions/{id}/export`, `…/export/save`). Local-first software
+      owes the user a way to take everything with them.
 - [ ] **Recording lifecycle.** 16 kHz mono s16le is ~115 MB/hour, kept forever
       in `~/.wrenote/recordings/` with no retention policy, no disk-usage view
       and no bulk cleanup. Heavy users lose tens of GB without knowing to what.
@@ -309,6 +316,20 @@ Numbered as in that review; 1, 2, 3, 4, 8, 9 are the ones we keep.
 
 ### Engineering
 
+- [ ] **Icon-only buttons have no accessible name.** `data-tip` drives the
+      app's own tooltip layer and is not an aria attribute, so a button whose
+      only content is an icon reads as "button" to a screen reader. About
+      forty of them across the components (the export one is done, as is
+      everything the task list added). Mechanical — `aria-label` alongside
+      the `data-tip` — but a sweep, and worth one pass with a lint rule after
+      it (`jsx-a11y` is not in the config today).
+- [ ] **A native Save dialog** for exports, once the Tauri shell is verified
+      on-device. `data.exports_dir` plus a reported path is the answer that
+      works in every shell and in a browser tab, but "choose where, now" is
+      still a dialog: `tauri-plugin-dialog` + `tauri-plugin-fs`, a
+      `wrenoteDesktop.saveFile()` bridge call, and the client preferring it
+      when present. Not attempted yet because nothing here can compile Rust,
+      and shipping an unverified plugin wiring would break the shell build.
 - [ ] **Retire the dead shells.** `engine/wrenote/desktop.py` (pywebview, still
       an extra in `pyproject.toml`) and `shells/electron/` both linger next to
       `shells/tauri/`. Three shells means changes land in the wrong one. Delete
