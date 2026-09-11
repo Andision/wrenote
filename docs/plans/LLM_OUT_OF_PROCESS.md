@@ -188,36 +188,60 @@ whisper and onnxruntime rather than whisper and llama.
         user's machine. Both builds now pass
         `-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON`; llama.cpp logs "running
         without SSL" either way, and we serve loopback.
-      * **`the tensor API is not supported in this environment` is not ours,
-        and costs nothing measurable.** On an M5,
+      * **`the tensor API is not supported in this environment` is ours,
+        and costs nothing.** On an M5,
         `ggml_metal_library_init_from_source` fails and llama.cpp disables
-        its Metal *tensor* path. The first guess was that the runner's
-        AppleClang 15 predated the hardware — **wrong twice over.** Rebuilt
-        on `macos-15` with AppleClang 17, the line is identical; and a
-        like-for-like A/B of the two binaries on the same model and prompt
-        put generation at 86.6 vs 85.3 tok/s median (n=6 each), i.e. no
-        difference. Metal itself is found and used either way. The shader is
-        compiled at *run time* (`EMBED_LIBRARY=1`), so the build's Xcode was
-        never in that path to begin with — it is llama.cpp probing for a
-        capability and moving on.
+        its Metal *tensor* path. Two guesses died here, in order:
 
-        (An earlier measurement here said the new binary was ~40% faster.
-        That was a bad one: the grep pooled prompt-eval with generation.
-        Separating them showed no difference.)
+        1. *The runner's Xcode predates the hardware.* No: rebuilt on
+           `macos-15` with AppleClang 17 (up from 15), the line is
+           identical. And it could not have been — `EMBED_LIBRARY=1` means
+           the shader compiles at **run time**, so the build's Xcode was
+           never in that path.
+        2. *Then it must be llama.cpp probing and moving on, on this
+           machine.* Also no. The `llama-cpp-python` wheel for the **same
+           b9553 commit**, on the same M5, logs `has tensor = true` and
+           compiles the probe pipelines fine. So the capability is there and
+           something about how we build the server gives it up. Unresolved,
+           and deliberately left that way, because —
+        3. …it does not matter for speed. See the measurement below: the
+           build *without* the tensor path is the faster of the two.
+
+        (An earlier note here claimed the rebuilt binary was ~40% faster.
+        Bad measurement: the grep pooled prompt-eval with generation.)
 
       The macOS runner moved to `macos-15` anyway, for a better reason: the
       14 image is in deprecation and unsupported from 2026-11-02. Not
       `macos-26` — a newer SDK can raise the deployment target and drop
       macOS versions users are on, which nothing here has measured.
 
-      Still to measure, and it is the one that decides step 3:
-      **`llama_server` against the `llama-cpp-python` Metal wheel it would
-      replace, same model, same machine.** "The supervised one is slower" is
-      the single outcome that would make step 3 a regression, and the A/B
-      above compared two supervised builds with each other, not the
-      supervised path with the in-process one.
+      **The measurement that decides step 3: supervised is not slower.**
+      `llama_server` against the `llama-cpp-python` Metal wheel it would
+      replace — same weights, same prompt, same machine, end-to-end (so the
+      HTTP hop and the Python binding each carry their own overhead), median
+      of six after a warm-up:
+
+      | workload | in-process | supervised |
+      |---|---|---|
+      | Hy-MT2-1.8B, one short line to translate | 78.9 tok/s | **85.4 tok/s** |
+      | Qwen3-4B, 9 k-char transcript + a question | 30.7 tok/s | **34.9 tok/s** |
+
+      Identical output both ways. So the one outcome that would have made
+      step 3 a regression did not happen: the supervised path is level or a
+      little ahead, *despite* giving up the tensor path the in-process build
+      keeps. Caveats worth keeping: one machine, one accelerator, two
+      workloads, and `llama-server`'s prompt cache may flatter the repeated
+      prompt (the supervised numbers also vary more — 27.4 to 35.5 on the
+      chat workload against 30.2 to 30.8 in process).
 
       Windows and Linux are still unproven.
+
+      Left open, and not worth blocking on: **why our build gives up the
+      Metal tensor path when `llama-cpp-python`'s does not.** It costs
+      nothing measurable here, but that is one machine and two workloads —
+      a longer context or a bigger model is exactly where a tensor path
+      would start to pay, and this is the kind of difference that is cheap
+      to find now and expensive to find later.
 
       Measured while doing exactly that: llama.cpp's server target is ~20
       minutes on a 3-core macOS runner — `server.cpp` is one of its heaviest

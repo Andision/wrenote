@@ -91,13 +91,20 @@ that same question.
       until step 3 removes the Python binding.
 
       Step 3 — deleting `chat/llama_cpp.py` and `translator/llama_cpp.py`
-      — is what's left, and it is now mechanical: **build a pack with a
-      `llama-server` in it** (the workflow step exists behind the
-      `llama_cpp_tag` dispatch input, off by default, and has never run on a
-      real runner — pinning a tag that matches the vendored llama.cpp is the
-      one judgement call), run it against real weights on macOS, Windows and
-      Linux, then make `llama_server` the default. `llama_cpp` stays the
-      default until then. Speech recognition stays embedded throughout.
+      — is what's left, and the thing that could have stopped it has been
+      measured: **the supervised path is not slower.** Against the
+      `llama-cpp-python` Metal wheel it would replace, same weights and
+      prompt on the same machine, it is 85.4 vs 78.9 tok/s translating a
+      line and 34.9 vs 30.7 answering over a 9 k-char transcript. That was
+      the one outcome that would have made this a regression.
+
+      The binary is built and shipped: `b9553` (the llama.cpp vendored by
+      the pinned `llama-cpp-python`, so both backends run the same code),
+      built in CI behind the `llama_cpp_tag` input, cached on the tag, and
+      proved end-to-end on macOS — pulled back out of the DMG and run
+      against the real Qwen3-4B and Hy-MT2. What remains is Windows and
+      Linux, then flipping the defaults, keeping `llama_cpp` for one
+      release, and deleting. Speech recognition stays embedded throughout.
 
       Not leaking a 2.5 GB process is the part that took the care: each
       server records its pid, port and token, and the next engine start
