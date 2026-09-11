@@ -156,7 +156,9 @@ def _make_lifespan(config: Config | None):
         app.state.models = ModelManager(
             chat_backend=None if chat_r.disabled else make_chat(cfg.chat.backend, chat_r.params),
             diarize_speaker=diarize_speaker,
+            chat_idle_unload_s=cfg.chat.idle_unload_s,
         )
+        app.state.models.start()
         # In-memory job registry for async upload + diarize.
         app.state.jobs = JobRegistry()
         try:

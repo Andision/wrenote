@@ -95,6 +95,19 @@ chat:
   # model cost entirely for frontend work.
   backend: llama_server
   model: qwen3-4b-instruct-q4
+  # Release the model after this long with nothing using it — 2.5 GB back for
+  # a feature most sessions ask one question of, or none. 0 never releases.
+  #
+  # 15 minutes is chosen against the two ways it can be wrong. Too short and a
+  # conversation pays for a reload between questions; too long and the memory
+  # sits there all afternoon. A reload is a process start plus a model load —
+  # seconds when the file is still in the OS cache, longer when it isn't — and
+  # it looks to the user like a slow first answer, not like an error.
+  #
+  # Only meaningful because the model is a subprocess: releasing it is killing
+  # a process, so the memory comes back. The translator needs no such timer —
+  # it is built per session and goes when the session does.
+  idle_unload_s: 900
   params:
     # 32K covers ~30-min meetings comfortably. Model was trained at 262K
     # native, so raising this further is safe — KV cache grows linearly

@@ -133,8 +133,10 @@ async def post_conversation_chat(
 
     history_rows = await store.list_chat_messages(cid)
 
-    # Lazy-load the model on first chat in this server's lifetime.
-    backend = await models.ensure_chat_loaded()
+    # Not the backend that answers — the stream re-asks inside its lease. This
+    # is here so a switched-off feature is a 503 the client can act on, rather
+    # than an [ERROR] line inside a 200 that has already started streaming.
+    await models.ensure_chat_loaded()
 
     segments = session.get("segments", [])
     system_msg = ChatMessage(
@@ -162,10 +164,17 @@ async def post_conversation_chat(
     async def stream() -> Any:
         accumulated: list[str] = []
         try:
-            chunks = await backend.chat(messages)
-            async for piece in chunks:
-                accumulated.append(piece)
-                yield piece
+            # The lease covers the whole answer, not the load: without it the
+            # idle reaper could collect the model between two tokens. Asking
+            # again inside it is deliberate — the handler's load may have been
+            # collected in the gap before the first byte, and a reload is a
+            # slower answer rather than a failed one.
+            async with models.chat_lease():
+                backend = await models.ensure_chat_loaded()
+                chunks = await backend.chat(messages)
+                async for piece in chunks:
+                    accumulated.append(piece)
+                    yield piece
         except Exception as e:
             log.exception("chat stream errored")
             err = f"\n\n[ERROR] {type(e).__name__}: {e}"
@@ -233,7 +242,6 @@ async def suggest_title(
     if not transcript.strip():
         return {"title": current}
 
-    backend = await models.ensure_chat_loaded()
     messages = [
         ChatMessage(role="system", content=_TITLE_SYSTEM),
         ChatMessage(
@@ -243,9 +251,11 @@ async def suggest_title(
     ]
     try:
         parts: list[str] = []
-        chunks = await backend.chat(messages)
-        async for piece in chunks:
-            parts.append(piece)
+        async with models.chat_lease():
+            backend = await models.ensure_chat_loaded()
+            chunks = await backend.chat(messages)
+            async for piece in chunks:
+                parts.append(piece)
         raw = "".join(parts).strip().strip('"').strip("'")
         title = raw.splitlines()[0].strip()[:80] if raw else ""
     except Exception:

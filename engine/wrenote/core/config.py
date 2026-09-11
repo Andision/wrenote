@@ -94,6 +94,17 @@ class BackendConfig(BaseModel):
     backend: str
     model: str | None = None
     enabled: bool = True
+    #: Release the model after this many seconds with nothing using it; 0
+    #: never releases. Only the slots something holds across requests can use
+    #: this — in practice chat, which :class:`~wrenote.model_manager.ModelManager`
+    #: keeps for the life of the process. Per-session backends (the translator)
+    #: already go when their session does.
+    #:
+    #: Worth having only because the model runs out of process: unloading an
+    #: in-process one handed the weights back to a binding that might or might
+    #: not return the memory, so a timer would have promised something it could
+    #: not deliver. Killing a subprocess is not an opinion.
+    idle_unload_s: float = 0.0
     params: dict[str, Any] = Field(default_factory=dict)
     endpoint: EndpointConfig = Field(default_factory=EndpointConfig)
 

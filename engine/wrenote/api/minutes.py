@@ -87,14 +87,18 @@ async def write_minutes(
 
     async def runner() -> None:
         try:
-            result = await minutes_mod.run_job(
-                job_id=job.id,
-                registry=registry,
-                session=session,
-                lang=lang,
-                backend_loader=models.ensure_chat_loaded,
-                store=store,
-            )
+            # Held for the whole job: it can run for minutes over a long
+            # transcript, and the idle reaper must not collect the model out
+            # from under it.
+            async with models.chat_lease():
+                result = await minutes_mod.run_job(
+                    job_id=job.id,
+                    registry=registry,
+                    session=session,
+                    lang=lang,
+                    backend_loader=models.ensure_chat_loaded,
+                    store=store,
+                )
             registry.complete(job.id, result=result)
         except Exception as e:
             log.exception("minutes job %s failed", job.id)
