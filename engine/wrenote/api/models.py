@@ -19,7 +19,6 @@ from ..core.catalogue import (
     SLOT_KIND,
     SLOTS,
     ModelCatalogue,
-    backend_can_run,
     resolve,
     resolve_all,
 )
@@ -128,13 +127,9 @@ async def models_select(
     # A model names its backend; choosing a model on another backend (a
     # streaming recogniser instead of Whisper for the live slot) switches
     # the backend with it. Each backend ignores the other's tuning keys.
-    #
-    # Unless the one already configured can run it: `llama_server` executes the
-    # same GGUF as `llama_cpp`, and choosing a different *model* is not a
-    # request to stop running models in a subprocess.
     update: dict[str, Any] = {"model": body.model}
     backend = section.backend
-    if not backend_can_run(backend, spec.backend):
+    if spec.backend != backend:
         backend = spec.backend
         update["backend"] = backend
     path = await asyncio.to_thread(write_user_config, {kind: update})

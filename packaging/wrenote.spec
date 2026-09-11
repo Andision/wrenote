@@ -52,7 +52,6 @@ def _bundled_ffmpeg() -> str | None:
 
 binaries = []
 binaries += collect_dynamic_libs("pywhispercpp")
-binaries += collect_dynamic_libs("llama_cpp")
 binaries += collect_dynamic_libs("onnxruntime")
 # The streaming recogniser (stt/sherpa_onnx.py): its own ONNX Runtime build
 # and the C++ binding live inside the package as shared libraries.
@@ -96,7 +95,6 @@ datas = [
     (os.path.join(ENGINE, "wrenote", "vad", "assets", "silero_vad.onnx"), "wrenote/vad/assets"),
 ]
 datas += collect_data_files("pywhispercpp")
-datas += collect_data_files("llama_cpp")
 datas += collect_data_files("sherpa_onnx")
 datas += collect_data_files("webview")  # WebView2 loader (Windows) / mac webview assets
 

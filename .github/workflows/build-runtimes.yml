@@ -9,10 +9,14 @@ name: build runtimes
 # ships the CPU build built in, so the packs that matter are the accelerated
 # Windows ones. Python must match the frozen engine (3.11).
 #
-# NOTE: the CUDA and Vulkan jobs compile llama.cpp / whisper.cpp from source
+# A pack carries whisper.cpp's binding and a `llama-server` binary, both built
+# for one accelerator — speech recognition is in-process, language models are
+# a supervised subprocess (docs/plans/LLM_OUT_OF_PROCESS.md).
+#
+# NOTE: the CUDA and Vulkan jobs compile whisper.cpp and llama.cpp from source
 # on the runner (no upstream accelerated wheels exist for pywhispercpp, and
-# none at all for Vulkan). Expect 30-60 min each. Run manually via
-# workflow_dispatch; not wired to push.
+# none at all for Vulkan). Expect 30-60 min each, less when the llama-server
+# cache hits. Run manually via workflow_dispatch; not wired to push.
 on:
   # Dispatch only: these jobs take half an hour each and nothing about a
   # normal commit changes their output. (There used to be a push trigger
@@ -30,15 +34,16 @@ on:
         default: false
       llama_cpp_tag:
         description: >-
-          llama.cpp tag to build llama-server from (e.g. b4589). Empty = don't
-          ship one, which is the pre-existing behaviour. Pick a tag whose
-          llama.cpp matches the one vendored by LLAMA_CPP_PYTHON below, or the
-          supervised backend and the in-process one are different llama.cpps.
+          Override the llama.cpp tag llama-server is built from. Empty uses
+          LLAMA_CPP_TAG below, which is what ships.
         required: false
         default: ""
 
 env:
-  LLAMA_CPP_PYTHON: "0.3.28"
+  # The llama.cpp the supervised backend runs. Keep it equal to the pin in
+  # .github/actions/build-engine, or an accelerated install and a built-in one
+  # are running different llama.cpps.
+  LLAMA_CPP_TAG: "b9553"
   PYWHISPERCPP: "1.4.1"
   PYTHON_VERSION: "3.11"
 
@@ -53,7 +58,6 @@ jobs:
         include:
           - variant: cpu
             runner: windows-latest
-            llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
           - variant: vulkan
             runner: windows-latest
             cmake_args: -DGGML_VULKAN=on
@@ -67,7 +71,6 @@ jobs:
             # CUDA 12.4's Visual Studio integration (the "CUDA toolset" MSBuild
             # needs) only installs into VS 2022; windows-latest ships VS 2026.
             runner: windows-2022
-            llama_index: https://abetlen.github.io/llama-cpp-python/whl/cu124
             cmake_args: -DGGML_CUDA=on
             no_binary: source  # build pywhispercpp from the sdist (see Build pack)
             # Ninja compiles the CUDA kernels in parallel (MSBuild serialises
@@ -134,15 +137,12 @@ jobs:
       # which RuntimeManager.activate already puts on the PATH.
       #
       # Statically linked (BUILD_SHARED_LIBS=OFF) so it carries its own ggml
-      # rather than depending on load order against llama-cpp-python's copy —
-      # which is a duplicate today and stops being one at step 3 of
-      # docs/plans/LLM_OUT_OF_PROCESS.md, when the Python binding leaves.
+      # so it carries its own ggml and depends on nothing else in the pack.
       #
       # NOT YET RUN ON A REAL RUNNER. Everything below it has been; this step
       # is written from the same flags the pack build uses and has not been
       # through CI. Treat the first dispatch with a tag as the test.
       - name: Restore llama-server
-        if: inputs.llama_cpp_tag != ''
         id: llama_server_cache
         uses: actions/cache@v4
         with:
@@ -152,11 +152,11 @@ jobs:
           # cmake flags below decide what the binary links against, and a key
           # without them serves a stale binary past the next fix to them.
           key: >-
-            llama-server-${{ inputs.llama_cpp_tag }}-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}-${{
+            llama-server-${{ inputs.llama_cpp_tag || env.LLAMA_CPP_TAG }}-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}-${{
               hashFiles('.github/workflows/build-runtimes.yml') }}
 
       - name: Build llama-server
-        if: inputs.llama_cpp_tag != '' && steps.llama_server_cache.outputs.cache-hit != 'true'
+        if: steps.llama_server_cache.outputs.cache-hit != 'true'
         shell: bash
         env:
           CMAKE_ARGS: ${{ matrix.cmake_args }}
@@ -166,7 +166,7 @@ jobs:
           set -euo pipefail
           mkdir -p /d/t
           export TMP='D:\t' TEMP='D:\t' TMPDIR='D:\t'
-          git clone --depth 1 --branch "${{ inputs.llama_cpp_tag }}" \
+          git clone --depth 1 --branch "${{ inputs.llama_cpp_tag || env.LLAMA_CPP_TAG }}" \
             https://github.com/ggml-org/llama.cpp /d/t/llama.cpp
           if [ -n "${{ matrix.cmake_generator }}" ]; then
             export CMAKE_GENERATOR="${{ matrix.cmake_generator }}"
@@ -203,8 +203,6 @@ jobs:
       - name: Build pack
         shell: bash
         env:
-          # llama-cpp-python: prebuilt wheel from the extra index when one
-          # exists (cpu, cuda); Vulkan is built from source with CMAKE_ARGS.
           # pywhispercpp: always from source; it reads GGML_* env flags.
           CMAKE_ARGS: ${{ matrix.cmake_args }}
           GGML_VULKAN: ${{ matrix.variant == 'vulkan' && '1' || '' }}
@@ -233,9 +231,6 @@ jobs:
           fi
           python -m pip install --upgrade pip
           extra=()
-          if [ -n "${{ matrix.llama_index }}" ]; then
-            extra+=(--extra-index-url "${{ matrix.llama_index }}")
-          fi
           bins=()
           for f in packaging/llama-server/*; do
             [ -e "$f" ] && bins+=(--bin "$f")
@@ -264,7 +259,6 @@ jobs:
           python packaging/runtimes/build_pack.py \
             --variant "${{ matrix.variant }}" \
             --version "${{ steps.ver.outputs.version }}" \
-            --spec "llama-cpp-python==${LLAMA_CPP_PYTHON}" \
             --spec "$pw_spec" \
             --out dist/runtimes "${extra[@]}" "${bins[@]}"
 
@@ -299,7 +293,7 @@ jobs:
           bin_dir = d / "bin"
           if bin_dir.is_dir():
               # Mirror RuntimeManager.activate(): add_dll_directory covers .pyd
-              # loads, PATH covers ctypes winmode=0 loads (llama-cpp-python).
+              # loads, PATH covers the ctypes winmode=0 loads bindings use.
               os.add_dll_directory(str(bin_dir))
               os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
 

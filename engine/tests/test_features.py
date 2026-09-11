@@ -24,8 +24,8 @@ def _cfg(**over) -> Config:
     base = {
         "stt": {"backend": "whisper_cpp", "model": "whisper-small-q5"},
         "stt_offline": {"backend": "whisper_cpp", "model": "whisper-small-q5"},
-        "translator": {"backend": "llama_cpp", "model": "hy-mt2-1.8b-q4"},
-        "chat": {"backend": "llama_cpp", "model": "qwen3-4b-instruct-q4"},
+        "translator": {"backend": "llama_server", "model": "hy-mt2-1.8b-q4"},
+        "chat": {"backend": "llama_server", "model": "qwen3-4b-instruct-q4"},
         "speaker": {"backend": "ecapa", "model": "ecapa-voxceleb"},
     }
     for slot, patch in over.items():

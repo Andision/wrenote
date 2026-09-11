@@ -442,9 +442,13 @@ def test_compute_select_persists_and_applies_live(client, tmp_path):
 
 
 def test_compute_select_asks_for_a_restart_once_a_backend_is_loaded(client, monkeypatch):
-    """Once llama_cpp is imported its DLLs are in the process for good; the
-    endpoint must say so instead of pretending the switch took effect."""
-    monkeypatch.setitem(sys.modules, "llama_cpp", types.ModuleType("llama_cpp"))
+    """Once a pack's binding is imported its DLLs are in the process for good;
+    the endpoint must say so instead of pretending the switch took effect.
+
+    Speech recognition is the only such binding now — the language models run
+    in a subprocess, and swapping which `llama-server` binary starts next is
+    free (see DEFAULT_PACK_MODULES)."""
+    monkeypatch.setitem(sys.modules, "pywhispercpp", types.ModuleType("pywhispercpp"))
     body = client.post("/v1/compute/select", json={"accelerator": "cpu"}).json()
     assert body["restart_required"] is True and body["applied"] is None
 

@@ -437,8 +437,9 @@ def test_two_stt_slots_share_the_stt_models(client):
 @pytest.fixture
 def chat_client(monkeypatch, tmp_path):
     """An app whose chat backend can actually run a catalogue model, so the
-    "applies now" path is exercised. Constructing LlamaCppChat is cheap — the
-    binding and the weights load lazily in `load()` — so no model is touched."""
+    "applies now" path is exercised. Constructing LlamaServerChat is cheap —
+    no binary is looked for and no process starts until `load()` — so nothing
+    is touched here."""
     from fastapi.testclient import TestClient
 
     import wrenote.core.config as config_mod
@@ -450,7 +451,7 @@ def chat_client(monkeypatch, tmp_path):
         "vad": {"backend": "disabled"},
         "translator": {"backend": "mock"},
         "speaker": {"backend": "disabled"},
-        "chat": {"backend": "llama_cpp", "model": "qwen3-4b-instruct-q4"},
+        "chat": {"backend": "llama_server", "model": "qwen3-4b-instruct-q4"},
         "data": {"dir": str(tmp_path)},
         "compute": {"runtimes_index_url": ""},
     })
@@ -520,12 +521,13 @@ def test_cpu_only_machine_is_pointed_at_the_streaming_model(tmp_path):
 def test_the_translate_job_builds_its_translator_from_the_catalogue(monkeypatch, tmp_path):
     """The retroactive-translate job used to construct straight from
     ``cfg.translator.params``, which is tuning — the model file comes from the
-    catalogue entry the ``model:`` id names. llama_cpp then had no
-    ``model_path`` at all and the job died in the constructor.
+    catalogue entry the ``model:`` id names. The backend then had no
+    ``model_path`` at all, and since that is a required argument the job died
+    in the *constructor*, outside the runner's try: the job sat at "running"
+    for the rest of the process's life.
 
-    The model isn't on disk here, so the job still fails; what it must fail
-    with is "not found at <path>", which is only reachable once the backend was
-    constructed with a path in the first place.
+    Nothing is installed here, so the job still fails. What matters is that it
+    fails inside the try — reported, with a reason — rather than vanishing.
     """
     import time
 
@@ -541,7 +543,7 @@ def test_the_translate_job_builds_its_translator_from_the_catalogue(monkeypatch,
         "vad": {"backend": "disabled"},
         "speaker": {"backend": "disabled"},
         "chat": {"backend": "mock"},
-        "translator": {"backend": "llama_cpp", "model": "hy-mt2-1.8b-q4"},
+        "translator": {"backend": "llama_server", "model": "hy-mt2-1.8b-q4"},
         "data": {"dir": str(tmp_path), "exports_dir": str(tmp_path / "exports")},
         "compute": {"runtimes_index_url": ""},
         "update": {"check": False, "index_url": ""},
@@ -564,29 +566,11 @@ def test_the_translate_job_builds_its_translator_from_the_catalogue(monkeypatch,
             if job["status"] != "running":
                 break
             time.sleep(0.02)
+        # Reported, not stuck — and not a TypeError about a missing keyword,
+        # which is what constructing from the raw params produced.
         assert job["status"] == "error"
-        # The catalogue's file, reached — which the old code could not do.
-        assert "hy-mt2" in job["error"].lower()
-        assert "not found" in job["error"].lower()
-
-
-def test_a_managed_server_runs_the_same_catalogue_models_as_the_in_process_backend(tmp_path):
-    """`llama_server` and `llama_cpp` execute the same GGUF — the difference is
-    which process it is loaded in. Cataloguing each model twice would ask the
-    user a question they have no way to answer."""
-    cat = ModelCatalogue.load(bundled=_catalogue(tmp_path, {
-        "schema": 1,
-        "defaults": {"chat": "m1"},
-        "models": [_entry("m1", kind="chat", backend="llama_cpp")],
-    }), user=Path("/nonexistent"))
-    cfg = _cfg(tmp_path, stt={"backend": "mock"}, translator={"backend": "mock"},
-               speaker={"backend": "disabled"},
-               chat={"backend": "llama_server", "model": "m1"})
-    r = resolve(cfg, "chat", cat)
-    assert r.spec is not None and r.spec.id == "m1"
-    assert r.params["model_path"].endswith("m1.bin")
-    # Still one download, listed against the slot as usual.
-    assert [e.model_id for e in required_models(cfg, cat)] == ["m1"]
+        assert "TypeError" not in job["error"]
+        assert "llama-server" in job["error"]
 
 
 def test_a_managed_backend_is_told_where_to_keep_its_state(tmp_path):
@@ -594,7 +578,7 @@ def test_a_managed_backend_is_told_where_to_keep_its_state(tmp_path):
     where that record lives is the config's business, not the backend's."""
     cat = ModelCatalogue.load(bundled=_catalogue(tmp_path, {
         "schema": 1, "defaults": {"chat": "m1"},
-        "models": [_entry("m1", kind="chat", backend="llama_cpp")],
+        "models": [_entry("m1", kind="chat", backend="llama_server")],
     }), user=Path("/nonexistent"))
     cfg = _cfg(tmp_path, stt={"backend": "mock"}, translator={"backend": "mock"},
                speaker={"backend": "disabled"},
@@ -606,7 +590,7 @@ def test_a_managed_backend_is_told_where_to_keep_its_state(tmp_path):
 
 def test_an_unrelated_backend_still_refuses_another_backends_model(tmp_path):
     cat = ModelCatalogue.load(bundled=_catalogue(tmp_path, {
-        "schema": 1, "models": [_entry("m1", kind="chat", backend="llama_cpp")],
+        "schema": 1, "models": [_entry("m1", kind="chat", backend="whisper_cpp")],
     }), user=Path("/nonexistent"))
     cfg = _cfg(tmp_path, stt={"backend": "mock"}, translator={"backend": "mock"},
                speaker={"backend": "disabled"},
@@ -616,9 +600,7 @@ def test_an_unrelated_backend_still_refuses_another_backends_model(tmp_path):
 
 
 def test_choosing_another_model_keeps_the_slot_on_its_managed_backend(monkeypatch, tmp_path):
-    """Picking a different model is not a request to stop running it in a
-    subprocess — and switching back to `llama_cpp` behind the user's back
-    would quietly undo the crash isolation they chose."""
+    """Picking a different model is not a request to change how it is run."""
     from fastapi.testclient import TestClient
 
     import wrenote.core.config as config_mod

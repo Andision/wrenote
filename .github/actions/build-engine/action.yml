@@ -6,9 +6,6 @@ description: >-
   Shared by every shell's packaging workflow.
 
 inputs:
-  llama_index:
-    description: Extra pip index for the llama-cpp-python wheel (metal / cpu / cuda / vulkan)
-    required: true
   python_version:
     description: Python version to freeze with
     required: false
@@ -19,14 +16,12 @@ inputs:
     default: "20"
   llama_cpp_tag:
     description: >-
-      llama.cpp tag to build `llama-server` from, for the platform whose
-      accelerator is built in (macOS arm64 / Metal) and therefore has no
-      downloadable runtime pack to carry it. Empty = don't ship one, which is
-      the pre-existing behaviour. Match the llama.cpp vendored by the
-      llama-cpp-python pinned below, or the supervised backend and the
-      in-process one are different llama.cpps.
+      llama.cpp tag to build `llama-server` from. This is not optional any
+      more: `llama_server` is the default backend for chat and translation,
+      so a build without one produces an app that cannot answer anything.
+      Override only to move the pin.
     required: false
-    default: ""
+    default: "b9553"
 
 runs:
   using: composite
@@ -57,23 +52,19 @@ runs:
         python -m pip install --upgrade pip
         pip install -e ".[desktop,streaming]"
         pip install pywhispercpp pyinstaller imageio-ffmpeg
-        # Pin llama-cpp-python: the upstream 0.3.29 *metal* wheel on GitHub
-        # Pages is corrupted at the source (BadZipFile / Bad CRC-32 on
-        # ggml-config.cmake), so every download fails regardless of caching.
-        # 0.3.28 is verified intact on both the metal and cpu indexes.
-        # --no-cache-dir guards against a corrupt wheel getting cached and
-        # re-hit on reruns; --retries covers transient network blips.
-        pip install --no-cache-dir --retries 5 "llama-cpp-python==0.3.28" --extra-index-url ${{ inputs.llama_index }}
+        # No llama-cpp-python: language models run in a `llama-server` the
+        # engine supervises (built below), not in this process.
 
     - name: Install Windows-only deps (WebView2 + WASAPI loopback)
       if: runner.os == 'Windows'
       shell: bash
       run: pip install pythonnet soundcard
 
-    # The binary `backend: llama_server` runs (engine/wrenote/core/llama_server.py).
-    # Windows gets its per-accelerator copy from the runtime pack
-    # (build-runtimes.yml); the built-in accelerator has no pack, so it goes in
-    # the bundle — packaging/*.spec picks it up from packaging/llama-server/.
+    # The binary `backend: llama_server` runs (engine/wrenote/core/llama_server.py),
+    # which is now how every language model runs. An accelerated Windows
+    # install takes the per-accelerator copy from its runtime pack
+    # (build-runtimes.yml); this is the built-in one, and it goes in the
+    # bundle — packaging/*.spec picks it up from packaging/llama-server/.
     #
     # Cached on the tag, not compiled every time: the tag is pinned, so the
     # same tag on the same runner is the same binary, and llama.cpp's server
@@ -81,7 +72,6 @@ runs:
     # docs/plans/LLM_OUT_OF_PROCESS.md would put those 20 minutes on every
     # push to master.
     - name: Restore llama-server
-      if: inputs.llama_cpp_tag != ''
       id: llama_server_cache
       uses: actions/cache@v4
       with:
@@ -94,10 +84,8 @@ runs:
           llama-server-${{ inputs.llama_cpp_tag }}-${{ runner.os }}-${{ runner.arch }}-${{
             hashFiles('.github/actions/build-engine/action.yml') }}
 
-    # NOT YET RUN IN CI. Written from the same flags build-runtimes.yml uses;
-    # the first dispatch with a tag is the test.
     - name: Build llama-server for the built-in runtime
-      if: inputs.llama_cpp_tag != '' && steps.llama_server_cache.outputs.cache-hit != 'true'
+      if: steps.llama_server_cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail

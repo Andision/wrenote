@@ -1,11 +1,15 @@
 # Taking the LLM out of the engine
 
-**Status: steps 1 and 2 shipped; step 3 waiting on real platforms, and on
-where the binaries come from.** `openai_compatible` (configured in Settings →
-Models) and `llama_server` (the engine supervising its own) both exist.
-`llama_cpp` is still the *default* for both slots — switching a slot to
-`llama_server` is a line in `~/.wrenote/config.yaml`, deliberately not a UI
-control, because step 3 removes the choice again.
+**Status: done.** The engine loads no language model. `llama_server` is the
+default for chat and translation, `openai_compatible` is there for a model
+someone else runs, and `chat/llama_cpp.py` and `translator/llama_cpp.py` are
+deleted along with every trace of `llama-cpp-python` in CI and packaging.
+
+The migration this plan described — flip the defaults, keep the old backend
+for a release, then delete — was collapsed into one change, deliberately:
+the app has no users but its author, so there is no config in the world that
+needs a landing place. Anyone reading this later and planning a similar
+removal should assume they need the three steps.
 
 ## The decision
 
@@ -166,136 +170,34 @@ whisper and onnxruntime rather than whisper and llama.
      gap. A spawn that exits before it is ready is retried on a new port a
      couple of times — which is a real fix, not a test workaround: the same
      race is waiting on a busy machine.
-3. **Delete `chat/llama_cpp.py` and `translator/llama_cpp.py`**, once step 2
-   has run on the platforms this app actually ships to — macOS arm64 and
-   Windows x64 — with a real `llama-server` and real weights. (Earlier
-   drafts of this list said "and Linux". There is no Linux build target;
-   Linux is where CI runs the test suite.) The binaries have a home now, so what is left is mechanical. In
-   order, because some of it cannot be undone by reverting one commit:
+3. **Delete `chat/llama_cpp.py` and `translator/llama_cpp.py`.** ✅ **Done**,
+   in one change rather than the staged migration below, because the app has
+   exactly one user. What went with them: `llama-cpp-python` from every CI
+   install, `collect_dynamic_libs("llama_cpp")` from both PyInstaller specs,
+   `llama_cpp` from `DEFAULT_PACK_MODULES` (so switching compute runtimes now
+   stays free until something transcribes — a `llama-server` is an executable,
+   not an import), and `_ALSO_RUNS` from the catalogue. `llama_cpp_tag` stopped
+   being optional in CI: a build without a `llama-server` is an app that cannot
+   answer anything.
 
-   1. **Prove it.** A build with `llama_cpp_tag` set, then a real recording
-      and a real chat on each platform. Nothing below is worth doing first.
+   Verified afterwards on the author's own config and real weights: default
+   backends resolve to `llama_server`, a real Qwen3-4B answers, and the
+   process count goes 0 → 1 → 0.
 
-      **macOS/Metal: done.** `b9553` built in CI, shipped in the bundle,
-      pulled back out of the DMG and run against the real weights: chat
-      answered from Qwen3-4B, the translate job put real Chinese back on
-      three real lines through Hy-MT2, and the engine left no server behind.
-      Two things that only a real build could have shown:
+   The staged version, for anyone doing this with users to protect:
 
-      * **It linked OpenSSL, and got away with it by accident.** cpp-httplib
-        links OpenSSL whenever CMake can find it, and the runner has it. The
-        bundled binary therefore wanted `libssl.3.dylib` at run time — and
-        found it, because PyInstaller ships Python's OpenSSL in the same
-        directory. A coincidence, one soname bump from being a crash on a
-        user's machine. Both builds now pass
-        `-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON`; llama.cpp logs "running
-        without SSL" either way, and we serve loopback.
-      * **`the tensor API is not supported in this environment` is ours,
-        and costs nothing.** On an M5,
-        `ggml_metal_library_init_from_source` fails and llama.cpp disables
-        its Metal *tensor* path. Two guesses died here, in order:
-
-        1. *The runner's Xcode predates the hardware.* No: rebuilt on
-           `macos-15` with AppleClang 17 (up from 15), the line is
-           identical. And it could not have been — `EMBED_LIBRARY=1` means
-           the shader compiles at **run time**, so the build's Xcode was
-           never in that path.
-        2. *Then it must be llama.cpp probing and moving on, on this
-           machine.* Also no. The `llama-cpp-python` wheel for the **same
-           b9553 commit**, on the same M5, logs `has tensor = true` and
-           compiles the probe pipelines fine. So the capability is there and
-           something about how we build the server gives it up. Unresolved,
-           and deliberately left that way, because —
-        3. …it does not matter for speed. See the measurement below: the
-           build *without* the tensor path is the faster of the two.
-
-        (An earlier note here claimed the rebuilt binary was ~40% faster.
-        Bad measurement: the grep pooled prompt-eval with generation.)
-
-      The macOS runner moved to `macos-15` anyway, for a better reason: the
-      14 image is in deprecation and unsupported from 2026-11-02. Not
-      `macos-26` — a newer SDK can raise the deployment target and drop
-      macOS versions users are on, which nothing here has measured.
-
-      **The measurement that decides step 3: supervised is not slower.**
-      `llama_server` against the `llama-cpp-python` Metal wheel it would
-      replace — same weights, same prompt, same machine, end-to-end (so the
-      HTTP hop and the Python binding each carry their own overhead), median
-      of six after a warm-up:
-
-      | workload | in-process | supervised |
-      |---|---|---|
-      | Hy-MT2-1.8B, one short line to translate | 78.9 tok/s | **85.4 tok/s** |
-      | Qwen3-4B, 9 k-char transcript + a question | 30.7 tok/s | **34.9 tok/s** |
-
-      Identical output both ways. So the one outcome that would have made
-      step 3 a regression did not happen: the supervised path is level or a
-      little ahead, *despite* giving up the tensor path the in-process build
-      keeps. Caveats worth keeping: one machine, one accelerator, two
-      workloads, and `llama-server`'s prompt cache may flatter the repeated
-      prompt (the supervised numbers also vary more — 27.4 to 35.5 on the
-      chat workload against 30.2 to 30.8 in process).
-
-      **Windows is built but unrun.** The same dispatch produced one
-      (`built with MSVC 19.51 for x64`, 8 minutes against macOS's 66) and it
-      is in that installer — but nobody has started it on a Windows machine,
-      which is the whole of what "proved" means here.
-
-      **The pack route has never been built at all.** Only the bundled route
-      has: `build-runtimes.yml` gained the same `llama_cpp_tag` input, and
-      has not been dispatched with it. That is the route every accelerated
-      Windows install takes, so it needs a run before the defaults move.
-
-      Left open, and not worth blocking on: **why our build gives up the
-      Metal tensor path when `llama-cpp-python`'s does not.** It costs
-      nothing measurable here, but that is one machine and two workloads —
-      a longer context or a bigger model is exactly where a tensor path
-      would start to pay, and this is the kind of difference that is cheap
-      to find now and expensive to find later.
-
-      Measured while doing exactly that: llama.cpp's server target is ~20
-      minutes on a 3-core macOS runner — `server.cpp` is one of its heaviest
-      translation units, `BUILD_SHARED_LIBS=OFF` means ggml and llama compile
-      in full, and Metal's shaders compile too. Fine for a dispatch, and not
-      fine on every push to master, which is what making `llama_server` the
-      default would do. So both build steps now restore the binary from a
-      cache keyed on the pinned tag (plus the variant, for packs): the same
-      tag on the same runner is the same binary, and recompiling it is pure
-      waste.
-   2. **Flip the defaults** — `config.yaml`'s two `backend:` lines, and
-      `models.yaml`'s three `backend: llama_cpp` entries. `backend_can_run`
-      means the catalogue entries need no other change, and a user's existing
-      `~/.wrenote/config.yaml` keeps naming `llama_cpp` until they touch it,
-      which is the point of doing this before the deletion rather than with
-      it.
-   3. **Keep `llama_cpp` working for one release.** It is what every existing
-      config says. Deleting it in the same release that changes the default
-      turns a bad `llama-server` build into an app that cannot answer at all.
-   4. **Give `llama_cpp` somewhere to land before deleting it.** Every
-      config written before the flip still says `backend: llama_cpp`, and
-      the registry raises on a name it doesn't know — inside the lifespan,
-      where `make_chat` is not guarded, so the *engine does not start*.
-      Verified by removing the registration and booting: `ValueError:
-      Unknown chat backend: 'llama_cpp'` and no app at all. A feature
-      regressing is survivable; an app that won't launch because of a line
-      in a config file the user has forgotten writing is not.
-
-      So the deletion has to leave the name working: register `llama_cpp`
-      as an alias of `llama_server` and log once that it moved. `_ALSO_RUNS`
-      stays for the same reason — a user's own `~/.wrenote/models.yaml` may
-      catalogue entries under the old backend name, and those must keep
-      resolving.
-
-   5. **Then delete the implementations**, and with them: `llama-cpp-python`
-      from every CI install of it (`build-engine`, `build-runtimes`,
-      `build.yml`, `build-tauri.yml`), `collect_dynamic_libs("llama_cpp")`
-      from both PyInstaller specs, and `llama_cpp` from
-      `DEFAULT_PACK_MODULES`. The pack then carries whisper and a server
-      rather than whisper and a library, as §"What it costs" predicted.
-
-   `engine/profiles/mac-default.yaml` is stale independently of this (it
-   still names task numbers and `model_path`s); rewrite or delete it while
-   the defaults are being touched.
+   1. **Prove it** on every platform you ship to.
+   2. **Flip the defaults** in `config.yaml` and `models.yaml`. Existing
+      `~/.wrenote/config.yaml` files still name the old backend and are
+      unaffected, which is the point of doing this first.
+   3. **Keep the old backend for one release.** It is what every existing
+      config says, and it is the only way back if the new one is bad on
+      someone's hardware.
+   4. **Leave the name resolving before deleting the code** — an alias, and
+      keep `_ALSO_RUNS` for user-written catalogue entries. The registry
+      raises on an unknown backend *inside the lifespan*, so a config naming
+      a deleted one doesn't degrade a feature, it stops the engine booting.
+   5. **Then delete the implementations.**
 
 Each step is releasable and reversible on its own, which matters because
 step 2 is the one that can go wrong on a platform none of us is holding.

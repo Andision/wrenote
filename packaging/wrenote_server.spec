@@ -53,7 +53,6 @@ def _bundled_ffmpeg() -> str | None:
 
 binaries = []
 binaries += collect_dynamic_libs("pywhispercpp")
-binaries += collect_dynamic_libs("llama_cpp")
 binaries += collect_dynamic_libs("onnxruntime")
 
 ffmpeg = _bundled_ffmpeg()
@@ -94,7 +93,6 @@ datas = [
     (os.path.join(ENGINE, "wrenote", "vad", "assets", "silero_vad.onnx"), "wrenote/vad/assets"),
 ]
 datas += collect_data_files("pywhispercpp")
-datas += collect_data_files("llama_cpp")
 
 # No pywebview: Electron is the shell. Drop wrenote.desktop (it imports webview at
 # module top level) from the wrenote submodule sweep so the frozen server never

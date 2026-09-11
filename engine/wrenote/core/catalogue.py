@@ -48,11 +48,6 @@ HTTP_BACKENDS = ("openai_compatible",)
 #: it in process. They need the same files a local backend does, so they are
 #: catalogued models like any other — see :func:`backend_can_run`.
 MANAGED_BACKENDS = ("llama_server",)
-#: Which catalogue entries a backend can run beyond the one it is named by.
-#: `llama_server` and `llama_cpp` execute the same GGUF; the difference is
-#: which process it is loaded in, so the catalogue would gain a duplicate
-#: entry per model for no reason the user could see.
-_ALSO_RUNS: dict[str, tuple[str, ...]] = {"llama_server": ("llama_cpp",)}
 KINDS = ("stt", "translator", "chat", "speaker")
 # Config sections that hold a model. Two of them are speech recognition:
 # what a live session hears (`stt`, may be a streaming model) and what a
@@ -141,11 +136,6 @@ class ModelSpec:
             "size": self.size,
             "requires": dict(self.requires),
         }
-
-
-def backend_can_run(backend: str, model_backend: str) -> bool:
-    """Whether ``backend`` can run a model catalogued for ``model_backend``."""
-    return backend == model_backend or model_backend in _ALSO_RUNS.get(backend, ())
 
 
 def _parse_file(row: dict[str, Any]) -> ModelFile:
@@ -535,7 +525,7 @@ def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
     spec = catalogue.get(chosen) if chosen else None
     if chosen and spec is None:
         log.warning("%s.model=%r is not in the catalogue; falling back", kind, chosen)
-    if spec is not None and not backend_can_run(backend, spec.backend):
+    if spec is not None and spec.backend != backend:
         log.warning(
             "%s.model=%r runs on the %r backend but %r is configured; ignoring the model",
             kind, chosen, spec.backend, backend,
@@ -546,7 +536,7 @@ def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
     reason = "id"
     if spec is None:
         fallback = catalogue.default_for(kind)
-        if fallback is not None and backend_can_run(backend, fallback.backend):
+        if fallback is not None and fallback.backend == backend:
             spec, reason = fallback, "default"
 
     if spec is None:

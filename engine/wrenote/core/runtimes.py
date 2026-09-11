@@ -80,10 +80,15 @@ STATE_FILE = "state.json"
 PACK_MANIFEST = "MANIFEST.json"
 PACK_SCHEMA = 1
 INDEX_SCHEMA = 1
-#: Top-level modules a pack provides when its manifest doesn't say.
-#: Top-level modules a pack provides. Also the modules whose import commits the
-#: process to one runtime — see :meth:`RuntimeManager.can_reactivate`.
-DEFAULT_PACK_MODULES: tuple[str, ...] = ("llama_cpp", "pywhispercpp", "_pywhispercpp")
+#: Top-level modules a pack provides when its manifest doesn't say. Also the
+#: modules whose import commits the process to one runtime — see
+#: :meth:`RuntimeManager.can_reactivate`.
+#:
+#: Speech recognition only, since the language models moved out of process:
+#: a pack's `llama-server` is an executable, not an import, so switching
+#: runtimes stays free for as long as nothing has transcribed. (The duplicated
+#: first line of this comment went with llama_cpp.)
+DEFAULT_PACK_MODULES: tuple[str, ...] = ("pywhispercpp", "_pywhispercpp")
 _CHUNK = 1 << 20
 _INDEX_TTL_S = 300.0
 

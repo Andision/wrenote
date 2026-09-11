@@ -16,11 +16,8 @@ on:
     inputs:
       llama_cpp_tag:
         description: >-
-          Build `llama-server` from this llama.cpp tag and ship it in the
-          bundle, for the platform whose accelerator is built in (macOS arm64 /
-          Metal has no runtime pack to carry one). Empty = don't, which is what
-          a tag build and a push do. Use the tag matching the vendored
-          llama.cpp of the pinned llama-cpp-python — b9553 for 0.3.28.
+          Override the llama.cpp tag `llama-server` is built from. Empty uses
+          the pin in .github/actions/build-engine, which is what ships.
         required: false
         default: ""
   push:
@@ -44,13 +41,11 @@ jobs:
           # and it was wrong; see docs/plans/LLM_OUT_OF_PROCESS.md.)
           - os: macos-15 # Apple Silicon
             artifact: Wrenote-tauri-macos-arm64
-            llama_index: https://abetlen.github.io/llama-cpp-python/whl/metal
             # Upload the DMG only: a raw .app loses executable permissions and
             # symlinks when upload-artifact archives its individual files.
             bundle_glob: shells/tauri/src-tauri/target/release/bundle/dmg/*.dmg
           - os: windows-latest
             artifact: Wrenote-tauri-windows-x64
-            llama_index: https://abetlen.github.io/llama-cpp-python/whl/cpu
             bundle_glob: shells/tauri/src-tauri/target/release/bundle/nsis/*.exe
     steps:
       - uses: actions/checkout@v4
@@ -73,10 +68,8 @@ jobs:
 
       - uses: ./.github/actions/build-engine
         with:
-          llama_index: ${{ matrix.llama_index }}
-          # Empty for a push or a tag build: shipping a binary nothing uses
-          # yet (llama_cpp is still the default backend) would only make the
-          # installer bigger. Set it on a dispatch to exercise the step.
+          # Blank on a push or tag build = the action's pinned default, which
+          # is what ships. Set it on a dispatch only to try another pin.
           llama_cpp_tag: ${{ inputs.llama_cpp_tag }}
 
       - uses: dtolnay/rust-toolchain@stable
