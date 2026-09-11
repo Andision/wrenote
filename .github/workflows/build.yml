@@ -32,8 +32,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Every input has a default, including the llama.cpp pin — see the
+      # action. Deliberately passes nothing: forwarding an optional input
+      # here sends "" on a push, which overrides the default rather than
+      # falling back to it.
       - uses: ./.github/actions/build-engine
-        with:
 
       - name: Build Electron desktop app (electron-builder)
         working-directory: shells/electron

@@ -59,8 +59,11 @@ jobs:
             python packaging/release/version.py --check
           fi
 
+      # Every input has a default, including the llama.cpp pin — see the
+      # action. Deliberately passes nothing: forwarding an optional input
+      # here sends "" on a push, which overrides the default rather than
+      # falling back to it.
       - uses: ./.github/actions/build-engine
-        with:
 
       - uses: dtolnay/rust-toolchain@stable
 
