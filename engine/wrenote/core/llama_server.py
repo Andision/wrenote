@@ -196,7 +196,14 @@ class LlamaServerProcess:
         # rather than the one before it.
         self._tail = []
         self._port = _free_port(self._host)
-        self._token = secrets.token_urlsafe(24)
+        # Hex, not urlsafe base64: the latter can begin with "-", and a
+        # token that starts with a dash is read as the *next flag* by
+        # argparse and by llama.cpp's own parser — `--api-key` then has no
+        # value and the server exits 2 before it ever listens. About 1.6% of
+        # tokens, so it fails one start in sixty and looks like a flake. Hex
+        # cannot collide with an option at all, and 24 bytes is still 192
+        # bits.
+        self._token = secrets.token_hex(24)
         argv = [
             str(self._binary),
             "--model", str(self._model_path),

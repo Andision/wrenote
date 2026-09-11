@@ -392,3 +392,23 @@ async def test_swapping_the_chat_model_stops_the_server_it_was_using(
     # And the new one is not started until something asks for it.
     assert manager._chat_loaded is False
     await manager.aclose()
+
+
+async def test_the_api_key_can_never_look_like_a_flag(binary, model, tmp_path):
+    """A token starting with "-" is read as the *next option*, so `--api-key`
+    gets no value and the server exits before it listens. urlsafe base64
+    produced one about every sixty starts, which reads as a flake rather than
+    a bug — CI found it, twenty local runs had not.
+
+    Asserts the real token this process generated, not the library that
+    generated it: hex cannot collide with an option at all.
+    """
+    import string
+
+    proc = server(binary, model, tmp_path)
+    await proc.start()
+    try:
+        assert proc.token
+        assert set(proc.token) <= set(string.hexdigits.lower())
+    finally:
+        await proc.stop()
