@@ -16,10 +16,16 @@ inputs:
     default: "20"
   llama_cpp_tag:
     description: >-
-      llama.cpp tag to build `llama-server` from. This is not optional any
-      more: `llama_server` is the default backend for chat and translation,
-      so a build without one produces an app that cannot answer anything.
-      Override only to move the pin.
+      llama.cpp tag to build `llama-server` from. **This is where the pin
+      lives** — `llama_server` is the default backend for chat and
+      translation, so a build without one produces an app that cannot answer
+      anything, and moving the pin should be a commit rather than a dispatch
+      parameter.
+
+      Callers must not pass this through from their own optional input: an
+      empty string in `with:` *overrides* this default rather than falling
+      back to it, and the build then tries to clone the branch "". That is
+      how it failed the first time.
     required: false
     default: "b9553"
 
@@ -89,7 +95,13 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        git clone --depth 1 --branch "${{ inputs.llama_cpp_tag }}" \
+        tag="${{ inputs.llama_cpp_tag }}"
+        if [ -z "$tag" ]; then
+          echo "llama_cpp_tag is empty — a caller passed it through as '', which" >&2
+          echo "overrides this action's default. Don't pass it unless you mean it." >&2
+          exit 1
+        fi
+        git clone --depth 1 --branch "$tag" \
           https://github.com/ggml-org/llama.cpp "$RUNNER_TEMP/llama.cpp"
         # Metal on macOS arm64 is llama.cpp's default there; elsewhere this is
         # the portable CPU build, which is what those platforms ship built in.

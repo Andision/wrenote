@@ -13,13 +13,6 @@ name: build (tauri)
 #     git commit -am "release: 0.2.0" && git tag v0.2.0 && git push --tags
 on:
   workflow_dispatch:
-    inputs:
-      llama_cpp_tag:
-        description: >-
-          Override the llama.cpp tag `llama-server` is built from. Empty uses
-          the pin in .github/actions/build-engine, which is what ships.
-        required: false
-        default: ""
   push:
     branches: ["master"]
     tags: ["v*"]
@@ -68,9 +61,6 @@ jobs:
 
       - uses: ./.github/actions/build-engine
         with:
-          # Blank on a push or tag build = the action's pinned default, which
-          # is what ships. Set it on a dispatch only to try another pin.
-          llama_cpp_tag: ${{ inputs.llama_cpp_tag }}
 
       - uses: dtolnay/rust-toolchain@stable
 
