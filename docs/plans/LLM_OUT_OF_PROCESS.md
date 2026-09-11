@@ -167,8 +167,10 @@ whisper and onnxruntime rather than whisper and llama.
      couple of times — which is a real fix, not a test workaround: the same
      race is waiting on a busy machine.
 3. **Delete `chat/llama_cpp.py` and `translator/llama_cpp.py`**, once step 2
-   has run on macOS, Windows and Linux with a real `llama-server` and real
-   weights. The binaries have a home now, so what is left is mechanical. In
+   has run on the platforms this app actually ships to — macOS arm64 and
+   Windows x64 — with a real `llama-server` and real weights. (Earlier
+   drafts of this list said "and Linux". There is no Linux build target;
+   Linux is where CI runs the test suite.) The binaries have a home now, so what is left is mechanical. In
    order, because some of it cannot be undone by reverting one commit:
 
    1. **Prove it.** A build with `llama_cpp_tag` set, then a real recording
@@ -234,7 +236,15 @@ whisper and onnxruntime rather than whisper and llama.
       prompt (the supervised numbers also vary more — 27.4 to 35.5 on the
       chat workload against 30.2 to 30.8 in process).
 
-      Windows and Linux are still unproven.
+      **Windows is built but unrun.** The same dispatch produced one
+      (`built with MSVC 19.51 for x64`, 8 minutes against macOS's 66) and it
+      is in that installer — but nobody has started it on a Windows machine,
+      which is the whole of what "proved" means here.
+
+      **The pack route has never been built at all.** Only the bundled route
+      has: `build-runtimes.yml` gained the same `llama_cpp_tag` input, and
+      has not been dispatched with it. That is the route every accelerated
+      Windows install takes, so it needs a run before the defaults move.
 
       Left open, and not worth blocking on: **why our build gives up the
       Metal tensor path when `llama-cpp-python`'s does not.** It costs
