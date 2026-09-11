@@ -271,13 +271,27 @@ whisper and onnxruntime rather than whisper and llama.
    3. **Keep `llama_cpp` working for one release.** It is what every existing
       config says. Deleting it in the same release that changes the default
       turns a bad `llama-server` build into an app that cannot answer at all.
-   4. **Then delete**, and with it: `_ALSO_RUNS` in `core/catalogue.py`,
-      `llama-cpp-python` from the pack specs and every CI install of it
-      (`build-engine`, `build-runtimes`, `build.yml`, `build-tauri.yml`),
-      `collect_dynamic_libs("llama_cpp")` from both PyInstaller specs, and
-      `llama_cpp` from `DEFAULT_PACK_MODULES`. The pack then carries whisper
-      and a server rather than whisper and a library, as §"What it costs"
-      predicted.
+   4. **Give `llama_cpp` somewhere to land before deleting it.** Every
+      config written before the flip still says `backend: llama_cpp`, and
+      the registry raises on a name it doesn't know — inside the lifespan,
+      where `make_chat` is not guarded, so the *engine does not start*.
+      Verified by removing the registration and booting: `ValueError:
+      Unknown chat backend: 'llama_cpp'` and no app at all. A feature
+      regressing is survivable; an app that won't launch because of a line
+      in a config file the user has forgotten writing is not.
+
+      So the deletion has to leave the name working: register `llama_cpp`
+      as an alias of `llama_server` and log once that it moved. `_ALSO_RUNS`
+      stays for the same reason — a user's own `~/.wrenote/models.yaml` may
+      catalogue entries under the old backend name, and those must keep
+      resolving.
+
+   5. **Then delete the implementations**, and with them: `llama-cpp-python`
+      from every CI install of it (`build-engine`, `build-runtimes`,
+      `build.yml`, `build-tauri.yml`), `collect_dynamic_libs("llama_cpp")`
+      from both PyInstaller specs, and `llama_cpp` from
+      `DEFAULT_PACK_MODULES`. The pack then carries whisper and a server
+      rather than whisper and a library, as §"What it costs" predicted.
 
    `engine/profiles/mac-default.yaml` is stale independently of this (it
    still names task numbers and `model_path`s); rewrite or delete it while
