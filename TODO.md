@@ -147,6 +147,32 @@ that same question.
       driving `codex` on a user's behalf is the shim author's and the
       user's, not ours.
 
+- [ ] **Unload a model that nobody has used for a while.** Once loaded, the
+      chat model sits in memory for the life of the process — 2.5 GB for a
+      feature most sessions touch once, or never. `ModelManager` only
+      unloads on a model swap, a feature toggle, or shutdown; nothing
+      reclaims it just because an hour went by. The translator is built per
+      session so it goes when the session does, but a long recording holds
+      1.1 GB the whole time either way.
+
+      Worth doing *now* specifically because of `llama_server`: with the
+      in-process backend, "unload" hands the weights back to the binding and
+      the memory may or may not return (`chat/llama_cpp.py` says so in its
+      own comment — choosing a smaller model *raised* usage until restart).
+      With a supervised server, unloading is killing a process, and the
+      memory comes back because the OS says so. So an idle timeout is only
+      honest once the thing being timed out is a subprocess.
+
+      What has to be decided: how long (long enough that a second question
+      in the same sitting never pays for a reload, so minutes not seconds);
+      whether a reload is visible to the user or just slower (a
+      `llama-server` start is a process spawn *plus* a model load — seconds
+      to tens of seconds, and the chat panel should say so rather than
+      appearing to hang); and that a recording in progress must never have
+      its translator collected out from under it. `ModelManager` already
+      holds the lock that makes the chat side safe; the translator's owner
+      is the session, so the timer belongs somewhere else for it.
+
 ### c. Tests and CI/CD
 
 The engine has 149 tests; `clients/web` has 10k lines of TypeScript and no test

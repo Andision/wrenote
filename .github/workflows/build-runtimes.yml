@@ -177,6 +177,8 @@ jobs:
             -DLLAMA_BUILD_TESTS=OFF \
             -DLLAMA_BUILD_EXAMPLES=OFF \
             -DLLAMA_CURL=OFF \
+          -DLLAMA_SERVER_SSL=OFF \
+          -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON \
             ${CMAKE_ARGS:-}
           cmake --build /d/t/llama.cpp/build --config Release --target llama-server --parallel
           # Ninja puts it in build/bin, MSBuild in build/bin/Release.

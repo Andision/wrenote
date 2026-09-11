@@ -174,6 +174,33 @@ whisper and onnxruntime rather than whisper and llama.
    1. **Prove it.** A build with `llama_cpp_tag` set, then a real recording
       and a real chat on each platform. Nothing below is worth doing first.
 
+      **macOS/Metal: done.** `b9553` built in CI, shipped in the bundle,
+      pulled back out of the DMG and run against the real weights: chat
+      answered from Qwen3-4B, the translate job put real Chinese back on
+      three real lines through Hy-MT2, and the engine left no server behind.
+      Two things that only a real build could have shown:
+
+      * **It linked OpenSSL, and got away with it by accident.** cpp-httplib
+        links OpenSSL whenever CMake can find it, and the runner has it. The
+        bundled binary therefore wanted `libssl.3.dylib` at run time — and
+        found it, because PyInstaller ships Python's OpenSSL in the same
+        directory. A coincidence, one soname bump from being a crash on a
+        user's machine. Both builds now pass
+        `-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON`; llama.cpp logs "running
+        without SSL" either way, and we serve loopback.
+      * **The runner's Xcode is older than the hardware.** On an M5,
+        `ggml_metal_library_init_from_source` fails to compile and the Metal
+        *tensor API* is disabled: the binary was built with AppleClang 15 on
+        `macos-14`, which predates it. Metal itself works — the device is
+        found and used — so this is a lost optimisation rather than a
+        fallback to CPU. Worth a newer runner image before making
+        `llama_server` the default, and worth measuring against the
+        `llama-cpp-python` Metal wheel it would replace, because "the
+        supervised one is slower" is the one outcome that would make step 3
+        a regression.
+
+      Windows and Linux are still unproven.
+
       Measured while doing exactly that: llama.cpp's server target is ~20
       minutes on a 3-core macOS runner — `server.cpp` is one of its heaviest
       translation units, `BUILD_SHARED_LIBS=OFF` means ggml and llama compile
