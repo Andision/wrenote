@@ -133,6 +133,30 @@ that same question.
       holds the lock that makes the chat side safe; the translator's owner
       is the session, so the timer belongs somewhere else for it.
 
+- [ ] **Editing `build-engine/action.yml` costs 66 minutes of macOS CI.** The
+      `llama-server` cache is keyed on that file's hash, so *any* change to it
+      — a comment, an unrelated bug fix — invalidates the binary and llama.cpp
+      recompiles. Two such commits did exactly that; the cache list now holds
+      three near-identical entries for one tag. Windows rebuilds in 8 minutes
+      and nobody notices; macOS takes 66.
+
+      Hashing the whole file was the right call and still is: keying on the
+      tag alone served a stale binary past a fix to the cmake flags, silently,
+      which is worse than slow. What is wrong is the *granularity*. Two ways
+      out, in order of how much they fix:
+
+      * **Move the llama-server build into its own composite action** and key
+        on that file. Everything else in `build-engine` (pip installs, the
+        Swift helpers, PyInstaller) then stops invalidating a binary it has
+        nothing to do with. Small, and correct rather than clever.
+      * **`ccache`.** The runner logs `ccache not found`, so every rebuild is
+        from scratch. With its directory cached on the tag alone, a key miss
+        would cost minutes instead of an hour. Cheap on macOS (`brew install
+        ccache` plus two cmake launcher flags), fiddlier on Windows.
+
+      Not urgent: it costs CI minutes, not correctness, and the first option
+      itself triggers one last 66-minute build to land.
+
 ### c. Tests and CI/CD
 
 The engine has 149 tests; `clients/web` has 10k lines of TypeScript and no test
