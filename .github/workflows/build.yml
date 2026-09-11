@@ -16,7 +16,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14 # Apple Silicon
+          # macos-15, not macos-14: the 14 image is in deprecation (fully
+          # unsupported from 2026-11-02), and its AppleClang 15 is older than
+          # the hardware people now run — a llama-server built there logs
+          # "the tensor API is not supported in this environment" on an M5 and
+          # gives up that Metal 4 path. 15 carries Xcode 26.x. Kept off
+          # macos-26 deliberately: a newer SDK can raise the deployment target
+          # and quietly drop support for the macOS versions users are on, and
+          # nothing here has measured that.
+          - os: macos-15 # Apple Silicon
             artifact: Wrenote-macos-arm64
             llama_index: https://abetlen.github.io/llama-cpp-python/whl/metal
             dist_glob: shells/electron/release/mac-arm64

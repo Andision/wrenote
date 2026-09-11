@@ -147,9 +147,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: packaging/llama-server
-          # The variant is in the key: a Vulkan build and a CUDA build of the
-          # same tag are different binaries.
-          key: llama-server-${{ inputs.llama_cpp_tag }}-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}
+          # The variant is in the key (a Vulkan build and a CUDA build of the
+          # same tag are different binaries), and so is this file's hash: the
+          # cmake flags below decide what the binary links against, and a key
+          # without them serves a stale binary past the next fix to them.
+          key: >-
+            llama-server-${{ inputs.llama_cpp_tag }}-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}-${{
+              hashFiles('.github/workflows/build-runtimes.yml') }}
 
       - name: Build llama-server
         if: inputs.llama_cpp_tag != '' && steps.llama_server_cache.outputs.cache-hit != 'true'

@@ -86,7 +86,13 @@ runs:
       uses: actions/cache@v4
       with:
         path: packaging/llama-server
-        key: llama-server-${{ inputs.llama_cpp_tag }}-${{ runner.os }}-${{ runner.arch }}
+        # The build definition is in the key, not just the tag: the flags below
+        # decide what the binary links against, and a cache keyed on the tag
+        # alone would have served a stale binary past the very next fix to
+        # them — silently, which is the worst way for a build fix to fail.
+        key: >-
+          llama-server-${{ inputs.llama_cpp_tag }}-${{ runner.os }}-${{ runner.arch }}-${{
+            hashFiles('.github/actions/build-engine/action.yml') }}
 
     # NOT YET RUN IN CI. Written from the same flags build-runtimes.yml uses;
     # the first dispatch with a tag is the test.
@@ -124,9 +130,23 @@ runs:
           echo "llama-server was not produced" >&2
           exit 1
         fi
+        # The flags above are only as good as their effect. A binary that
+        # links OpenSSL runs on the runner and on a developer's machine and
+        # fails on a user's, so assert it here rather than discovering it by
+        # pulling the binary back out of a DMG. (Windows is covered by the
+        # pack's DLL audit in build-runtimes.yml, which now reads .exe too.)
+        if [ "$RUNNER_OS" = "macOS" ]; then
+          if otool -L "$exe" | grep -qiE 'libssl|libcrypto'; then
+            echo "llama-server links OpenSSL — the flags disabling it stopped working" >&2
+            otool -L "$exe" >&2
+            exit 1
+          fi
+        fi
         mkdir -p packaging/llama-server
         cp "$exe" packaging/llama-server/
         chmod +x packaging/llama-server/*
+        # Logs the Metal device and whether the tensor API is available, which
+        # is how the runner's Xcode being older than the hardware shows up.
         "$exe" --version || true
 
     - name: Smoke-import engine + verify the committed API contract
