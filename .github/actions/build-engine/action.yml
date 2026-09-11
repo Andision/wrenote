@@ -145,8 +145,10 @@ runs:
         mkdir -p packaging/llama-server
         cp "$exe" packaging/llama-server/
         chmod +x packaging/llama-server/*
-        # Logs the Metal device and whether the tensor API is available, which
-        # is how the runner's Xcode being older than the hardware shows up.
+        # Logs the Metal device and the backends compiled in. It also reports
+        # the tensor API as unavailable on some hardware; that is llama.cpp
+        # probing at run time, not a build problem, and it was measured to
+        # cost nothing (see docs/plans/LLM_OUT_OF_PROCESS.md).
         "$exe" --version || true
 
     - name: Smoke-import engine + verify the committed API contract

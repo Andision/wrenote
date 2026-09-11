@@ -188,16 +188,34 @@ whisper and onnxruntime rather than whisper and llama.
         user's machine. Both builds now pass
         `-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON`; llama.cpp logs "running
         without SSL" either way, and we serve loopback.
-      * **The runner's Xcode is older than the hardware.** On an M5,
-        `ggml_metal_library_init_from_source` fails to compile and the Metal
-        *tensor API* is disabled: the binary was built with AppleClang 15 on
-        `macos-14`, which predates it. Metal itself works — the device is
-        found and used — so this is a lost optimisation rather than a
-        fallback to CPU. Worth a newer runner image before making
-        `llama_server` the default, and worth measuring against the
-        `llama-cpp-python` Metal wheel it would replace, because "the
-        supervised one is slower" is the one outcome that would make step 3
-        a regression.
+      * **`the tensor API is not supported in this environment` is not ours,
+        and costs nothing measurable.** On an M5,
+        `ggml_metal_library_init_from_source` fails and llama.cpp disables
+        its Metal *tensor* path. The first guess was that the runner's
+        AppleClang 15 predated the hardware — **wrong twice over.** Rebuilt
+        on `macos-15` with AppleClang 17, the line is identical; and a
+        like-for-like A/B of the two binaries on the same model and prompt
+        put generation at 86.6 vs 85.3 tok/s median (n=6 each), i.e. no
+        difference. Metal itself is found and used either way. The shader is
+        compiled at *run time* (`EMBED_LIBRARY=1`), so the build's Xcode was
+        never in that path to begin with — it is llama.cpp probing for a
+        capability and moving on.
+
+        (An earlier measurement here said the new binary was ~40% faster.
+        That was a bad one: the grep pooled prompt-eval with generation.
+        Separating them showed no difference.)
+
+      The macOS runner moved to `macos-15` anyway, for a better reason: the
+      14 image is in deprecation and unsupported from 2026-11-02. Not
+      `macos-26` — a newer SDK can raise the deployment target and drop
+      macOS versions users are on, which nothing here has measured.
+
+      Still to measure, and it is the one that decides step 3:
+      **`llama_server` against the `llama-cpp-python` Metal wheel it would
+      replace, same model, same machine.** "The supervised one is slower" is
+      the single outcome that would make step 3 a regression, and the A/B
+      above compared two supervised builds with each other, not the
+      supervised path with the in-process one.
 
       Windows and Linux are still unproven.
 
