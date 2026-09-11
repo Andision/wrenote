@@ -68,76 +68,28 @@ that same question.
       optional: the app is a transcriber. Not measured: whether skipping the
       chat model actually shortens a first run enough to notice, on a real
       connection.
-- [ ] **No in-process LLM at all** — the plan is
-      `docs/plans/LLM_OUT_OF_PROCESS.md`, and **two of its three steps are
-      done**. Step 1: `backend: openai_compatible` for chat and the
-      translator, one HTTP client (`core/openai_compat.py`) behind both,
-      serving a hosted API, a user-run `llama-server` and a CLI shim alike
-      — which also closes the item below. Step 2: `backend: llama_server`,
-      where the engine spawns and supervises its own, so a llama.cpp
-      segfault kills a subprocess instead of the recording. The translation
-      prompt moved to `translator/prompt.py` and both backends ask the
-      identical question, which is what makes step 3 a deletion rather
-      than a rewrite.
+- [x] **No in-process LLM at all** — done; the plan and what it cost are in
+      `docs/plans/LLM_OUT_OF_PROCESS.md`. The engine speaks
+      `POST /v1/chat/completions` to whatever answers: a `llama-server` it
+      starts and supervises (the default), or an endpoint someone configures
+      in Settings → Models. `chat/llama_cpp.py` and `translator/llama_cpp.py`
+      are deleted, and with them `llama-cpp-python` from CI and packaging.
 
-      Where the binary comes from is settled: **the compute runtime pack
-      ships it**. Our own CI already builds that pack's native code per
-      accelerator and publishes it to our own release, so the trust chain
-      does not change, and `activate` already puts the pack's `bin/` on the
-      PATH for CUDA's DLLs — so the engine needed no pack-aware plumbing at
-      all. Two things fell out: `ZipFile.extractall` drops the mode bits (a
-      binary arrived 0644 and could not be exec'd — unpacking restores the
-      executable bit now), and the pack carries the same llama.cpp twice
-      until step 3 removes the Python binding.
+      The reason was crash isolation, and it holds: a llama.cpp segfault now
+      kills a subprocess instead of the recording it was in the middle of.
+      Memory comes back for the same reason — releasing weights is a process
+      exiting rather than a binding's opinion, which is what made the idle
+      unload below worth doing at all. Speech recognition stayed embedded.
 
-      Step 3 — deleting `chat/llama_cpp.py` and `translator/llama_cpp.py`
-      — is what's left, and the thing that could have stopped it has been
-      measured: **the supervised path is not slower.** Against the
-      `llama-cpp-python` Metal wheel it would replace, same weights and
-      prompt on the same machine, it is 85.4 vs 78.9 tok/s translating a
-      line and 34.9 vs 30.7 answering over a 9 k-char transcript. That was
-      the one outcome that would have made this a regression.
+      Measured before committing to it: the supervised path is *not* slower
+      than the in-process one it replaced (85.4 vs 78.9 tok/s translating a
+      line, 34.9 vs 30.7 answering over a 9k-char transcript, same machine and
+      weights). That was the one result that would have made this a mistake.
 
-      The binary is built and shipped: `b9553` (the llama.cpp vendored by
-      the pinned `llama-cpp-python`, so both backends run the same code),
-      built in CI behind the `llama_cpp_tag` input, cached on the tag, and
-      proved end-to-end on macOS — pulled back out of the DMG and run
-      against the real Qwen3-4B and Hy-MT2. What remains is Windows and
-      Linux, then flipping the defaults, keeping `llama_cpp` for one
-      release, and deleting. Speech recognition stays embedded throughout.
+      Still unproven: Windows and its runtime-pack route. The binary is built
+      into the Windows installer and the pack workflow knows how to carry one,
+      but neither has been run on a Windows machine.
 
-      Not leaking a 2.5 GB process is the part that took the care: each
-      server records its pid, port and token, and the next engine start
-      reclaims what it finds — but only after the recorded port answers
-      `/health` with the recorded token, because pids get reused and
-      killing a stranger's process because we crashed is worse than
-      leaking one.
-
-      The privacy rule turned out to be **loopback**, not "remote is on":
-      `remote_slots()` treats a `base_url` on 127.0.0.1 as local inference
-      and everything else as off-machine, `GET /v1/models/status` reports
-      it, and the pre-flight screen names the features whose text is sent.
-      Audio never leaves either way — only transcript text does — and the
-      wording says exactly that. `GET /v1/info` now redacts credentials,
-      since it hands the merged config to the client and that config can
-      hold an API key.
-
-      Settings → Models configures it now, rather than only the config
-      file: an address, a model, a key, and a "Test connection" — the
-      probe `load()` deliberately doesn't do, put where it is worth a
-      round trip, which is the moment someone presses Save. The switch
-      sits with that slot's downloadable models because it is the same
-      choice, and switching back keeps the endpoint on record. The key is
-      write-only: the engine reports `has_api_key` and never the key, so
-      the form says "saved" and an omitted field means "leave it".
-
-      Writing that UI turned up the design mistake underneath: the
-      endpoint was living in `params`, which is the *local* backend's
-      tuning, so configuring an endpoint and then picking a local model
-      again handed `base_url` to `LlamaCppChat.__init__` and it refused
-      to build. `BackendConfig.endpoint` is its own section now; `resolve()`
-      expands it for an HTTP backend the same way it expands a catalogue
-      entry's `model_path` for a local one.
 - [x] ~~A local `claude` / `codex` CLI as the chat backend~~ — **folded into
       the item above, and now available:** point `base_url` at a shim.
       Second pass (`docs/plans/CLI_AGENT_BACKENDS.md` §0)

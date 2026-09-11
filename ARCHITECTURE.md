@@ -168,9 +168,8 @@ backend. Only the third was ever in the right place.
   with a random `--api-key` and reached over the same HTTP client as a hosted
   API — so a llama.cpp segfault kills a subprocess rather than the recording,
   and releasing weights is a process exiting rather than a binding's opinion.
-  `catalogue.backend_can_run` lets it run entries catalogued for `llama_cpp`,
-  because it is the same GGUF and cataloguing each model twice would ask the
-  user a question with no meaningful answer.
+  It is how a local model runs at all now — the in-process backends are
+  deleted, and `docs/plans/LLM_OUT_OF_PROCESS.md` is why.
 * **The binary lives wherever that accelerator's native code already lives.**
   A downloadable pack carries it in `bin/`; the *built-in* accelerator (Metal
   on macOS arm64, which has no pack) carries it in the app bundle beside
@@ -218,7 +217,7 @@ Windows, and Metal on macOS, without shipping one installer per accelerator.
   macOS arm64, `cpu` on Windows (`BUILTIN_VARIANT`, overridable with
   `WRENOTE_BUILTIN_RUNTIME` in a CI matrix row).
 * Accelerated **runtime packs** (`cuda`, `vulkan`) are per-platform builds of
-  `llama-cpp-python` + `pywhispercpp`, fetched on demand into
+  `pywhispercpp` plus a `llama-server` binary, fetched on demand into
   `~/.wrenote/runtimes/<variant>/` like the models are. Vulkan covers NVIDIA,
   AMD and Intel GPUs with no user-installed drivers; CUDA is the faster option
   for NVIDIA. NPUs are detected and reported but not used — there is no ggml

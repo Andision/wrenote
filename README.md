@@ -6,8 +6,9 @@ a chat over your notes. Everything runs on your machine by default, and
 nothing leaves it unless you point translation or chat at a model endpoint
 yourself (see "Your own model endpoint").
 
-* **STT** whisper.cpp · **VAD** Silero · **Translation / chat** llama.cpp
-  (Hy-MT2, Qwen3) · **Speakers** ECAPA-TDNN (ONNX)
+* **STT** whisper.cpp · **VAD** Silero · **Translation / chat** a
+  `llama-server` the engine supervises (Hy-MT2, Qwen3) · **Speakers**
+  ECAPA-TDNN (ONNX)
 * macOS (Apple Silicon, Metal) and Windows (CPU built in; CUDA / Vulkan
   runtime packs installable from Settings → Compute — see `ARCHITECTURE.md`)
 
@@ -62,9 +63,10 @@ npm run dev
 The Electron shell (`shells/electron`, `npm start`) remains until the Tauri
 validation checklist is complete.
 
-Real models: install `pywhispercpp` and `llama-cpp-python` for your platform
-(CI pins the exact wheels in `.github/workflows/build.yml`), then set the
-backends in `~/.wrenote/config.yaml` (see `engine/profiles/mac-default.yaml`).
+Real models: install `pywhispercpp` for your platform, and put a
+`llama-server` on the PATH (or name one in `chat.params.binary`) — packaged
+builds ship one, a checkout does not. Then set the backends in
+`~/.wrenote/config.yaml`; `engine/config.yaml` documents every key.
 The interface ships in English and 简体中文, following your system by default
 (Settings → General to change it). Adding a language means adding one JSON file
 under `clients/web/src/i18n/locales/` — see `ARCHITECTURE.md`.
@@ -119,14 +121,13 @@ in Settings is stored in `~/.wrenote/config.yaml` and never sent back to the
 UI — the field says "saved" instead. `api_key_env` keeps it out of the file
 entirely.
 
-For a local model, `backend: llama_server` runs that same catalogue model as a
-subprocess the engine starts and kills, instead of loading it in process — a
-llama.cpp crash then costs you the answer, not the recording, and the memory
-comes back when the process exits. The binary comes from the compute runtime
-pack for your accelerator (`Settings → Compute`), whose `bin/` is already on
-the PATH; you can also point `params.binary` at your own. Packs do not carry
-one yet, so `llama_cpp` remains the default — see `engine/config.yaml` and
-`docs/plans/LLM_OUT_OF_PROCESS.md`.
+Local models work the same way, and that is the point: `backend: llama_server`
+(the default) runs the catalogue model in a `llama-server` the engine starts
+and kills, so a llama.cpp crash costs you an answer rather than the recording,
+and the memory comes back when the process exits. The binary ships with the
+compute runtime for your accelerator; `params.binary` names your own. See
+`docs/plans/LLM_OUT_OF_PROCESS.md` for why the engine stopped loading language
+models itself.
 
 Speech recognition is not offered this way and is not going to be: the live
 path is coupled to the VAD, to partials and to per-segment language policy, so
