@@ -167,11 +167,42 @@ whisper and onnxruntime rather than whisper and llama.
      couple of times — which is a real fix, not a test workaround: the same
      race is waiting on a busy machine.
 3. **Delete `chat/llama_cpp.py` and `translator/llama_cpp.py`**, once step 2
-   has run on macOS, Windows and Linux — with a real `llama-server` and real
-   weights, which is what has not happened yet. The binaries now have a home
-   (the runtime pack, see the open questions), so what is left before this is
-   mechanical rather than undecided: build a pack with one, run it on each
-   platform, then make `llama_server` the default and delete the other two.
+   has run on macOS, Windows and Linux with a real `llama-server` and real
+   weights. The binaries have a home now, so what is left is mechanical. In
+   order, because some of it cannot be undone by reverting one commit:
+
+   1. **Prove it.** A build with `llama_cpp_tag` set, then a real recording
+      and a real chat on each platform. Nothing below is worth doing first.
+
+      Measured while doing exactly that: llama.cpp's server target is ~20
+      minutes on a 3-core macOS runner — `server.cpp` is one of its heaviest
+      translation units, `BUILD_SHARED_LIBS=OFF` means ggml and llama compile
+      in full, and Metal's shaders compile too. Fine for a dispatch, and not
+      fine on every push to master, which is what making `llama_server` the
+      default would do. So both build steps now restore the binary from a
+      cache keyed on the pinned tag (plus the variant, for packs): the same
+      tag on the same runner is the same binary, and recompiling it is pure
+      waste.
+   2. **Flip the defaults** — `config.yaml`'s two `backend:` lines, and
+      `models.yaml`'s three `backend: llama_cpp` entries. `backend_can_run`
+      means the catalogue entries need no other change, and a user's existing
+      `~/.wrenote/config.yaml` keeps naming `llama_cpp` until they touch it,
+      which is the point of doing this before the deletion rather than with
+      it.
+   3. **Keep `llama_cpp` working for one release.** It is what every existing
+      config says. Deleting it in the same release that changes the default
+      turns a bad `llama-server` build into an app that cannot answer at all.
+   4. **Then delete**, and with it: `_ALSO_RUNS` in `core/catalogue.py`,
+      `llama-cpp-python` from the pack specs and every CI install of it
+      (`build-engine`, `build-runtimes`, `build.yml`, `build-tauri.yml`),
+      `collect_dynamic_libs("llama_cpp")` from both PyInstaller specs, and
+      `llama_cpp` from `DEFAULT_PACK_MODULES`. The pack then carries whisper
+      and a server rather than whisper and a library, as §"What it costs"
+      predicted.
+
+   `engine/profiles/mac-default.yaml` is stale independently of this (it
+   still names task numbers and `model_path`s); rewrite or delete it while
+   the defaults are being touched.
 
 Each step is releasable and reversible on its own, which matters because
 step 2 is the one that can go wrong on a platform none of us is holding.

@@ -75,10 +75,23 @@ runs:
     # (build-runtimes.yml); the built-in accelerator has no pack, so it goes in
     # the bundle — packaging/*.spec picks it up from packaging/llama-server/.
     #
+    # Cached on the tag, not compiled every time: the tag is pinned, so the
+    # same tag on the same runner is the same binary, and llama.cpp's server
+    # is 20 minutes on a 3-core runner. Without this, step 3 of
+    # docs/plans/LLM_OUT_OF_PROCESS.md would put those 20 minutes on every
+    # push to master.
+    - name: Restore llama-server
+      if: inputs.llama_cpp_tag != ''
+      id: llama_server_cache
+      uses: actions/cache@v4
+      with:
+        path: packaging/llama-server
+        key: llama-server-${{ inputs.llama_cpp_tag }}-${{ runner.os }}-${{ runner.arch }}
+
     # NOT YET RUN IN CI. Written from the same flags build-runtimes.yml uses;
     # the first dispatch with a tag is the test.
     - name: Build llama-server for the built-in runtime
-      if: inputs.llama_cpp_tag != ''
+      if: inputs.llama_cpp_tag != '' && steps.llama_server_cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail

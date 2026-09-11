@@ -141,9 +141,18 @@ jobs:
       # NOT YET RUN ON A REAL RUNNER. Everything below it has been; this step
       # is written from the same flags the pack build uses and has not been
       # through CI. Treat the first dispatch with a tag as the test.
-      - name: Build llama-server
+      - name: Restore llama-server
         if: inputs.llama_cpp_tag != ''
-        id: llama_server
+        id: llama_server_cache
+        uses: actions/cache@v4
+        with:
+          path: packaging/llama-server
+          # The variant is in the key: a Vulkan build and a CUDA build of the
+          # same tag are different binaries.
+          key: llama-server-${{ inputs.llama_cpp_tag }}-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build llama-server
+        if: inputs.llama_cpp_tag != '' && steps.llama_server_cache.outputs.cache-hit != 'true'
         shell: bash
         env:
           CMAKE_ARGS: ${{ matrix.cmake_args }}
@@ -179,7 +188,9 @@ jobs:
             exit 1
           fi
           "$exe" --version || true
-          echo "exe=$exe" >> "$GITHUB_OUTPUT"
+          # A fixed path, so the cache above can restore it next time.
+          mkdir -p packaging/llama-server
+          cp "$exe" packaging/llama-server/
 
       # --- build the pack ----------------------------------------------------
 
@@ -220,9 +231,9 @@ jobs:
             extra+=(--extra-index-url "${{ matrix.llama_index }}")
           fi
           bins=()
-          if [ -n "${{ steps.llama_server.outputs.exe }}" ]; then
-            bins+=(--bin "${{ steps.llama_server.outputs.exe }}")
-          fi
+          for f in packaging/llama-server/*; do
+            [ -e "$f" ] && bins+=(--bin "$f")
+          done
           if [ "${{ matrix.variant }}" = "cuda" ]; then
             # The cu12x wheels link against the CUDA runtime but do not ship it;
             # bundle the redistributable runtime DLLs so users need only a driver.
