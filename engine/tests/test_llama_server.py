@@ -340,8 +340,12 @@ async def test_losing_the_port_race_is_retried_rather_than_reported(
     try:
         await proc.start()
         assert proc.alive
-        assert len(ports) == 2 and ports[0] != ports[1]  # retried, elsewhere
-        assert str(ports[1]) in proc.base_url
+        # How many attempts it took is the OS's business — Linux handed out a
+        # second unusable port once — so what is pinned is the behaviour:
+        # it retried, and it ended up somewhere other than the taken port.
+        assert len(ports) >= 2
+        assert str(ports[0]) not in proc.base_url
+        assert str(ports[-1]) in proc.base_url
     finally:
         await proc.stop()
         for sock in held:
