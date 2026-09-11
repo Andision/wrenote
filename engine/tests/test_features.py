@@ -174,3 +174,68 @@ def test_deleting_the_loaded_chat_model_drops_the_backend_first(client):
     r = client.delete("/v1/models/qwen3-4b-instruct-q4")
     assert r.status_code == 200 and r.json()["slots"] == ["chat"]
     assert client.app.state.models.chat_backend is None
+
+
+# ---------- the idle reaper must not collect a model in use ----------
+#
+# ModelManager's own tests prove the lease works. These prove the three
+# consumers actually take one: a missing `async with` passes every unit test
+# and kills the model half way through a real answer.
+
+
+def _idle_client(monkeypatch, tmp_path, idle_unload_s: float):
+    """A client whose chat model is collectable almost immediately."""
+    from fastapi.testclient import TestClient
+
+    import wrenote.core.config as config_mod
+    import wrenote.server as server
+
+    monkeypatch.setattr(config_mod, "USER_CONFIG", tmp_path / "config.yaml")
+    cfg = Config.model_validate({
+        "stt": {"backend": "mock"}, "stt_offline": {"backend": "mock"},
+        "vad": {"backend": "disabled"}, "speaker": {"backend": "disabled"},
+        "translator": {"backend": "mock"},
+        # Slow enough that the reaper gets several chances mid-answer.
+        "chat": {"backend": "mock", "idle_unload_s": idle_unload_s,
+                 "params": {"delay_ms": 60}},
+        "data": {"dir": str(tmp_path), "exports_dir": str(tmp_path / "e")},
+        "compute": {"runtimes_index_url": ""},
+        "update": {"check": False, "index_url": ""},
+    })
+    return TestClient(server.create_app(cfg))
+
+
+def test_a_streamed_answer_holds_the_model_against_the_reaper(monkeypatch, tmp_path):
+    """The stream outlives the handler that started it, so the lease has to
+    live in the generator. Without it the model is collected between tokens
+    and the answer stops mid-sentence."""
+    with _idle_client(monkeypatch, tmp_path, 0.05) as client:
+        _record(client)
+        conv = client.post("/v1/sessions/s1/conversations", json={}).json()["conversation"]
+        r = client.post(
+            f"/v1/sessions/s1/conversations/{conv['id']}/chat", json={"text": "hi"}
+        )
+        assert r.status_code == 200
+        # The mock's canned reply, whole — and no error appended to it.
+        assert "[ERROR]" not in r.text
+        assert r.text.strip().endswith("here.")
+        # It was collectable throughout: the reaper had ~20 chances.
+        assert client.app.state.models._chat_leases == 0
+
+
+def test_the_title_suggestion_holds_the_model_too(monkeypatch, tmp_path):
+    """The other consumer in api/chat.py. Short, so the window is narrow —
+    but a lease that is only on the long path is a lease someone will drop
+    from the short one without noticing."""
+    with _idle_client(monkeypatch, tmp_path, 0.05) as client:
+        _record(client)
+        r = client.post("/v1/sessions/s1/title/suggest")
+        assert r.status_code == 200
+        assert client.app.state.models._chat_leases == 0
+
+
+# The minutes job takes the third lease. It is not covered here: the job runs
+# as a background task over a transcript, so asserting anything about its
+# lease means running a real minutes job, and a test that mimicked the lease
+# by hand would only re-test ModelManager. Left as the one uncovered consumer,
+# said out loud rather than papered over.

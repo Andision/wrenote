@@ -106,32 +106,37 @@ that same question.
       driving `codex` on a user's behalf is the shim author's and the
       user's, not ours.
 
-- [ ] **Unload a model that nobody has used for a while.** Once loaded, the
-      chat model sits in memory for the life of the process — 2.5 GB for a
-      feature most sessions touch once, or never. `ModelManager` only
-      unloads on a model swap, a feature toggle, or shutdown; nothing
-      reclaims it just because an hour went by. The translator is built per
-      session so it goes when the session does, but a long recording holds
-      1.1 GB the whole time either way.
+- [x] **Release a model nobody has used for a while.** `chat.idle_unload_s`,
+      900 by default and 0 to switch off. Measured with a real Qwen3-4B:
+      0 MB → 6984 MB → 0 MB, and the next question reloads in 1.9s because
+      the weights are still in the page cache. Note the 7 GB — the 2.5 GB in
+      this item's first draft was the file, not the resident set with a KV
+      cache and Metal's buffers on top.
 
-      Worth doing *now* specifically because of `llama_server`: with the
-      in-process backend, "unload" hands the weights back to the binding and
-      the memory may or may not return (the deleted `chat/llama_cpp.py` said
-      so in its own comment — choosing a smaller model *raised* usage until
-      the next restart).
-      With a supervised server, unloading is killing a process, and the
-      memory comes back because the OS says so. So an idle timeout is only
-      honest once the thing being timed out is a subprocess.
+      Only chat needed it. The translator is built per session and goes with
+      it, and the jobs that build their own unload in a `finally`.
 
-      What has to be decided: how long (long enough that a second question
-      in the same sitting never pays for a reload, so minutes not seconds);
-      whether a reload is visible to the user or just slower (a
-      `llama-server` start is a process spawn *plus* a model load — seconds
-      to tens of seconds, and the chat panel should say so rather than
-      appearing to hang); and that a recording in progress must never have
-      its translator collected out from under it. `ModelManager` already
-      holds the lock that makes the chat side safe; the translator's owner
-      is the session, so the timer belongs somewhere else for it.
+      Leases, not a bare timer: a streamed answer and a minutes job both keep
+      using the backend long after `ensure_chat_loaded` returned, so each
+      consumer holds one across its whole piece of work. That way "how long
+      can a minutes job take" is not a number the timeout has to exceed.
+
+      Two things the writing turned up. The mock chat backend kept yielding
+      tokens after being unloaded, which a real one cannot — so the test that
+      was supposed to prove the streaming lease passed with the lease removed.
+      The mock now fails mid-stream the way a killed subprocess would, and
+      the test fails without the lease. And `_reap_once` collected even with
+      the timer off, because "elapsed >= 0" is always true; no reaper is
+      started in that case, so only a direct caller could have hit it.
+
+      Left undone: **the chat panel says "thinking…" during a reload.** That
+      is not a lie — the model is getting ready to answer — and at 1.9s it is
+      the right thing to show. On a cold page cache a reload is tens of
+      seconds, and then it reads as a hang. Telling the two apart means the
+      engine saying "loading" before the first token, which `text/plain`
+      streaming has nowhere to put; guessing from elapsed time client-side
+      would be a UI that invents reasons. Worth its own change, with the
+      protocol question decided first.
 
 - [ ] **Editing `build-engine/action.yml` costs 66 minutes of macOS CI.** The
       `llama-server` cache is keyed on that file's hash, so *any* change to it
@@ -556,6 +561,11 @@ Measurements for everything in this section: `docs/plans/TRANSCRIPTION_QUALITY.m
       `desktop.py:136`); a packaged app shows the user nothing and gives them
       nothing to send us. Write to `~/.wrenote/logs/` with rotation and add
       "open log folder" to Settings.
+
+      Newly more annoying: the idle unload logs "releasing the chat model
+      after 912s idle", which is exactly what someone wondering why their
+      second question was slow would want to read, and in a packaged app
+      nobody can.
 - [ ] **`auth.py` module-level token.** Read once at import, as its own
       docstring admits — one auth config per process, and tests have to reload
       the module to change it. Fold into `create_app(config, token)`.

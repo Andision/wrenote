@@ -49,6 +49,12 @@ class MockChat(ChatBackend):
         async def _iter() -> AsyncIterator[str]:
             for word in reply.split():
                 await asyncio.sleep(self._delay_s)
+                # Checked every token, not just at the start: unloading a real
+                # backend kills the subprocess and the HTTP stream with it, so
+                # a mock that keeps yielding afterwards is a mock that hides
+                # exactly the bug the idle reaper could introduce.
+                if not self._loaded:
+                    raise RuntimeError("MockChat was unloaded mid-stream")
                 yield word + " "
 
         return _iter()
