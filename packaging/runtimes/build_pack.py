@@ -14,7 +14,7 @@ Example (Windows runner, Vulkan)::
     set CMAKE_ARGS=-DGGML_VULKAN=on
     set GGML_VULKAN=1
     python packaging/runtimes/build_pack.py --variant vulkan --version 2026.09.02 ^
-        --spec llama-cpp-python==0.3.28 --spec pywhispercpp==1.4.1 --out dist/runtimes
+        --spec pywhispercpp==1.4.1 --bin build\\llama-server.exe --out dist/runtimes
 
 The platform tag and Python version default to the interpreter running this
 script, which must be the same Python minor the frozen engine uses (3.11).
@@ -118,8 +118,8 @@ _DEV_ONLY_SUFFIXES = {".lib", ".a", ".cmake", ".h", ".hpp", ".pc", ".txt", ".exp
 def prune_dev_files(site: Path) -> list[str]:
     """Drop CMake install leftovers that a wheel may put at the site root:
     ``include/`` (headers) and a ``lib/`` that holds only import libs / cmake
-    files. Runtime DLLs live inside the packages (``llama_cpp/lib``), and a
-    ``bin/`` with executables is left alone. Returns what was removed."""
+    files. Runtime DLLs live inside the packages, and a ``bin/`` — which is
+    where `llama-server` rides — is left alone. Returns what was removed."""
     removed: list[str] = []
     inc = site / "include"
     if inc.is_dir():

@@ -11,13 +11,18 @@ accelerated Windows builds:
    every DLL the extension depends on and aborts when one is missing. On a
    GPU-less runner ``nvcuda.dll`` (the NVIDIA driver) doesn't exist, and we
    don't want the CUDA runtime or ``vulkan-1.dll`` vendored either: the pack
-   ships the CUDA runtime once in ``bin/`` for both llama.cpp and whisper.cpp,
-   and the Vulkan loader belongs to the user's driver.
+   ships the CUDA runtime once in ``bin/`` for whisper.cpp and `llama-server`
+   alike, and the Vulkan loader belongs to the user's driver.
 
 So: fall back to ``bin/`` when ``bin/<Config>`` is absent, and call delvewheel
 directly with ``--exclude`` taken from ``WRENOTE_DELVEWHEEL_EXCLUDE``
-(':'-delimited). Name-mangling stays on — whisper.cpp's ggml DLLs must not
-collide with llama_cpp's copies in the same process.
+(':'-delimited).
+
+Name-mangling stays on, though its original reason is gone: whisper.cpp's ggml
+DLLs used to share a process with llama-cpp-python's copies, and now nothing
+else in the process has any. It is left alone rather than tidied because
+changing it means a 40-minute Windows pack build to find out, and the cost of
+leaving it is a longer DLL name.
 
 Usage: patch_pywhispercpp.py <extracted-sdist-dir>
 """

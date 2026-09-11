@@ -29,9 +29,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Native, platform-specific ML/runtime deps (pywhispercpp, llama-cpp-python,
-# torch for offline diarization) are pinned per-platform for packaging; see the
-# per-OS requirements files. They are intentionally not listed here.
+# Native, platform-specific ML/runtime deps (pywhispercpp, torch for offline
+# diarization) are pinned per-platform for packaging. Language models need no
+# binding at all: they run in a `llama-server` subprocess. Intentionally not
+# listed here.
 desktop = [
     "pywebview>=5",
 ]

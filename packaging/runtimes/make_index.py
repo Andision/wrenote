@@ -7,7 +7,7 @@ Scans a directory of ``wrenote-runtime-*.zip`` files (built by
     {"schema": 1, "generated_at": "...", "packs": [
       {"variant": "vulkan", "platform_tag": "win32-x86_64", "python": "3.11",
        "version": "2026.09.02", "url": "<base>/wrenote-runtime-vulkan-win32-x86_64-py3.11.zip",
-       "sha256": "…", "size": 123456789, "modules": ["llama_cpp", "pywhispercpp"]}
+       "sha256": "…", "size": 123456789, "modules": ["pywhispercpp"]}
     ]}
 
 ``--base-url`` is where the zips will be served from (a GitHub release's

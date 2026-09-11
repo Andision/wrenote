@@ -1,6 +1,6 @@
 """Compute runtime packs: probe → select → ensure → activate.
 
-The engine's native inference bindings (llama-cpp-python, pywhispercpp) are
+The engine's native inference binding (pywhispercpp) is
 compiled per accelerator: CUDA, Vulkan, Metal, plain CPU. Shipping one
 installer per combination doesn't scale, and shipping *all* of them makes every
 user download hundreds of MB of DLLs they can't use. So the app bundle carries

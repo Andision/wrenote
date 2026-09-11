@@ -116,8 +116,9 @@ that same question.
 
       Worth doing *now* specifically because of `llama_server`: with the
       in-process backend, "unload" hands the weights back to the binding and
-      the memory may or may not return (`chat/llama_cpp.py` says so in its
-      own comment — choosing a smaller model *raised* usage until restart).
+      the memory may or may not return (the deleted `chat/llama_cpp.py` said
+      so in its own comment — choosing a smaller model *raised* usage until
+      the next restart).
       With a supervised server, unloading is killing a process, and the
       memory comes back because the OS says so. So an idle timeout is only
       honest once the thing being timed out is a subprocess.
