@@ -146,3 +146,31 @@ describe("PreFlight audio source", () => {
     expect(await screen.findByText(/zoom.us isn't running/)).toBeTruthy();
   });
 });
+
+// The claim above the record button is the last thing a person reads before
+// the microphone opens, so it has to be true of the engine that is actually
+// running — including one configured to send transcript text elsewhere.
+describe("PreFlight privacy line", () => {
+  beforeEach(() => {
+    vi.mocked(capture.listCaptureTargets).mockResolvedValue({
+      displays: [], windows: [], audio_scope: false,
+    });
+    useSessionStore.setState({ remoteSlots: [] });
+  });
+
+  it("says everything is local when nothing is configured remotely", () => {
+    show();
+    expect(screen.getByText(/no audio leaves your device/)).toBeTruthy();
+  });
+
+  it("names the features whose text is sent away when one is remote", () => {
+    useSessionStore.setState({ remoteSlots: ["chat", "translator"] });
+    show();
+    const line = screen.getByText(/goes to the model endpoint/);
+    expect(line.textContent).toContain("Chat");
+    expect(line.textContent).toContain("Translation");
+    // Audio still never leaves: speech recognition stays in the engine.
+    expect(line.textContent).toContain("Audio stays on your device");
+    expect(screen.queryByText(/no audio leaves your device/)).toBeNull();
+  });
+});

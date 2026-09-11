@@ -157,9 +157,57 @@ backend. Only the third was ever in the right place.
   The catalogue's `note_code` sentence is the row's tooltip. A paragraph per
   model helped neither the reader who knows the models nor the one who doesn't.
 * Adding a *backend* needs no new machinery: `core/registry.py` is already a
-  factory, and a remote provider registers into it like a local one. A local
-  CLI agent (`claude`, `codex`) would register the same way — investigated in
-  `docs/plans/CLI_AGENT_BACKENDS.md`, and blocked on the privacy claim.
+  factory, and a remote provider registers into it like a local one. That is
+  now demonstrated rather than asserted — `openai_compatible` (chat and
+  translator) reaches a model over `POST /v1/chat/completions` and downloads
+  nothing, so a hosted API, a `llama-server` the user runs, and a shim in
+  front of an agent CLI are one backend and one `base_url` apart. The
+  destination is `docs/plans/LLM_OUT_OF_PROCESS.md`, whose step 1 this is.
+* **A local model can run in a subprocess.** `backend: llama_server` gives a
+  slot the same catalogue model, started as its own `llama-server` on loopback
+  with a random `--api-key` and reached over the same HTTP client as a hosted
+  API — so a llama.cpp segfault kills a subprocess rather than the recording,
+  and releasing weights is a process exiting rather than a binding's opinion.
+  `catalogue.backend_can_run` lets it run entries catalogued for `llama_cpp`,
+  because it is the same GGUF and cataloguing each model twice would ask the
+  user a question with no meaningful answer.
+* **The binary lives wherever that accelerator's native code already lives.**
+  A downloadable pack carries it in `bin/`; the *built-in* accelerator (Metal
+  on macOS arm64, which has no pack) carries it in the app bundle beside
+  ffmpeg. Neither needed new plumbing: `activate` already puts a pack's `bin/`
+  on the PATH for CUDA's DLLs, and `run_server` already prepends `_MEIPASS`
+  for ffmpeg's, so one `shutil.which("llama-server")` covers both. Unpacking
+  restores the executable bit, which `ZipFile.extractall` drops — harmless
+  while `bin/` held only libraries, fatal for something you exec.
+* **Nothing may leak a 2.5 GB process, and a pid is not evidence.** Each
+  managed server records its pid, port and token under `data.dir`; every
+  engine start reclaims what it finds there — after asking the recorded port
+  for `/health` with the recorded token. Pids are reused, so a process that
+  cannot prove it is ours is left alone. The check runs whatever backend is
+  configured now: the run that leaked one is the run that had already stopped
+  using it.
+* **A slot's model is a file or a URL, and they are two config fields.**
+  `params` is the local backend's tuning (`n_ctx`, `n_gpu_layers`);
+  `endpoint` is `base_url` and what goes with it. `catalogue.resolve()`
+  expands whichever the configured backend needs into the constructor
+  arguments, so the registry factory still takes one dict and neither field
+  ever reaches a backend that would refuse it. Keeping both means switching
+  a slot between a downloaded model and an endpoint remembers each.
+* **Settings → Models configures the endpoint**, in the same section as that
+  slot's downloadable models, because it is the same question. Two rules the
+  panel follows: the API key is write-only (the engine reports `has_api_key`
+  and never the key, so an omitted field means "leave it"), and "Test
+  connection" tests what is *stored* rather than what is typed — which is why
+  it is disabled while the form is dirty.
+* **The privacy claim is loopback, not "local build".** `remote_slots()`
+  (`core/openai_compat.py`) reads the running config: a `base_url` on
+  127.0.0.1 is local inference and the app says so unchanged; anything else
+  and the pre-flight screen names the features whose text is sent away.
+  Audio never leaves in either case — speech recognition stays embedded, for
+  the reasons in that plan — so the claim it makes is about transcript text,
+  and says so. `GET /v1/models/status` carries the fact, the client owns the
+  wording, and `GET /v1/info` redacts credentials because it hands the merged
+  config to the client.
 
 ## Compute runtimes (`engine/wrenote/core/runtimes.py`)
 

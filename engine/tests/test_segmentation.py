@@ -10,7 +10,7 @@ import numpy as np
 from wrenote.core.segmentation import context_tail, find_cut_point
 from wrenote.core.translation import context_before
 from wrenote.stt.whisper_cpp import compose_prompt
-from wrenote.translator.llama_cpp import LlamaCppTranslator
+from wrenote.translator.prompt import build_prompt
 
 RATE = 16000
 
@@ -100,17 +100,25 @@ class TestContextBefore:
         assert context_before(["a", "b"], 1, n=0) == []
 
 
-class TestLlamaPrompt:
+class TestTranslationPrompt:
+    """One prompt, shared by every backend that builds one (llama.cpp and the
+    HTTP one) — which is why it is tested as the function it now is."""
+
     def test_context_is_marked_and_the_last_block_is_the_text(self):
-        tr = LlamaCppTranslator(model_path="/nonexistent.gguf")
-        prompt = tr._build_prompt("It broke again.", src="en", tgt="zh", context=["The build was red."])
+        prompt = build_prompt(
+            "It broke again.", src="en", tgt="zh", context=["The build was red."]
+        )
         assert "Context" in prompt
         assert "do not translate" in prompt
         assert prompt.index("The build was red.") < prompt.index("It broke again.")
         assert prompt.rstrip().endswith("It broke again.")
 
     def test_no_context_keeps_the_plain_prompt(self):
-        tr = LlamaCppTranslator(model_path="/nonexistent.gguf")
-        prompt = tr._build_prompt("Hi", src="en", tgt="zh")
+        prompt = build_prompt("Hi", src="en", tgt="zh")
         assert "Context" not in prompt
+        assert prompt.endswith("\n\nHi")
+
+    def test_the_glossary_rides_in_the_instruction(self):
+        prompt = build_prompt("Hi", src="en", tgt="zh", glossary_text="Use: A=B.")
+        assert "Use: A=B." in prompt
         assert prompt.endswith("\n\nHi")

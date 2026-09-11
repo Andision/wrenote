@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { EndpointCard } from "@/components/EndpointCard";
 import { ModelPicker } from "@/components/ModelPicker";
 import { kindReason } from "@/lib/modelText";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,8 @@ import { useT } from "@/i18n";
 import { formatEta, subscribeJob } from "@/lib/jobs";
 import { confirmDialog } from "@/lib/confirm";
 import {
+  type EndpointPatch,
+  type EndpointSlot,
   type ModelKind,
   type ModelOption,
   type ModelStatus,
@@ -21,9 +24,11 @@ import {
   OPTIONAL_FEATURES,
   deleteModel,
   getModelStatus,
+  saveEndpoint,
   selectModel,
   setFeatures,
   startModelDownload,
+  testEndpoint,
 } from "@/lib/models";
 import { Switch } from "@/components/ui/switch";
 import { useSessionStore } from "@/store/sessionStore";
@@ -35,6 +40,11 @@ export function ModelsPanel() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ fraction: number; eta: number | null } | null>(null);
   const [nextSession, setNextSession] = useState(false);
+  /** Which slot's endpoint form is expanded. Held here rather than in the card
+   *  because the card is remounted whenever the engine's answer changes (see
+   *  its `key` below), and a form that collapsed itself on save would be a
+   *  strange thing to watch happen. */
+  const [openEndpoint, setOpenEndpoint] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -128,6 +138,28 @@ export function ModelsPanel() {
     [refresh, t],
   );
 
+  const setRemoteSlots = useSessionStore((s) => s.setRemoteSlots);
+
+  /** Save one slot's HTTP endpoint. The privacy line on the recording screen
+   *  reads the store, so it has to learn about this without a reload. */
+  const storeEndpoint = useCallback(
+    async (kind: EndpointSlot, patch: EndpointPatch) => {
+      setBusy(true);
+      setError("");
+      try {
+        const res = await saveEndpoint(kind, patch);
+        setRemoteSlots(res.remote);
+        if (res.applies === "next_session") setNextSession(true);
+        await refresh();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : t("models.selectFailed"));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refresh, setRemoteSlots, t],
+  );
+
   const download = useCallback(() => {
     setError("");
     setProgress({ fraction: 0, eta: null });
@@ -184,6 +216,9 @@ export function ModelsPanel() {
       {status.options.map((kind) => {
         const feature = featureFor(kind.kind);
         const on = feature === null || status.features[feature];
+        // Absent for a slot that cannot be pointed at a URL (speech
+        // recognition); the engine decides which those are.
+        const endpoint = status.endpoints[kind.kind];
         return (
           <section key={kind.kind} className="space-y-2">
             <div className="flex items-baseline justify-between gap-2">
@@ -205,12 +240,32 @@ export function ModelsPanel() {
               )}
             </div>
             {on && (
-              <ModelPicker
-                kind={kind}
-                busy={busy}
-                onPick={(id) => void choose(kind.kind, id)}
-                onDelete={(o) => void remove(o)}
-              />
+              <>
+                <ModelPicker
+                  kind={kind}
+                  busy={busy}
+                  onPick={(id) => void choose(kind.kind, id)}
+                  onDelete={(o) => void remove(o)}
+                />
+                {/* The other way to answer this slot. Same section as the
+                    downloadable models, because it is the same question. */}
+                {endpoint && (
+                  <EndpointCard
+                    // Keyed on what the engine says, so the fields reset by
+                    // remounting instead of being written back from an effect
+                    // — the shape that goes stale (see ARCHITECTURE.md on the
+                    // eslint clean-up).
+                    key={`${kind.kind}:${endpoint.base_url}:${endpoint.model}:${endpoint.api_key_env}:${String(endpoint.has_api_key)}`}
+                    slot={kind.kind as EndpointSlot}
+                    status={endpoint}
+                    busy={busy}
+                    open={openEndpoint === kind.kind}
+                    onOpenChange={(v) => setOpenEndpoint(v ? kind.kind : null)}
+                    onSave={(patch) => storeEndpoint(kind.kind as EndpointSlot, patch)}
+                    onTest={() => testEndpoint(kind.kind as EndpointSlot)}
+                  />
+                )}
+              </>
             )}
           </section>
         );

@@ -22,6 +22,10 @@ dependencies = [
     # CA bundle for HTTPS model downloads — the frozen app has no system certs,
     # so we point urllib at certifi's bundle (see core/models._ssl_context).
     "certifi",
+    # The chat/translator HTTP backends (core/openai_compat.py). Async, and it
+    # streams a response without reading it, which urllib does not. Was a dev
+    # dependency (starlette's TestClient needs one); it is a runtime one now.
+    "httpx2>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -38,10 +42,6 @@ streaming = [
 ]
 dev = [
     "pytest>=8.0",
-    # fastapi.testclient -> starlette.testclient, which needs an HTTP client it
-    # doesn't depend on itself. Undeclared until CI ran on a clean environment
-    # and found the whole suite unable to import its conftest.
-    "httpx2>=2.0",
     "pytest-asyncio>=0.24",
     "pytest-timeout>=2.3",
     # Pinned, not floating: a lint gate whose rule set changes under you is

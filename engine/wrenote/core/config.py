@@ -39,12 +39,49 @@ class ServerConfig(BaseModel):
     log_level: str = "info"
 
 
+class EndpointConfig(BaseModel):
+    """Where a slot reaches a model over HTTP (``backend: openai_compatible``).
+
+    Kept out of ``params`` on purpose. ``params`` is the *local* backend's
+    tuning — ``n_ctx``, ``n_gpu_layers`` — and one dict holding both meant that
+    configuring an endpoint and then choosing a local model again handed
+    ``base_url`` to ``LlamaCppChat.__init__`` as an unexpected keyword. Two
+    fields, so switching back and forth remembers both and mixes neither.
+
+    ``api_key_env`` names an environment variable read at request time: the way
+    to use a hosted API without the key living in ``~/.wrenote/config.yaml``.
+    See :mod:`wrenote.core.openai_compat`.
+    """
+
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""
+    api_key_env: str = ""
+    headers: dict[str, str] = Field(default_factory=dict)
+    extra_body: dict[str, Any] = Field(default_factory=dict)
+    timeout_s: float = 120.0
+    #: Translator only — how many translations may be in flight at once. 1
+    #: matches the in-process backend, which serialises on one worker thread.
+    max_concurrency: int = 1
+
+    @property
+    def configured(self) -> bool:
+        """Whether there is an endpoint here at all. A slot switched to an HTTP
+        backend with no ``base_url`` is a half-finished setting, not a usable
+        one, and every caller has to be able to tell."""
+        return bool(self.base_url.strip())
+
+
 class BackendConfig(BaseModel):
     """One pluggable backend: which implementation, which model, what tuning.
 
     ``model`` names an entry in the catalogue (``engine/models.yaml``); the file
     paths it implies are merged into ``params`` at resolution time. An explicit
     ``params.model_path`` overrides it — see :mod:`wrenote.core.catalogue`.
+
+    ``endpoint`` is the other way to answer "which model": not a file on disk
+    but a URL. It is only read when ``backend`` is an HTTP one, and survives
+    switching away and back — see :class:`EndpointConfig`.
 
     ``enabled`` is the user saying they don't want this feature at all: the
     slot then needs no download (the default set is 4.3 GB, and chat alone is
@@ -58,6 +95,7 @@ class BackendConfig(BaseModel):
     model: str | None = None
     enabled: bool = True
     params: dict[str, Any] = Field(default_factory=dict)
+    endpoint: EndpointConfig = Field(default_factory=EndpointConfig)
 
 
 class SessionConfig(BaseModel):
@@ -244,6 +282,17 @@ class Config(BaseSettings):
         )
         return self
 
+    def redacted_dump(self) -> dict[str, Any]:
+        """``model_dump()`` with any secret masked.
+
+        ``GET /v1/info`` hands the merged config to the client, and Settings →
+        Developer is the first thing a person copies into a bug report. Once a
+        backend can carry an API key (``chat.params.api_key``, see
+        :mod:`wrenote.core.openai_compat`) that dump is a place a key can leak
+        from, so it never leaves this process in the clear.
+        """
+        return _redact(self.model_dump())
+
     def paths(self) -> dict[str, str]:
         """The resolved locations, for ``/v1/info`` and logs."""
         return {
@@ -267,6 +316,28 @@ class Config(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         # Env vars take precedence over the YAML we pass via init kwargs.
         return (env_settings, init_settings, dotenv_settings, file_secret_settings)
+
+
+#: Config keys whose value is a credential. Matched exactly, so ``api_key_env``
+#: — the *name* of an environment variable, and useless on its own — still
+#: shows: hiding it would leave the user unable to see which variable is read.
+SECRET_KEYS = frozenset({"api_key", "token", "secret", "password", "authorization"})
+
+REDACTED = "***"
+
+
+def _redact(obj: Any) -> Any:
+    """Walk a config dump, masking the value of every :data:`SECRET_KEYS` key
+    that actually has one. An empty value stays empty — "not set" and "set to
+    something I'm not showing you" are different answers."""
+    if isinstance(obj, dict):
+        return {
+            k: (REDACTED if (str(k).lower() in SECRET_KEYS and v) else _redact(v))
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact(v) for v in obj]
+    return obj
 
 
 # ---------- Loader ----------

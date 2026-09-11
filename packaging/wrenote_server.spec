@@ -60,6 +60,17 @@ ffmpeg = _bundled_ffmpeg()
 if ffmpeg:
     binaries += [(ffmpeg, ".")]  # next to the executable; launcher adds that dir to PATH
 
+# `llama-server` for the built-in accelerator, when CI built one (see
+# .github/actions/build-engine). The platforms that get a downloadable runtime
+# pack take it from the pack's bin/ instead; macOS arm64 has no pack, because
+# Metal is built in, so for it this is the only route. Next to the executable,
+# like ffmpeg — run_server puts that directory on the PATH.
+llama_server = os.path.join(
+    SPECPATH, "llama-server", "llama-server.exe" if IS_WIN else "llama-server"  # noqa: F821
+)
+if os.path.exists(llama_server):
+    binaries += [(llama_server, ".")]
+
 if IS_MAC:
     syscap = os.path.join(SPECPATH, "macos", "syscap")  # noqa: F821
     if os.path.exists(syscap):
@@ -91,6 +102,10 @@ datas += collect_data_files("llama_cpp")
 hiddenimports = [m for m in collect_submodules("wrenote") if m != "wrenote.desktop"]
 hiddenimports += collect_submodules("uvicorn")
 hiddenimports += ["wrenote.server", "wrenote.run_server"]
+# httpx2 reaches its TLS roots through `truststore`, and only from inside a
+# function — the kind of import a frozen build is most likely to miss. Without
+# it every HTTPS request from the openai_compatible backends fails at load.
+hiddenimports += ["truststore"]
 if IS_WIN:
     hiddenimports += collect_submodules("soundcard")  # WASAPI loopback (system audio)
     datas += collect_data_files("soundcard")  # soundcard's cffi .py.h cdef files

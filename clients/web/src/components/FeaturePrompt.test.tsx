@@ -35,6 +35,8 @@ describe("FeaturePrompt", () => {
       models: [],
       all_present: true,
       selected: {},
+      remote: [],
+      endpoints: {},
       features: { translator: true, chat: true, speaker: true },
       options: [
         {

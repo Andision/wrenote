@@ -563,3 +563,62 @@ def test_prune_keeps_lib_with_runtime_dlls(tmp_path):
     (site / "lib" / "ggml.dll").write_bytes(b"")
     assert build_pack.prune_dev_files(site) == []
     assert (site / "lib" / "ggml.dll").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the executable bit is a POSIX concept")
+def test_an_executable_in_a_pack_is_still_executable_after_install(
+    tmp_path, tmp_path_factory, fake_dist
+):
+    """`bin/` held only shared libraries until `llama-server` moved in, and
+    `ZipFile.extractall` drops the mode bits — so the binary arrived 0644 and
+    the engine could not exec it. See runtimes._restore_bin_permissions."""
+    exe = tmp_path / "llama-server"
+    exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    exe.chmod(0o755)
+
+    out = tmp_path_factory.mktemp("release-with-bin")
+    build_pack.build(
+        variant="vulkan", version="test.2", specs=[str(fake_dist)], out_dir=out,
+        bins=[exe], python=sys.executable,
+    )
+    archive = next(iter(out.glob("wrenote-runtime-*.zip")))
+    index = make_index.make_index([archive], out.as_uri())
+    (out / "runtimes.json").write_text(json.dumps(index))
+
+    mgr = _mgr(tmp_path, (out / "runtimes.json").as_uri())
+    pack = mgr.ensure("vulkan")
+    installed = pack.path / "bin" / "llama-server"
+    assert installed.exists()
+    assert os.access(installed, os.X_OK), "the pack's binary came out unrunnable"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the executable bit is a POSIX concept")
+def test_activating_a_pack_puts_its_bin_on_the_path(tmp_path, tmp_path_factory, fake_dist):
+    """Which is how `llama_server` finds a per-accelerator binary without
+    knowing anything about packs: `activate` already puts `bin/` on PATH for
+    CUDA's DLLs, and `shutil.which` does the rest."""
+    exe = tmp_path / "llama-server"
+    exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    exe.chmod(0o755)
+
+    out = tmp_path_factory.mktemp("release-on-path")
+    build_pack.build(
+        variant="vulkan", version="test.3", specs=[str(fake_dist)], out_dir=out,
+        bins=[exe], python=sys.executable,
+    )
+    archive = next(iter(out.glob("wrenote-runtime-*.zip")))
+    (out / "runtimes.json").write_text(
+        json.dumps(make_index.make_index([archive], out.as_uri()))
+    )
+
+    mgr = _mgr(tmp_path, (out / "runtimes.json").as_uri(), accelerator="vulkan")
+    mgr.ensure("vulkan")
+    mgr.activate()
+    try:
+        from wrenote.core.llama_server import find_binary
+
+        found = find_binary("")
+        assert found is not None and found.parent.name == "bin"
+        assert found.parent.parent.name == "vulkan"
+    finally:
+        mgr.deactivate()

@@ -68,12 +68,59 @@ export interface KindOptions {
   options: ModelOption[];
 }
 
+/** The slots that can be answered by a model over HTTP instead of one on
+ *  disk. Speech recognition is not one and is not going to be — the live path
+ *  is coupled to the VAD and to partials, so it is not request/response. The
+ *  engine is the authority (`status.endpoints` has a key per slot); this is
+ *  only for typing. */
+export type EndpointSlot = "translator" | "chat";
+
+/** One slot's HTTP endpoint, as the engine reports it.
+ *
+ *  The API key is never in here — only `has_api_key`. The form shows "saved"
+ *  rather than round-tripping a secret through the browser every time the
+ *  settings panel opens. */
+export interface EndpointStatus {
+  /** The slot is currently answered over HTTP (as opposed to merely having an
+   *  endpoint on record from last time). */
+  active: boolean;
+  base_url: string;
+  model: string;
+  has_api_key: boolean;
+  api_key_env: string;
+  timeout_s: number;
+  /** There is a `base_url` at all. `active` without this is a half-set slot. */
+  configured: boolean;
+  /** The endpoint is on loopback, so this is still local inference and the
+   *  privacy claim is unchanged. The engine decides it — the loopback rule
+   *  lives in one place, not two. */
+  local: boolean;
+}
+
+/** What to send to `saveEndpoint`. Every field is optional and an omitted one
+ *  keeps its stored value; that is what lets the form save without knowing the
+ *  API key. `api_key: ""` explicitly clears it. */
+export interface EndpointPatch {
+  base_url?: string;
+  model?: string;
+  api_key?: string;
+  api_key_env?: string;
+  active?: boolean;
+}
+
 export interface ModelStatus {
   models: ModelStatusItem[];
   all_present: boolean;
   options: KindOptions[];
   selected: Record<string, string | null>;
   features: Features;
+  /** Slots configured to reach a model over HTTP somewhere that is not this
+   *  machine (`backend: openai_compatible` with a non-loopback `base_url`).
+   *  Empty is the normal case, and the one "nothing leaves your device" is
+   *  about — a model server on 127.0.0.1 is still local inference. */
+  remote: ModelKind[];
+  /** Per slot that can be pointed at a URL. A slot absent from here cannot be. */
+  endpoints: Record<string, EndpointStatus>;
 }
 
 export async function getModelStatus(): Promise<ModelStatus> {
@@ -160,4 +207,61 @@ export async function startModelDownload(): Promise<{
     throw new Error(`download failed (${res.status}): ${text}`);
   }
   return (await res.json()) as { job_id: string | null; all_present: boolean };
+}
+
+/** Point a slot at a model served over HTTP, or (`active: false`) put it back
+ *  on a local model — which keeps the endpoint on record, so turning it on
+ *  again is one click rather than re-typing a URL and a key. */
+export async function saveEndpoint(
+  kind: EndpointSlot,
+  patch: EndpointPatch,
+): Promise<{
+  applies: "now" | "next_session";
+  endpoint: EndpointStatus;
+  remote: ModelKind[];
+}> {
+  const res = await fetch(`${BASE}/models/endpoint`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ kind, ...patch }),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (body.detail) detail = body.detail;
+    } catch {
+      /* not JSON */
+    }
+    throw new Error(detail);
+  }
+  return (await res.json()) as {
+    applies: "now" | "next_session";
+    endpoint: EndpointStatus;
+    remote: ModelKind[];
+  };
+}
+
+/** Ask the saved endpoint one tiny question. Tests what is stored, not what is
+ *  typed — the key may only exist server-side — so save first, then test.
+ *  A failed test comes back as `ok: false`, not as a thrown error: it is the
+ *  answer the user asked for. */
+export async function testEndpoint(
+  kind: EndpointSlot,
+): Promise<{ ok: boolean; url: string; reply?: string; error?: string }> {
+  const res = await fetch(`${BASE}/models/endpoint/test`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ kind }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`endpoint test failed (${res.status}): ${text}`);
+  }
+  return (await res.json()) as {
+    ok: boolean;
+    url: string;
+    reply?: string;
+    error?: string;
+  };
 }

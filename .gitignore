@@ -62,3 +62,7 @@ miscs/
 
 # ---- Local-only stash: docs, samples, scripts not (yet) published ----
 .local/
+
+# Built by CI (.github/actions/build-engine) and picked up by packaging/*.spec;
+# a binary, never committed.
+packaging/llama-server/

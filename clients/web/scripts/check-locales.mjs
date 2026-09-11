@@ -41,6 +41,7 @@ const DYNAMIC_PREFIXES = [
   // pinned key-by-key in src/i18n/runtimeKeys.test.ts so a missing one fails.
   "setup.feature.",
   "models.tier.",
+  "models.endpoint.applies.", // one per slot that can have an endpoint
   "session.status.",  // session.status.${status} (TopBar's pill, the sidebar badge)
   "topbar.refine.jobLabel", // lib/jobText.ts: the key comes from a per-kind table
 ];

@@ -78,6 +78,7 @@ export function SetupGate() {
   const setupRequest = useSessionStore((s) => s.setupRequest);
   const closeSetup = useSessionStore((s) => s.closeSetup);
   const setFeatureState = useSessionStore((s) => s.setFeatureState);
+  const setRemoteSlots = useSessionStore((s) => s.setRemoteSlots);
 
   // The feature switches, edited locally and sent on Continue: a half-made
   // choice should not change what the rest of the app offers.
@@ -119,6 +120,7 @@ export function SetupGate() {
         const st = await getModelStatus();
         if (!alive) return;
         setFeatureState(st.features);
+        setRemoteSlots(st.remote);
         if (st.all_present && !requested) {
           setDone(true);
           return;
@@ -157,7 +159,7 @@ export function SetupGate() {
     return () => {
       alive = false;
     };
-  }, [requested, focus, setFeatureState]);
+  }, [requested, focus, setFeatureState, setRemoteSlots]);
 
   /** Send the feature switches, then re-read what that leaves to download. */
   const confirmFeatures = useCallback(async () => {

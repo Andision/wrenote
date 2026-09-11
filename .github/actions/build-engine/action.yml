@@ -17,6 +17,16 @@ inputs:
     description: Node version for the web client build
     required: false
     default: "20"
+  llama_cpp_tag:
+    description: >-
+      llama.cpp tag to build `llama-server` from, for the platform whose
+      accelerator is built in (macOS arm64 / Metal) and therefore has no
+      downloadable runtime pack to carry it. Empty = don't ship one, which is
+      the pre-existing behaviour. Match the llama.cpp vendored by the
+      llama-cpp-python pinned below, or the supervised backend and the
+      in-process one are different llama.cpps.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -59,6 +69,42 @@ runs:
       if: runner.os == 'Windows'
       shell: bash
       run: pip install pythonnet soundcard
+
+    # The binary `backend: llama_server` runs (engine/wrenote/core/llama_server.py).
+    # Windows gets its per-accelerator copy from the runtime pack
+    # (build-runtimes.yml); the built-in accelerator has no pack, so it goes in
+    # the bundle — packaging/*.spec picks it up from packaging/llama-server/.
+    #
+    # NOT YET RUN IN CI. Written from the same flags build-runtimes.yml uses;
+    # the first dispatch with a tag is the test.
+    - name: Build llama-server for the built-in runtime
+      if: inputs.llama_cpp_tag != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        git clone --depth 1 --branch "${{ inputs.llama_cpp_tag }}" \
+          https://github.com/ggml-org/llama.cpp "$RUNNER_TEMP/llama.cpp"
+        # Metal on macOS arm64 is llama.cpp's default there; elsewhere this is
+        # the portable CPU build, which is what those platforms ship built in.
+        cmake -S "$RUNNER_TEMP/llama.cpp" -B "$RUNNER_TEMP/llama.cpp/build" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DLLAMA_BUILD_SERVER=ON \
+          -DLLAMA_BUILD_TESTS=OFF \
+          -DLLAMA_BUILD_EXAMPLES=OFF \
+          -DLLAMA_CURL=OFF
+        cmake --build "$RUNNER_TEMP/llama.cpp/build" --config Release \
+          --target llama-server --parallel
+        exe="$(find "$RUNNER_TEMP/llama.cpp/build" -name 'llama-server*' -type f \
+                 \( -name '*.exe' -o ! -name '*.*' \) | head -n1)"
+        if [ -z "$exe" ]; then
+          echo "llama-server was not produced" >&2
+          exit 1
+        fi
+        mkdir -p packaging/llama-server
+        cp "$exe" packaging/llama-server/
+        chmod +x packaging/llama-server/*
+        "$exe" --version || true
 
     - name: Smoke-import engine + verify the committed API contract
       shell: bash

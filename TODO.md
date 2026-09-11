@@ -68,28 +68,84 @@ that same question.
       optional: the app is a transcriber. Not measured: whether skipping the
       chat model actually shortens a first run enough to notice, on a real
       connection.
-- [ ] **An `openai_compatible` chat/translator backend, and then no
-      in-process LLM at all** — the plan is `docs/plans/LLM_OUT_OF_PROCESS.md`.
-      The engine stops loading language models itself and speaks HTTP to
-      whatever answers, including a `llama-server` it starts and supervises
-      for the local case, so a local model and a remote one stop being two
-      different things. The strongest reason is crash isolation: a
-      llama.cpp segfault today takes the engine down, and the likeliest
-      moment for it is mid-recording. Speech recognition stays embedded.
-      Three shippable steps in that doc; step 1 is this adapter, which is
-      needed either way. Strictly opt-in for anything remote, and the
-      privacy claim in the UI must change when it is on.
-- [ ] ~~A local `claude` / `codex` CLI as the chat backend~~ — **folded into
-      the item above.** Second pass (`docs/plans/CLI_AGENT_BACKENDS.md` §0)
+- [ ] **No in-process LLM at all** — the plan is
+      `docs/plans/LLM_OUT_OF_PROCESS.md`, and **two of its three steps are
+      done**. Step 1: `backend: openai_compatible` for chat and the
+      translator, one HTTP client (`core/openai_compat.py`) behind both,
+      serving a hosted API, a user-run `llama-server` and a CLI shim alike
+      — which also closes the item below. Step 2: `backend: llama_server`,
+      where the engine spawns and supervises its own, so a llama.cpp
+      segfault kills a subprocess instead of the recording. The translation
+      prompt moved to `translator/prompt.py` and both backends ask the
+      identical question, which is what makes step 3 a deletion rather
+      than a rewrite.
+
+      Where the binary comes from is settled: **the compute runtime pack
+      ships it**. Our own CI already builds that pack's native code per
+      accelerator and publishes it to our own release, so the trust chain
+      does not change, and `activate` already puts the pack's `bin/` on the
+      PATH for CUDA's DLLs — so the engine needed no pack-aware plumbing at
+      all. Two things fell out: `ZipFile.extractall` drops the mode bits (a
+      binary arrived 0644 and could not be exec'd — unpacking restores the
+      executable bit now), and the pack carries the same llama.cpp twice
+      until step 3 removes the Python binding.
+
+      Step 3 — deleting `chat/llama_cpp.py` and `translator/llama_cpp.py`
+      — is what's left, and it is now mechanical: **build a pack with a
+      `llama-server` in it** (the workflow step exists behind the
+      `llama_cpp_tag` dispatch input, off by default, and has never run on a
+      real runner — pinning a tag that matches the vendored llama.cpp is the
+      one judgement call), run it against real weights on macOS, Windows and
+      Linux, then make `llama_server` the default. `llama_cpp` stays the
+      default until then. Speech recognition stays embedded throughout.
+
+      Not leaking a 2.5 GB process is the part that took the care: each
+      server records its pid, port and token, and the next engine start
+      reclaims what it finds — but only after the recorded port answers
+      `/health` with the recorded token, because pids get reused and
+      killing a stranger's process because we crashed is worse than
+      leaking one.
+
+      The privacy rule turned out to be **loopback**, not "remote is on":
+      `remote_slots()` treats a `base_url` on 127.0.0.1 as local inference
+      and everything else as off-machine, `GET /v1/models/status` reports
+      it, and the pre-flight screen names the features whose text is sent.
+      Audio never leaves either way — only transcript text does — and the
+      wording says exactly that. `GET /v1/info` now redacts credentials,
+      since it hands the merged config to the client and that config can
+      hold an API key.
+
+      Settings → Models configures it now, rather than only the config
+      file: an address, a model, a key, and a "Test connection" — the
+      probe `load()` deliberately doesn't do, put where it is worth a
+      round trip, which is the moment someone presses Save. The switch
+      sits with that slot's downloadable models because it is the same
+      choice, and switching back keeps the endpoint on record. The key is
+      write-only: the engine reports `has_api_key` and never the key, so
+      the form says "saved" and an omitted field means "leave it".
+
+      Writing that UI turned up the design mistake underneath: the
+      endpoint was living in `params`, which is the *local* backend's
+      tuning, so configuring an endpoint and then picking a local model
+      again handed `base_url` to `LlamaCppChat.__init__` and it refused
+      to build. `BackendConfig.endpoint` is its own section now; `resolve()`
+      expands it for an HTTP backend the same way it expands a catalogue
+      entry's `model_path` for a local one.
+- [x] ~~A local `claude` / `codex` CLI as the chat backend~~ — **folded into
+      the item above, and now available:** point `base_url` at a shim.
+      Second pass (`docs/plans/CLI_AGENT_BACKENDS.md` §0)
       killed the premise twice over: Anthropic stopped covering third-party
       tools with Pro/Max/Team subscriptions on 2026-04-04, so "reuse the
       login you already have" no longer holds for Claude and an API key is
       needed anyway; and the tools that do this well (OpenClaw and
       relatives) don't spawn CLIs from inside the app — they put an
-      OpenAI-compatible HTTP shim in front of them. So the work is the
+      OpenAI-compatible HTTP shim in front of them. So the work was the
       adapter above, plus a paragraph of documentation about pointing its
-      `base_url` at such a shim. One thing still unanswered: whether
-      OpenAI's terms allow driving `codex` on a user's behalf.
+      `base_url` at such a shim — both now in place (README, "Your own
+      model endpoint"). Wrenote spawns no CLI and reads no other program's
+      credential store, so the question of whether OpenAI's terms allow
+      driving `codex` on a user's behalf is the shim author's and the
+      user's, not ours.
 
 ### c. Tests and CI/CD
 

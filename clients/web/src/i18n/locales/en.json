@@ -148,7 +148,8 @@
     "refreshHint": "Refresh the window list (grant Screen Recording first)",
     "start": "Start recording",
     "starting": "Starting",
-    "privacy": "Running locally · no audio leaves your device"
+    "privacy": "Running locally · no audio leaves your device",
+    "privacyRemote": "Audio stays on your device · text from {features} goes to the model endpoint you configured"
   },
   "transcript": {
     "preparing": "Preparing…",
@@ -370,6 +371,30 @@
       "chat": "Chat",
       "speaker": "Speaker identification",
       "stt_offline": "Speech recognition (after recording, uploads)"
+    },
+    "endpoint": {
+      "title": "Your own model service",
+      "none": "Not set — this slot uses a downloaded model",
+      "use": "Use the model service instead of a downloaded model",
+      "baseUrl": "Address",
+      "baseUrlHint": "anything serving /v1/chat/completions",
+      "model": "Model",
+      "modelHint": "optional",
+      "modelPlaceholder": "whatever the service serves",
+      "apiKey": "API key",
+      "apiKeyHint": "only if the service asks for one",
+      "apiKeySaved": "saved — type to replace",
+      "apiKeyClear": "Forget",
+      "apiKeyEnv": "Or read the key from",
+      "apiKeyEnvHint": "an environment variable, so it is not stored here",
+      "save": "Save",
+      "test": "Test connection",
+      "testOk": "Answered: {reply}",
+      "remoteWarning": "This address is not on this machine. Your audio still never leaves it, but the transcript text sent to this service does.",
+      "applies": {
+        "chat": "Takes effect immediately.",
+        "translator": "Takes effect on the next recording."
+      }
     },
     "onDisk": "on disk",
     "sizeMb": "{mb} MB",

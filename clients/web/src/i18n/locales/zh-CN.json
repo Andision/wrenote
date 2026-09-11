@@ -148,7 +148,8 @@
     "refreshHint": "刷新窗口列表（需先授予「屏幕录制」权限）",
     "start": "开始录制",
     "starting": "启动中",
-    "privacy": "本地运行 · 音频不会离开你的设备"
+    "privacy": "本地运行 · 音频不会离开你的设备",
+    "privacyRemote": "音频不会离开你的设备 · {features}的文本会发送到你配置的模型服务"
   },
   "transcript": {
     "preparing": "准备中…",
@@ -368,6 +369,30 @@
       "chat": "对话",
       "speaker": "说话人识别",
       "stt_offline": "语音识别（录制后整理、导入文件）"
+    },
+    "endpoint": {
+      "title": "使用你自己的模型服务",
+      "none": "未配置 —— 这个槽位使用已下载的模型",
+      "use": "改用模型服务，不用已下载的模型",
+      "baseUrl": "地址",
+      "baseUrlHint": "任何提供 /v1/chat/completions 的服务",
+      "model": "模型",
+      "modelHint": "可留空",
+      "modelPlaceholder": "服务端提供的那个",
+      "apiKey": "API 密钥",
+      "apiKeyHint": "服务需要时才填",
+      "apiKeySaved": "已保存 —— 输入新值即替换",
+      "apiKeyClear": "清除",
+      "apiKeyEnv": "或从这里读取密钥",
+      "apiKeyEnvHint": "环境变量名，这样密钥不会存在这里",
+      "save": "保存",
+      "test": "测试连接",
+      "testOk": "已回复：{reply}",
+      "remoteWarning": "这个地址不在本机。音频依然不会离开你的设备，但发给这个服务的转写文本会。",
+      "applies": {
+        "chat": "立即生效。",
+        "translator": "下次录制时生效。"
+      }
     },
     "onDisk": "已下载",
     "sizeMb": "{mb} MB",

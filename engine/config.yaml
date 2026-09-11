@@ -75,6 +75,11 @@ translator:
     n_ctx: 4096
     n_gpu_layers: -1          # offload all layers to Metal/CUDA; set 0 to force CPU
     temperature: 0.0
+  # Or reach a model over HTTP instead of loading one — see the note under
+  # `chat:` below. The `endpoint:` keys are the same there, plus:
+  #   max_concurrency: 1      # how many translations may be in flight at once.
+  #                           # 1 matches the in-process backend, which
+  #                           # serialises on a single worker thread.
 
 speaker:
   # ECAPA-TDNN, exported from SpeechBrain to a torch-free ONNX (downloaded from
@@ -97,6 +102,55 @@ chat:
     # (~50 MB / 8K at this model size).
     n_ctx: 32768
     n_gpu_layers: -1
+  #
+  # `backend: openai_compatible` reaches a model over HTTP instead of loading
+  # one, and downloads nothing. Anything that serves POST /v1/chat/completions
+  # works: llama-server, Ollama, LM Studio, vLLM, a shim in front of a CLI
+  # agent, or a hosted API. Settings → Models writes this for you; the keys are
+  # here for a config you keep by hand.
+  #
+  #   backend: openai_compatible
+  #   endpoint:
+  #     base_url: http://127.0.0.1:8080/v1   # a bare origin gets /v1 appended
+  #     model: ""                 # "" = whatever the server serves; a hosted API needs a name
+  #     api_key: ""               # or leave empty and use api_key_env
+  #     api_key_env: OPENAI_API_KEY   # read from the environment at request time,
+  #                                   # so the key is not written into this file
+  #     headers: {}               # extra request headers, if a provider wants one
+  #     extra_body: {}            # merged into the request body last (top_p, …)
+  #     timeout_s: 120
+  #
+  # `backend: llama_server` is the same GGUF, run in a subprocess the engine
+  # starts and supervises, instead of loaded into the engine itself. Same
+  # `model:` id, same download, same `n_ctx` / `n_gpu_layers` — the difference
+  # is that a llama.cpp crash then kills a subprocess rather than your
+  # recording, and that choosing a smaller model actually gives the memory
+  # back. The binary ships in the compute runtime pack for your accelerator
+  # (its bin/ goes on the PATH when the pack activates); `params.binary`
+  # names your own instead.
+  #
+  #   backend: llama_server
+  #   model: qwen3-4b-instruct-q4
+  #   params:
+  #     binary: ""              # "" = the active runtime pack, then the PATH
+  #     n_ctx: 32768
+  #     n_gpu_layers: -1
+  #     extra_args: []          # passed to llama-server verbatim
+  #
+  # The engine gives it a loopback port and a random --api-key, and kills it
+  # on exit. A server left behind by a run that was killed outright is
+  # reclaimed at the next start — but only after it proves it is ours, by
+  # answering on the recorded port with the recorded token.
+  #
+  # `endpoint:` is separate from `params:` on purpose — `params` is the local
+  # backend's tuning, and one dict holding both meant that configuring an
+  # endpoint and then picking a local model again handed `base_url` to
+  # llama.cpp as an unexpected argument. Both are kept, neither is mixed, so
+  # switching back and forth remembers what you had.
+  #
+  # PRIVACY: a base_url on 127.0.0.1 is still local inference and the app says
+  # so. Point it anywhere else and your transcripts are sent to that endpoint —
+  # the app then says *that* instead, on the screen you start a recording from.
 
 session:
   default_src_lang: auto    # "auto" = detect per segment; or pin to "en", "zh", …

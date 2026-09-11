@@ -57,6 +57,8 @@ const modelStatus = (over: Partial<ModelStatus> = {}): ModelStatus => ({
   options: [],
   selected: {},
   features: { translator: true, chat: true, speaker: true },
+  remote: [],
+  endpoints: {},
   ...over,
 });
 

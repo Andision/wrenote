@@ -11,6 +11,7 @@ optionally-authenticated app without monkeypatching module globals.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -47,6 +48,7 @@ from .core.batch import set_pass_limit
 from .core.catalogue import ModelCatalogue, resolve
 from .core.config import Config, load_config
 from .core.jobs import JobRegistry
+from .core.llama_server import reclaim_orphans
 from .core.registry import make_chat, make_speaker
 from .core.runtimes import RuntimeManager
 from .core.store import Store
@@ -114,6 +116,14 @@ def _make_lifespan(config: Config | None):
         )
 
         log.info("data: %s", cfg.paths())
+        # Anything a previous run left behind, before anything else starts.
+        # Unconditional: the config may have moved off the managed backend
+        # since, and the leak would then never be collected by anyone. Only
+        # kills a server that answers with the token that run recorded — see
+        # core/llama_server.reclaim_orphans.
+        leaked = await asyncio.to_thread(reclaim_orphans, Path(cfg.data.dir))
+        if leaked:
+            log.warning("reclaimed %d llama-server(s) from a previous run", leaked)
         store = Store(Path(cfg.data.db_path))
         await store.open()
         app.state.store = store
@@ -183,7 +193,10 @@ def _register_meta_routes(app: FastAPI) -> None:
         runtimes: RuntimeManager = request.app.state.runtimes
         return {
             "version": __version__,
-            "config": cfg.model_dump(),
+            # Redacted, not raw: this is what Settings → Developer shows and
+            # what people paste into bug reports, and a backend's params can
+            # now hold an API key (core/openai_compat.py).
+            "config": cfg.redacted_dump(),
             "paths": cfg.paths(),
             "static_dir_exists": STATIC_DIR.exists(),
             "platform": {"name": plat.name, "capabilities": plat.capabilities.to_dict()},

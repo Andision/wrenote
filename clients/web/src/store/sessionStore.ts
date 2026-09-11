@@ -23,6 +23,7 @@ import type { CaptureTarget } from "../lib/capture";
 import {
   ALL_FEATURES_ON,
   type Features,
+  type ModelKind,
   type OptionalFeature,
 } from "../lib/models";
 import {
@@ -143,6 +144,10 @@ interface State {
   // Declining one at first run means its model was never downloaded, so its
   // buttons stay visible but offer to fetch it instead of doing the thing.
   features: Features;
+  /** Slots that send transcript text to a model somewhere else (see
+   *  ModelStatus.remote). Empty on every local install; PreFlight says so
+   *  above the record button when it isn't. */
+  remoteSlots: ModelKind[];
   /** The feature whose "not downloaded" dialog is open, if any. */
   featurePrompt: OptionalFeature | null;
   /** Set to re-enter the first-run flow after it is done — from that dialog,
@@ -229,6 +234,7 @@ interface Actions {
   toggleChat: (open?: boolean) => void;
   toggleMinutes: (open?: boolean) => void;
   setFeatureState: (features: Features) => void;
+  setRemoteSlots: (slots: ModelKind[]) => void;
   /** Ask for a feature. Returns false and raises the dialog when it is off,
    *  so a caller reads `if (!requireFeature("chat")) return;`. */
   requireFeature: (feature: OptionalFeature) => boolean;
@@ -356,6 +362,7 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
   chatOpen: false,
   minutesOpen: false,
   features: { ...ALL_FEATURES_ON },
+  remoteSlots: [],
   featurePrompt: null,
   setupRequest: null,
   playingSegmentId: null,
@@ -660,6 +667,7 @@ export const useSessionStore = create<State & Actions>((set, get) => ({
       return { chatOpen: next, minutesOpen: next ? false : s.minutesOpen };
     }),
   setFeatureState: (features) => set({ features }),
+  setRemoteSlots: (remoteSlots) => set({ remoteSlots }),
 
   requireFeature: (feature) => {
     if (get().features[feature]) return true;

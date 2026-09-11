@@ -21,6 +21,8 @@ vi.mock("@/lib/models", async (orig) => ({
   deleteModel: vi.fn(),
   selectModel: vi.fn(),
   setFeatures: vi.fn(),
+  saveEndpoint: vi.fn(),
+  testEndpoint: vi.fn(),
 }));
 
 const models = await import("@/lib/models");
@@ -39,7 +41,7 @@ const option = (over: Partial<Option> = {}): Option => ({
 });
 
 const status = (options: Option[]) => ({
-  models: [], all_present: true, selected: {},
+  models: [], all_present: true, selected: {}, remote: [], endpoints: {},
   features: { translator: true, chat: true, speaker: true },
   options: [{ kind: "stt" as const, reason_code: "", reason_params: {}, options }],
 });
@@ -112,5 +114,107 @@ describe("ModelsPanel", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Delete the downloaded files/ })[0]);
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Delete failed: in use"));
     expect(toast.success).not.toHaveBeenCalled();
+  });
+});
+
+// A slot is answered either by a file this machine downloaded or by something
+// at a URL. The switch that decides which lives in the same section as the
+// models, because it is the same question — and the consequence of choosing
+// "somewhere else" has to be visible at the moment of choosing.
+describe("ModelsPanel endpoints", () => {
+  const endpoint = (over: Partial<import("@/lib/models").EndpointStatus> = {}) => ({
+    active: false, base_url: "", model: "", has_api_key: false,
+    api_key_env: "", timeout_s: 120, configured: false, local: false, ...over,
+  });
+
+  const withEndpoint = (chat: Partial<import("@/lib/models").EndpointStatus>) => ({
+    models: [], all_present: true, selected: {}, remote: [],
+    features: { translator: true, chat: true, speaker: true },
+    endpoints: { chat: endpoint(chat) },
+    options: [{ kind: "chat" as const, reason_code: "", reason_params: {}, options: [option()] }],
+  });
+
+  beforeEach(() => {
+    vi.mocked(models.getModelStatus).mockResolvedValue(withEndpoint({}));
+    vi.mocked(models.saveEndpoint).mockResolvedValue({
+      applies: "now", endpoint: endpoint({ configured: true, active: true }), remote: [],
+    });
+  });
+
+  it("offers the endpoint row on a slot that can have one", async () => {
+    show();
+    expect(await screen.findByText("Your own model service")).toBeTruthy();
+    expect(screen.getByText(/uses a downloaded model/)).toBeTruthy();
+  });
+
+  it("does not offer it on a slot that cannot", async () => {
+    vi.mocked(models.getModelStatus).mockResolvedValue({
+      ...withEndpoint({}),
+      endpoints: {},
+      options: [{ kind: "stt" as const, reason_code: "", reason_params: {}, options: [option()] }],
+    });
+    show();
+    await screen.findByText("Whisper base (Q5)");
+    expect(screen.queryByText("Your own model service")).toBeNull();
+  });
+
+  it("saves what was typed, and leaves the unseen key alone", async () => {
+    show();
+    fireEvent.click(await screen.findByText("Your own model service"));
+    fireEvent.change(screen.getByPlaceholderText("http://127.0.0.1:8080/v1"), {
+      target: { value: "  http://127.0.0.1:8080/v1  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(vi.mocked(models.saveEndpoint)).toHaveBeenCalled();
+    });
+    const [kind, patch] = vi.mocked(models.saveEndpoint).mock.calls[0];
+    expect(kind).toBe("chat");
+    expect(patch.base_url).toBe("http://127.0.0.1:8080/v1"); // trimmed
+    // The form never saw the key, so it must not send one — an omitted field
+    // is what tells the engine to keep what it has.
+    expect("api_key" in patch).toBe(false);
+  });
+
+  it("warns that text leaves the machine, and not when it doesn't", async () => {
+    vi.mocked(models.getModelStatus).mockResolvedValue(
+      withEndpoint({ configured: true, base_url: "https://api.example.com/v1", local: false }),
+    );
+    show();
+    fireEvent.click(await screen.findByText("Your own model service"));
+    expect(screen.getByText(/transcript text sent to this service/)).toBeTruthy();
+  });
+
+  it("says nothing alarming about a model server on this machine", async () => {
+    vi.mocked(models.getModelStatus).mockResolvedValue(
+      withEndpoint({ configured: true, base_url: "http://127.0.0.1:8080/v1", local: true }),
+    );
+    show();
+    fireEvent.click(await screen.findByText("Your own model service"));
+    expect(screen.queryByText(/transcript text sent to this service/)).toBeNull();
+  });
+
+  it("won't test an endpoint that has unsaved edits", async () => {
+    vi.mocked(models.getModelStatus).mockResolvedValue(
+      withEndpoint({ configured: true, base_url: "http://127.0.0.1:8080/v1", local: true }),
+    );
+    show();
+    fireEvent.click(await screen.findByText("Your own model service"));
+    const test = screen.getByRole("button", { name: /Test connection/ });
+    expect(test.hasAttribute("disabled")).toBe(false);
+    fireEvent.change(screen.getByDisplayValue("http://127.0.0.1:8080/v1"), {
+      target: { value: "http://127.0.0.1:9999/v1" },
+    });
+    // Testing the stored value while showing a different one would report a
+    // pass about something the user isn't looking at.
+    expect(test.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("opens the form instead of failing when switched on with no address", async () => {
+    show();
+    await screen.findByText("Your own model service");
+    fireEvent.click(screen.getByRole("switch", { name: /Use the model service/ }));
+    expect(screen.getByPlaceholderText("http://127.0.0.1:8080/v1")).toBeTruthy();
+    expect(vi.mocked(models.saveEndpoint)).not.toHaveBeenCalled();
   });
 });

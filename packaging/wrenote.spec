@@ -62,6 +62,17 @@ ffmpeg = _bundled_ffmpeg()
 if ffmpeg:
     binaries += [(ffmpeg, ".")]  # next to the executable; launcher adds that dir to PATH
 
+# `llama-server` for the built-in accelerator, when CI built one (see
+# .github/actions/build-engine). The platforms that get a downloadable runtime
+# pack take it from the pack's bin/ instead; macOS arm64 has no pack, because
+# Metal is built in, so for it this is the only route. Next to the executable,
+# like ffmpeg — run_server puts that directory on the PATH.
+llama_server = os.path.join(
+    SPECPATH, "llama-server", "llama-server.exe" if IS_WIN else "llama-server"  # noqa: F821
+)
+if os.path.exists(llama_server):
+    binaries += [(llama_server, ".")]
+
 if IS_MAC:
     syscap = os.path.join(SPECPATH, "macos", "syscap")  # noqa: F821
     if os.path.exists(syscap):
@@ -94,6 +105,8 @@ hiddenimports += collect_submodules("wrenote")
 hiddenimports += collect_submodules("uvicorn")
 hiddenimports += collect_submodules("webview")
 hiddenimports += ["wrenote.server"]
+# See wrenote_server.spec: httpx2 imports truststore lazily, inside a function.
+hiddenimports += ["truststore"]
 if IS_WIN:
     hiddenimports += ["clr"]  # pythonnet, for pywebview's edgechromium (WebView2) backend
     hiddenimports += collect_submodules("soundcard")  # WASAPI loopback (system audio)

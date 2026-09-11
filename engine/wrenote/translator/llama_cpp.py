@@ -17,26 +17,9 @@ from typing import Any
 from ..core.events import BackendInfo
 from ..core.registry import register_translator
 from .base import TranslatorBackend
+from .prompt import LANG_NAMES, build_prompt
 
 log = logging.getLogger(__name__)
-
-
-_LANG_NAMES: dict[str, str] = {
-    "en": "English",
-    "zh": "Chinese",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "es": "Spanish",
-    "fr": "French",
-    "de": "German",
-    "ru": "Russian",
-    "pt": "Portuguese",
-    "it": "Italian",
-}
-
-
-def _lang_name(code: str) -> str:
-    return _LANG_NAMES.get(code.lower(), code)
 
 
 @register_translator("llama_cpp")
@@ -121,7 +104,9 @@ class LlamaCppTranslator(TranslatorBackend):
         if not text:
             return ""
 
-        prompt = self._build_prompt(text, src=src, tgt=tgt, context=context)
+        prompt = build_prompt(
+            text, src=src, tgt=tgt, context=context, glossary_text=self._glossary_text
+        )
 
         def _generate() -> str:
             resp = self._llm.create_chat_completion(
@@ -137,29 +122,6 @@ class LlamaCppTranslator(TranslatorBackend):
             timeout=timeout_s,
         )
 
-    def _build_prompt(
-        self, text: str, *, src: str, tgt: str, context: Sequence[str] = ()
-    ) -> str:
-        src_name = _lang_name(src)
-        tgt_name = _lang_name(tgt)
-        glossary = f"{self._glossary_text} " if self._glossary_text else ""
-        # The previous lines are shown, marked, and the instruction names the
-        # last block as the only thing to translate. Hy-MT reads a "Context:"
-        # block this way; a general chat model follows the plain wording.
-        prior = [c.strip() for c in context if c and c.strip()]
-        if prior:
-            context_block = "\n".join(prior)
-            return (
-                f"Context (the {src_name} lines spoken just before; for reference only, "
-                f"do not translate them):\n{context_block}\n\n"
-                f"Translate the following {src_name} text into {tgt_name}. "
-                f"Output only the translation of this text, no explanation. {glossary}\n\n{text}"
-            )
-        return (
-            f"Translate the following {src_name} text into {tgt_name}. "
-            f"Output only the translation, no explanation. {glossary}\n\n{text}"
-        )
-
     def set_glossary(self, pairs: list[tuple[str, str]]) -> None:
         from ..core.glossary import mt_glossary_text
 
@@ -172,7 +134,7 @@ class LlamaCppTranslator(TranslatorBackend):
             version="llama-cpp-python-0.3.23",
             model=Path(self._model_path).stem,
             device="metal-or-cuda",
-            supported_languages=list(_LANG_NAMES),
+            supported_languages=list(LANG_NAMES),
             capabilities={
                 "n_ctx": self._n_ctx,
                 "n_gpu_layers": self._n_gpu_layers,

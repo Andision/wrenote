@@ -39,6 +39,20 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 SCHEMA = 1
+#: Backends whose model lives behind a URL. Duplicated from
+#: :mod:`wrenote.core.openai_compat` rather than imported: this module is on
+#: the import path of nearly everything, and it should not drag an HTTP client
+#: in with it. `test_catalogue` asserts the two lists agree.
+HTTP_BACKENDS = ("openai_compatible",)
+#: Backends that run a model file by supervising a server rather than loading
+#: it in process. They need the same files a local backend does, so they are
+#: catalogued models like any other — see :func:`backend_can_run`.
+MANAGED_BACKENDS = ("llama_server",)
+#: Which catalogue entries a backend can run beyond the one it is named by.
+#: `llama_server` and `llama_cpp` execute the same GGUF; the difference is
+#: which process it is loaded in, so the catalogue would gain a duplicate
+#: entry per model for no reason the user could see.
+_ALSO_RUNS: dict[str, tuple[str, ...]] = {"llama_server": ("llama_cpp",)}
 KINDS = ("stt", "translator", "chat", "speaker")
 # Config sections that hold a model. Two of them are speech recognition:
 # what a live session hears (`stt`, may be a streaming model) and what a
@@ -127,6 +141,11 @@ class ModelSpec:
             "size": self.size,
             "requires": dict(self.requires),
         }
+
+
+def backend_can_run(backend: str, model_backend: str) -> bool:
+    """Whether ``backend`` can run a model catalogued for ``model_backend``."""
+    return backend == model_backend or model_backend in _ALSO_RUNS.get(backend, ())
 
 
 def _parse_file(row: dict[str, Any]) -> ModelFile:
@@ -446,12 +465,19 @@ class ResolvedModel:
     backend: str
     params: dict[str, Any]  # ready to hand to the registry factory
     spec: ModelSpec | None  # None = a custom path; nothing to download
-    reason: str  # "path" | "id" | "default" | "backend-needs-no-model" | "disabled"
+    #: "path" | "id" | "default" | "endpoint" | "backend-needs-no-model" | "disabled"
+    reason: str
 
     @property
     def disabled(self) -> bool:
         """The user switched this feature off; nothing to download or load."""
         return self.reason == "disabled"
+
+    @property
+    def over_http(self) -> bool:
+        """The model is a URL. Nothing to download, and nothing on disk to
+        name in the UI — the slot shows its endpoint instead."""
+        return self.reason == "endpoint"
 
     @property
     def downloadable(self) -> bool:
@@ -460,6 +486,22 @@ class ResolvedModel:
 
 #: Backends that need no model file at all — resolution stops early for them.
 _NO_MODEL = ("mock", "disabled", "")
+
+
+def _with_managed_extras(cfg: Config, backend: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Add what a supervising backend needs from the config, on every path.
+
+    Where to record a running server (so a killed run's orphan can be
+    reclaimed) and where to look for the binary. Applied at each branch that
+    can produce a managed backend rather than once at the end, because
+    ``params.model_path`` returns early — and a backend that fell back to a
+    default ``~/.wrenote`` would write its state outside the data dir the
+    config actually chose.
+    """
+    if backend in MANAGED_BACKENDS:
+        params.setdefault("state_dir", cfg.data.dir)
+        params.setdefault("runtimes_dir", cfg.compute.runtimes_dir)
+    return params
 
 
 def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
@@ -472,6 +514,13 @@ def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
     # the download and every caller sees a slot with no model.
     if kind in OPTIONAL_SLOTS and not section.enabled:
         return ResolvedModel(kind, backend, params, None, "disabled")
+    # An HTTP backend's "model" is a URL, not a file: nothing to download, and
+    # the endpoint config becomes its constructor arguments. `params` still
+    # wins, so a hand-written config can override anything the UI wrote.
+    if backend in HTTP_BACKENDS:
+        endpoint = getattr(section, "endpoint", None)
+        merged = {**(endpoint.model_dump() if endpoint else {}), **params}
+        return ResolvedModel(kind, backend, merged, None, "endpoint")
     if backend in _NO_MODEL:
         return ResolvedModel(kind, backend, params, None, "backend-needs-no-model")
 
@@ -479,14 +528,14 @@ def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
 
     # 1. An explicit path wins, and keeps pre-catalogue configs working.
     if params.get("model_path"):
-        return ResolvedModel(kind, backend, params, None, "path")
+        return ResolvedModel(kind, backend, _with_managed_extras(cfg, backend, params), None, "path")
 
     # 2. A named catalogue entry.
     chosen = getattr(section, "model", None)
     spec = catalogue.get(chosen) if chosen else None
     if chosen and spec is None:
         log.warning("%s.model=%r is not in the catalogue; falling back", kind, chosen)
-    if spec is not None and spec.backend != backend:
+    if spec is not None and not backend_can_run(backend, spec.backend):
         log.warning(
             "%s.model=%r runs on the %r backend but %r is configured; ignoring the model",
             kind, chosen, spec.backend, backend,
@@ -497,18 +546,18 @@ def resolve(cfg: Config, kind: str, catalogue: ModelCatalogue) -> ResolvedModel:
     reason = "id"
     if spec is None:
         fallback = catalogue.default_for(kind)
-        if fallback is not None and fallback.backend == backend:
+        if fallback is not None and backend_can_run(backend, fallback.backend):
             spec, reason = fallback, "default"
 
     if spec is None:
         log.warning("no catalogue model for %s backend %r; it must be given a model_path",
                     kind, backend)
-        return ResolvedModel(kind, backend, params, None, "path")
+        return ResolvedModel(kind, backend, _with_managed_extras(cfg, backend, params), None, "path")
 
     # Config params win over the catalogue's: the entry describes the model,
     # the user's config tunes it (n_ctx, temperature, …).
     merged = {**spec.backend_params(models_dir), **params}
-    return ResolvedModel(kind, backend, merged, spec, reason)
+    return ResolvedModel(kind, backend, _with_managed_extras(cfg, backend, merged), spec, reason)
 
 
 def feature_enabled(cfg: Config, slot: str) -> bool:

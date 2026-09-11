@@ -38,6 +38,8 @@ const RUNTIME_KEYS: string[] = [
   ]),
   // lib/modelText.ts — the tier tag on every model row
   ...["small", "medium", "large"].map((x) => `models.tier.${x}`),
+  // components/EndpointCard.tsx — one per slot that can be given a URL
+  ...["translator", "chat"].map((k) => `models.endpoint.applies.${k}`),
   // lib/models.ts — the features the setup step and its prompt name
   "setup.feature.always",
   "setup.feature.transcribe",

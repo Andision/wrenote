@@ -187,6 +187,26 @@ def test_mock_backends_need_nothing(tmp_path):
     assert resolve(cfg, "stt", cat).reason == "backend-needs-no-model"
 
 
+def test_an_http_backend_downloads_nothing(tmp_path):
+    """The weights, if any, belong to whatever is on the other end of base_url —
+    so the slot must not fall back to the catalogue's default model either."""
+    cat = ModelCatalogue.load(user=Path("/nonexistent"))
+    cfg = _cfg(
+        tmp_path,
+        stt={"backend": "mock"},
+        speaker={"backend": "disabled"},
+        translator={"backend": "openai_compatible",
+                    "endpoint": {"base_url": "http://127.0.0.1:8080/v1"}},
+        chat={"backend": "openai_compatible",
+              "endpoint": {"base_url": "http://127.0.0.1:8080/v1"}},
+    )
+    assert required_models(cfg, cat) == []
+    chat = resolve(cfg, "chat", cat)
+    assert chat.reason == "endpoint" and chat.spec is None and chat.over_http
+    # The params reach the factory untouched: base_url is the whole config.
+    assert chat.params["base_url"] == "http://127.0.0.1:8080/v1"
+
+
 def test_required_models_lists_every_file_with_its_source(tmp_path):
     cat = ModelCatalogue.load(bundled=_catalogue(tmp_path, {
         "schema": 1, "defaults": {"stt": "m1"}, "models": [_entry("m1")]}),
@@ -495,3 +515,146 @@ def test_cpu_only_machine_is_pointed_at_the_streaming_model(tmp_path):
     live = cat.options("stt", fast, models_dir=tmp_path)
     assert live.reason_code == "ample_ram"
     assert [o.id for o in live.options if o.recommended] == ["whisper-large-v3-turbo-q5"]
+
+
+def test_the_translate_job_builds_its_translator_from_the_catalogue(monkeypatch, tmp_path):
+    """The retroactive-translate job used to construct straight from
+    ``cfg.translator.params``, which is tuning — the model file comes from the
+    catalogue entry the ``model:`` id names. llama_cpp then had no
+    ``model_path`` at all and the job died in the constructor.
+
+    The model isn't on disk here, so the job still fails; what it must fail
+    with is "not found at <path>", which is only reachable once the backend was
+    constructed with a path in the first place.
+    """
+    import time
+
+    from fastapi.testclient import TestClient
+
+    import wrenote.core.config as config_mod
+    import wrenote.server as server
+
+    monkeypatch.setattr(config_mod, "USER_CONFIG", tmp_path / "config.yaml")
+    cfg = Config.model_validate({
+        "stt": {"backend": "mock"},
+        "stt_offline": {"backend": "mock"},
+        "vad": {"backend": "disabled"},
+        "speaker": {"backend": "disabled"},
+        "chat": {"backend": "mock"},
+        "translator": {"backend": "llama_cpp", "model": "hy-mt2-1.8b-q4"},
+        "data": {"dir": str(tmp_path), "exports_dir": str(tmp_path / "exports")},
+        "compute": {"runtimes_index_url": ""},
+        "update": {"check": False, "index_url": ""},
+    })
+    with TestClient(server.create_app(cfg)) as client:
+        # A session to hang the job off. Recorded with translation switched
+        # off, so the live pipeline needs no model file either.
+        with client.websocket_connect("/v1/ws") as ws:
+            ws.send_json({"type": "start", "config": {
+                "session_id": "s1", "title": "T", "tgt": "zh",
+                "translate_enabled": False,
+            }})
+            assert ws.receive_json()["type"] == "ready"
+            ws.send_json({"type": "stop"})
+        r = client.post("/v1/sessions/s1/translate", json={})
+        assert r.status_code == 200
+        job_id = r.json()["job_id"]
+        for _ in range(100):
+            job = client.get(f"/v1/jobs/{job_id}").json()
+            if job["status"] != "running":
+                break
+            time.sleep(0.02)
+        assert job["status"] == "error"
+        # The catalogue's file, reached — which the old code could not do.
+        assert "hy-mt2" in job["error"].lower()
+        assert "not found" in job["error"].lower()
+
+
+def test_a_managed_server_runs_the_same_catalogue_models_as_the_in_process_backend(tmp_path):
+    """`llama_server` and `llama_cpp` execute the same GGUF — the difference is
+    which process it is loaded in. Cataloguing each model twice would ask the
+    user a question they have no way to answer."""
+    cat = ModelCatalogue.load(bundled=_catalogue(tmp_path, {
+        "schema": 1,
+        "defaults": {"chat": "m1"},
+        "models": [_entry("m1", kind="chat", backend="llama_cpp")],
+    }), user=Path("/nonexistent"))
+    cfg = _cfg(tmp_path, stt={"backend": "mock"}, translator={"backend": "mock"},
+               speaker={"backend": "disabled"},
+               chat={"backend": "llama_server", "model": "m1"})
+    r = resolve(cfg, "chat", cat)
+    assert r.spec is not None and r.spec.id == "m1"
+    assert r.params["model_path"].endswith("m1.bin")
+    # Still one download, listed against the slot as usual.
+    assert [e.model_id for e in required_models(cfg, cat)] == ["m1"]
+
+
+def test_a_managed_backend_is_told_where_to_keep_its_state(tmp_path):
+    """It has to be able to reclaim a server a killed run left behind, and
+    where that record lives is the config's business, not the backend's."""
+    cat = ModelCatalogue.load(bundled=_catalogue(tmp_path, {
+        "schema": 1, "defaults": {"chat": "m1"},
+        "models": [_entry("m1", kind="chat", backend="llama_cpp")],
+    }), user=Path("/nonexistent"))
+    cfg = _cfg(tmp_path, stt={"backend": "mock"}, translator={"backend": "mock"},
+               speaker={"backend": "disabled"},
+               chat={"backend": "llama_server", "model": "m1"})
+    params = resolve(cfg, "chat", cat).params
+    assert params["state_dir"] == cfg.data.dir
+    assert params["runtimes_dir"] == cfg.compute.runtimes_dir
+
+
+def test_an_unrelated_backend_still_refuses_another_backends_model(tmp_path):
+    cat = ModelCatalogue.load(bundled=_catalogue(tmp_path, {
+        "schema": 1, "models": [_entry("m1", kind="chat", backend="llama_cpp")],
+    }), user=Path("/nonexistent"))
+    cfg = _cfg(tmp_path, stt={"backend": "mock"}, translator={"backend": "mock"},
+               speaker={"backend": "disabled"},
+               chat={"backend": "openai_compatible", "model": "m1"})
+    # It resolves to its endpoint, not to a file it cannot load.
+    assert resolve(cfg, "chat", cat).reason == "endpoint"
+
+
+def test_choosing_another_model_keeps_the_slot_on_its_managed_backend(monkeypatch, tmp_path):
+    """Picking a different model is not a request to stop running it in a
+    subprocess — and switching back to `llama_cpp` behind the user's back
+    would quietly undo the crash isolation they chose."""
+    from fastapi.testclient import TestClient
+
+    import wrenote.core.config as config_mod
+    import wrenote.server as server
+
+    monkeypatch.setattr(config_mod, "USER_CONFIG", tmp_path / "config.yaml")
+    cfg = Config.model_validate({
+        "stt": {"backend": "mock"}, "stt_offline": {"backend": "mock"},
+        "vad": {"backend": "disabled"}, "translator": {"backend": "mock"},
+        "speaker": {"backend": "disabled"},
+        "chat": {"backend": "llama_server", "model": "qwen3-4b-instruct-q4"},
+        "data": {"dir": str(tmp_path)},
+        "compute": {"runtimes_index_url": ""},
+        "update": {"check": False, "index_url": ""},
+    })
+    with TestClient(server.create_app(cfg)) as client:
+        r = client.post("/v1/models/select",
+                        json={"kind": "chat", "model": "qwen3-1.7b-instruct-q4"})
+        assert r.status_code == 200
+        assert client.get("/v1/info").json()["config"]["chat"]["backend"] == "llama_server"
+        assert client.get("/v1/models/status").json()["selected"]["chat"] == (
+            "qwen3-1.7b-instruct-q4"
+        )
+
+
+def test_a_pinned_model_path_still_gets_the_managed_backend_its_state_dir(tmp_path):
+    """`params.model_path` returns early, and a managed backend that fell
+    through it would default its state file to ~/.wrenote — outside the data
+    dir the config chose, and in a test run, inside the developer's real one."""
+    cat = ModelCatalogue.load(user=Path("/nonexistent"))
+    cfg = _cfg(tmp_path, stt={"backend": "mock"}, translator={"backend": "mock"},
+               speaker={"backend": "disabled"},
+               chat={"backend": "llama_server",
+                     "params": {"model_path": str(tmp_path / "own.gguf")}},
+               data={"dir": str(tmp_path / "elsewhere")})
+    r = resolve(cfg, "chat", cat)
+    assert r.reason == "path"
+    assert r.params["state_dir"] == cfg.data.dir
+    assert str(tmp_path / "elsewhere") == r.params["state_dir"]

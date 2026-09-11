@@ -38,6 +38,86 @@
         "title": "Body_upload_session_v1_sessions_upload_post",
         "type": "object"
       },
+      "EndpointRequest": {
+        "description": "One slot's HTTP endpoint. Omitted fields keep their current value.\n\n``api_key`` is the reason for that rule rather than a plain replace: the\nclient never receives the key back (see\n:func:`~wrenote.core.openai_compat.endpoint_status`), so it cannot send it\nagain, and a form save must not wipe it. Passing ``\"\"`` explicitly clears\nit — which is how the UI's \"forget the key\" works.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "api_key_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Env"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "timeout_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout S"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "EndpointRequest",
+        "type": "object"
+      },
       "FeaturesRequest": {
         "description": "The optional features to switch on or off; omitted slots are left alone.",
         "properties": {
@@ -717,6 +797,88 @@
           }
         },
         "summary": "Models Download"
+      }
+    },
+    "/v1/models/endpoint": {
+      "post": {
+        "description": "Point a slot at a model served over HTTP, persisting to the user config.\n\nSame \"applies now / next session\" split as :func:`models_select`: chat is\nheld by :class:`ModelManager` and swapped here; the translator is built per\nsession. Switching ``active`` off restores the slot's catalogue model\nrather than leaving it on a backend it is no longer meant to use.",
+        "operationId": "models_endpoint_v1_models_endpoint_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Models Endpoint V1 Models Endpoint Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Models Endpoint"
+      }
+    },
+    "/v1/models/endpoint/test": {
+      "post": {
+        "description": "Ask the configured endpoint one tiny question, and report what happened.\n\nThis is the probe ``load()`` deliberately doesn't do (a health check on\nevery start-up costs a round trip, and some shims serve\n``/chat/completions`` and nothing else). Here it is worth it: the moment\nsomeone presses Save is exactly when a typo in a URL or a stale key should\nsurface, rather than three days later mid-meeting.\n\nTests what is *saved*, not what is typed — the key may only exist in the\nconfig — so the client saves first and tests second.",
+        "operationId": "models_endpoint_test_v1_models_endpoint_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Models Endpoint Test V1 Models Endpoint Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Models Endpoint Test"
       }
     },
     "/v1/models/features": {

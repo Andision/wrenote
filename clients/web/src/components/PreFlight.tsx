@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Activity, ArrowRight, Loader2, Mic, MicOff, Monitor, RefreshCw, ShieldCheck, UploadCloud, Volume2 } from "lucide-react";
+import { Activity, ArrowRight, Cloud, Loader2, Mic, MicOff, Monitor, RefreshCw, ShieldCheck, UploadCloud, Volume2 } from "lucide-react";
 
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "@/lib/languages";
@@ -12,7 +12,7 @@ import { type CaptureTargets, listCaptureTargets } from "@/lib/capture";
 import { useMicPreview } from "@/hooks/useMicPreview";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
-import { useT } from "@/i18n";
+import { useI18n, useT } from "@/i18n";
 
 interface PreFlightProps {
   onStart: () => void;
@@ -78,6 +78,7 @@ function SourceToggle({
  */
 export function PreFlight({ onStart }: PreFlightProps) {
   const t = useT();
+  const { locale } = useI18n();
   const settings = useSessionStore((s) => s.settings);
   const updateSettings = useSessionStore((s) => s.updateSettings);
   // Translation declined at setup: the remembered setting stays as it was,
@@ -89,6 +90,11 @@ export function PreFlight({ onStart }: PreFlightProps) {
   const micOn = settings.captureMic || !settings.captureSystemAudio;
   const requireFeature = useSessionStore((s) => s.requireFeature);
   const connection = useSessionStore((s) => s.connection);
+  // Slots pointed at a model somewhere else (engine config; see
+  // core/openai_compat.remote_slots). Empty on a normal install, and the
+  // claim under the record button is different when it isn't — this is the
+  // last screen before the microphone opens, so it is where it has to say so.
+  const remoteSlots = useSessionStore((s) => s.remoteSlots);
 
   // "connected" is the post-socket, pre-`ready` gap — still starting up, so the
   // controls stay locked (matches TopBar / Transcript's pre-roll handling).
@@ -498,8 +504,27 @@ export function PreFlight({ onStart }: PreFlightProps) {
       <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
 
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-        <ShieldCheck className="size-3.5" />
-        <span>{t("preflight.privacy")}</span>
+        {remoteSlots.length === 0 ? (
+          <>
+            <ShieldCheck className="size-3.5" />
+            <span>{t("preflight.privacy")}</span>
+          </>
+        ) : (
+          <>
+            <Cloud className="size-3.5" />
+            <span>
+              {t("preflight.privacyRemote", {
+                // Intl joins the list the way the language does — ", " and
+                // "and" in English, "、" in Chinese — so the separator is not
+                // one more string to translate.
+                features: new Intl.ListFormat(locale, {
+                  style: "long",
+                  type: "conjunction",
+                }).format(remoteSlots.map((slot) => t(`models.kind.${slot}`))),
+              })}
+            </span>
+          </>
+        )}
       </div>
     </motion.div>
   );

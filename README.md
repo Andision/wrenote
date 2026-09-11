@@ -2,7 +2,9 @@
 
 Local, real-time speech transcription and translation for meetings — with
 speaker diarization, a floating subtitle overlay, transcript editing/export and
-a chat over your notes. Everything runs on your machine; nothing leaves it.
+a chat over your notes. Everything runs on your machine by default, and
+nothing leaves it unless you point translation or chat at a model endpoint
+yourself (see "Your own model endpoint").
 
 * **STT** whisper.cpp · **VAD** Silero · **Translation / chat** llama.cpp
   (Hy-MT2, Qwen3) · **Speakers** ECAPA-TDNN (ONNX)
@@ -83,6 +85,56 @@ first.
 On launch the app asks the release index once whether a newer version exists
 and shows a notice if so; nothing about you or your machine is sent. Settings →
 General has the switch and a "check now".
+
+### Your own model endpoint
+
+Translation and chat can reach a model over HTTP instead of loading one.
+**Settings → Models** has the fields — an address, an optional model name and
+key, and a "Test connection" that asks the endpoint one question before you
+rely on it. The switch sits with that slot's downloadable models, because it
+is the same choice: a file on this machine, or something at a URL.
+
+Anything that serves `POST /v1/chat/completions` works — `llama-server`,
+Ollama, LM Studio, vLLM, a hosted API, or a shim that puts that endpoint in
+front of an agent CLI such as `claude` or `codex`, which is how the tools in
+that family are built (see `docs/plans/CLI_AGENT_BACKENDS.md`). The CLI
+question is then your configuration rather than Wrenote's code.
+
+The same thing by hand, for a config you keep yourself (all the keys are
+documented in `engine/config.yaml`):
+
+```yaml
+chat:
+  backend: openai_compatible
+  endpoint:
+    base_url: http://127.0.0.1:8080/v1
+    model: ""                       # "" = whatever the server serves
+    api_key_env: OPENAI_API_KEY     # read from the environment, not this file
+```
+
+`endpoint:` is separate from `params:` so the two never mix: `params` is the
+local backend's tuning, and switching back to a downloaded model keeps your
+endpoint on record rather than handing `base_url` to llama.cpp. A key you set
+in Settings is stored in `~/.wrenote/config.yaml` and never sent back to the
+UI — the field says "saved" instead. `api_key_env` keeps it out of the file
+entirely.
+
+For a local model, `backend: llama_server` runs that same catalogue model as a
+subprocess the engine starts and kills, instead of loading it in process — a
+llama.cpp crash then costs you the answer, not the recording, and the memory
+comes back when the process exits. The binary comes from the compute runtime
+pack for your accelerator (`Settings → Compute`), whose `bin/` is already on
+the PATH; you can also point `params.binary` at your own. Packs do not carry
+one yet, so `llama_cpp` remains the default — see `engine/config.yaml` and
+`docs/plans/LLM_OUT_OF_PROCESS.md`.
+
+Speech recognition is not offered this way and is not going to be: the live
+path is coupled to the VAD, to partials and to per-segment language policy, so
+it stays in the engine. **Your audio never leaves your machine either way.**
+What a remote endpoint receives is transcript text — and when `base_url` is
+not on loopback, the screen you start a recording from says so, and names
+which features send it. A model server on `127.0.0.1` is still local
+inference, and the app still says that.
 
 ## Package
 

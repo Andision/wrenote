@@ -243,6 +243,32 @@ class RuntimeOption:
         return d
 
 
+def _restore_bin_permissions(root: Path) -> None:
+    """Make everything in a freshly unpacked ``bin/`` executable again.
+
+    ``ZipFile.extractall`` drops the Unix mode bits, so a pack's `bin/` comes
+    out 0644 — fine while it held only shared libraries, and fatal once it
+    holds `llama-server`, which the engine then cannot exec.
+
+    The executable bit is added rather than the archive's recorded mode being
+    restored: a pack is a downloaded artifact, and "whatever mode the zip
+    claims" is more authority than it needs. No-op on Windows, where the
+    concept does not exist.
+    """
+    if os.name != "posix":
+        return
+    bin_dir = root / "bin"
+    if not bin_dir.is_dir():
+        return
+    for path in bin_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        mode = path.stat().st_mode
+        # Mirror the read bits: a file nobody may read should not become one
+        # anybody may run.
+        path.chmod(mode | ((mode & 0o444) >> 2))
+
+
 def platform_tag(hw: HardwareInfo) -> str:
     return f"{hw.os}-{hw.arch}"
 
@@ -588,6 +614,7 @@ class RuntimeManager:
                     if member.startswith(("/", "\\")) or ".." in Path(member).parts:
                         raise RuntimeUnavailable(f"runtime pack contains an unsafe path: {member}")
                 z.extractall(tmp)
+            _restore_bin_permissions(tmp)
             manifest_path = tmp / PACK_MANIFEST
             if not manifest_path.exists():
                 raise RuntimeUnavailable("runtime pack has no MANIFEST.json")

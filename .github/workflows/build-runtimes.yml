@@ -28,6 +28,14 @@ on:
         description: Publish to the "runtimes" release (else artifacts only)
         type: boolean
         default: false
+      llama_cpp_tag:
+        description: >-
+          llama.cpp tag to build llama-server from (e.g. b4589). Empty = don't
+          ship one, which is the pre-existing behaviour. Pick a tag whose
+          llama.cpp matches the one vendored by LLAMA_CPP_PYTHON below, or the
+          supervised backend and the in-process one are different llama.cpps.
+        required: false
+        default: ""
 
 env:
   LLAMA_CPP_PYTHON: "0.3.28"
@@ -118,6 +126,61 @@ jobs:
             -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force | Out-Null
           git config --system core.longpaths true
 
+      # --- llama-server, for engine/wrenote/core/llama_server.py --------------
+
+      # The binary the supervised backend runs, built with this variant's
+      # accelerator flags so the pack stays self-describing: one download, one
+      # accelerator, everything in it built the same way. It rides in bin/,
+      # which RuntimeManager.activate already puts on the PATH.
+      #
+      # Statically linked (BUILD_SHARED_LIBS=OFF) so it carries its own ggml
+      # rather than depending on load order against llama-cpp-python's copy —
+      # which is a duplicate today and stops being one at step 3 of
+      # docs/plans/LLM_OUT_OF_PROCESS.md, when the Python binding leaves.
+      #
+      # NOT YET RUN ON A REAL RUNNER. Everything below it has been; this step
+      # is written from the same flags the pack build uses and has not been
+      # through CI. Treat the first dispatch with a tag as the test.
+      - name: Build llama-server
+        if: inputs.llama_cpp_tag != ''
+        id: llama_server
+        shell: bash
+        env:
+          CMAKE_ARGS: ${{ matrix.cmake_args }}
+          CUDA_PATH: ${{ steps.cuda.outputs.CUDA_PATH }}
+          CUDAARCHS: 61-real;75-real;86-real;89-real;89-virtual
+        run: |
+          set -euo pipefail
+          mkdir -p /d/t
+          export TMP='D:\t' TEMP='D:\t' TMPDIR='D:\t'
+          git clone --depth 1 --branch "${{ inputs.llama_cpp_tag }}" \
+            https://github.com/ggml-org/llama.cpp /d/t/llama.cpp
+          if [ -n "${{ matrix.cmake_generator }}" ]; then
+            export CMAKE_GENERATOR="${{ matrix.cmake_generator }}"
+          fi
+          # $CMAKE_ARGS is the variant's accelerator switch (-DGGML_VULKAN=on,
+          # -DGGML_CUDA=on); empty for cpu. Word-split on purpose.
+          # shellcheck disable=SC2086
+          cmake -S /d/t/llama.cpp -B /d/t/llama.cpp/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DLLAMA_BUILD_SERVER=ON \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_CURL=OFF \
+            ${CMAKE_ARGS:-}
+          cmake --build /d/t/llama.cpp/build --config Release --target llama-server --parallel
+          # Ninja puts it in build/bin, MSBuild in build/bin/Release.
+          exe="$(find /d/t/llama.cpp/build -name 'llama-server*' -type f \
+                   \( -name '*.exe' -o ! -name '*.*' \) | head -n1)"
+          if [ -z "$exe" ]; then
+            echo "llama-server was not produced" >&2
+            find /d/t/llama.cpp/build -maxdepth 3 -name 'llama*' >&2 || true
+            exit 1
+          fi
+          "$exe" --version || true
+          echo "exe=$exe" >> "$GITHUB_OUTPUT"
+
       # --- build the pack ----------------------------------------------------
 
       - name: Build pack
@@ -157,6 +220,9 @@ jobs:
             extra+=(--extra-index-url "${{ matrix.llama_index }}")
           fi
           bins=()
+          if [ -n "${{ steps.llama_server.outputs.exe }}" ]; then
+            bins+=(--bin "${{ steps.llama_server.outputs.exe }}")
+          fi
           if [ "${{ matrix.variant }}" = "cuda" ]; then
             # The cu12x wheels link against the CUDA runtime but do not ship it;
             # bundle the redistributable runtime DLLs so users need only a driver.
@@ -237,7 +303,10 @@ jobs:
           DRIVER = {"nvcuda.dll", "nvml.dll", "vulkan-1.dll", "opencl.dll"}
           in_pack = {p.name.lower() for p in d.rglob("*.dll")}
           unresolved: dict[str, list[str]] = {}
-          for f in sorted([*d.rglob("*.dll"), *d.rglob("*.pyd")]):
+          # .exe too: a llama-server missing a DLL would otherwise sail
+          # through CI and fail on the user's machine, which is the exact
+          # failure this audit exists to catch.
+          for f in sorted([*d.rglob("*.dll"), *d.rglob("*.pyd"), *d.rglob("*.exe")]):
               for dep in needed(f):
                   low = dep.lower()
                   # shutil.which is no help here: on Windows it appends PATHEXT

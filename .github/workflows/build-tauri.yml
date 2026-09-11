@@ -13,6 +13,16 @@ name: build (tauri)
 #     git commit -am "release: 0.2.0" && git tag v0.2.0 && git push --tags
 on:
   workflow_dispatch:
+    inputs:
+      llama_cpp_tag:
+        description: >-
+          Build `llama-server` from this llama.cpp tag and ship it in the
+          bundle, for the platform whose accelerator is built in (macOS arm64 /
+          Metal has no runtime pack to carry one). Empty = don't, which is what
+          a tag build and a push do. Use the tag matching the vendored
+          llama.cpp of the pinned llama-cpp-python — b9553 for 0.3.28.
+        required: false
+        default: ""
   push:
     branches: ["master"]
     tags: ["v*"]
@@ -57,6 +67,10 @@ jobs:
       - uses: ./.github/actions/build-engine
         with:
           llama_index: ${{ matrix.llama_index }}
+          # Empty for a push or a tag build: shipping a binary nothing uses
+          # yet (llama_cpp is still the default backend) would only make the
+          # installer bigger. Set it on a dispatch to exercise the step.
+          llama_cpp_tag: ${{ inputs.llama_cpp_tag }}
 
       - uses: dtolnay/rust-toolchain@stable
 

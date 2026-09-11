@@ -14,16 +14,25 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ..core.catalogue import (
+    HTTP_BACKENDS,
     OPTIONAL_SLOTS,
     SLOT_KIND,
     SLOTS,
     ModelCatalogue,
+    backend_can_run,
     resolve,
     resolve_all,
 )
 from ..core.config import Config, write_user_config
 from ..core.jobs import JobRegistry, Phase
 from ..core.models import download_model, required_models
+from ..core.openai_compat import (
+    ENDPOINT_SLOTS,
+    ChatCompletionsClient,
+    LLMHTTPError,
+    endpoint_status,
+    remote_slots,
+)
 from ..core.registry import make_chat, make_speaker
 from ..deps import get_catalogue, get_config, get_jobs
 
@@ -67,6 +76,16 @@ async def models_status(
         # entry above, so `all_present` — which decides whether the first-run
         # wizard appears at all — ignores what it would have downloaded.
         "features": {slot: getattr(cfg, slot).enabled for slot in OPTIONAL_SLOTS},
+        # Which slots send text off this machine — an `openai_compatible`
+        # backend pointed somewhere that isn't loopback. Empty is the normal
+        # case and the one the "nothing leaves your device" line is about;
+        # the client says something else when it isn't (see PreFlight).
+        "remote": remote_slots(cfg),
+        # Per slot that can be answered over HTTP: what its endpoint is set to,
+        # and whether it is the one in use. The settings panel renders this as
+        # a row alongside the downloadable models; a slot missing from here
+        # cannot be pointed at a URL at all (speech recognition).
+        "endpoints": {slot: endpoint_status(cfg, slot) for slot in ENDPOINT_SLOTS},
     }
 
 
@@ -109,12 +128,18 @@ async def models_select(
     # A model names its backend; choosing a model on another backend (a
     # streaming recogniser instead of Whisper for the live slot) switches
     # the backend with it. Each backend ignores the other's tuning keys.
+    #
+    # Unless the one already configured can run it: `llama_server` executes the
+    # same GGUF as `llama_cpp`, and choosing a different *model* is not a
+    # request to stop running models in a subprocess.
     update: dict[str, Any] = {"model": body.model}
-    if spec.backend != section.backend:
-        update["backend"] = spec.backend
+    backend = section.backend
+    if not backend_can_run(backend, spec.backend):
+        backend = spec.backend
+        update["backend"] = backend
     path = await asyncio.to_thread(write_user_config, {kind: update})
     section.model = body.model  # the running config, so the next session agrees
-    section.backend = spec.backend
+    section.backend = backend
 
     applies = "next_session"
     if kind in ("chat", "speaker"):
@@ -132,6 +157,156 @@ async def models_select(
         "restart_required": False,
         "config_path": str(path),
     }
+
+
+class EndpointRequest(BaseModel):
+    """One slot's HTTP endpoint. Omitted fields keep their current value.
+
+    ``api_key`` is the reason for that rule rather than a plain replace: the
+    client never receives the key back (see
+    :func:`~wrenote.core.openai_compat.endpoint_status`), so it cannot send it
+    again, and a form save must not wipe it. Passing ``""`` explicitly clears
+    it — which is how the UI's "forget the key" works.
+    """
+
+    kind: str
+    base_url: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    api_key_env: str | None = None
+    timeout_s: float | None = None
+    #: Switch the slot onto (or off) the HTTP backend. Off restores whichever
+    #: catalogue model the slot last had — the endpoint config stays on record.
+    active: bool | None = None
+
+
+def _endpoint_slot(kind: str) -> str:
+    slot = kind.strip().lower()
+    if slot not in ENDPOINT_SLOTS:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"{kind!r} cannot be answered over HTTP; "
+                    f"one of {list(ENDPOINT_SLOTS)}"),
+        )
+    return slot
+
+
+def _client_for(cfg: Config, slot: str, catalogue: ModelCatalogue) -> ChatCompletionsClient:
+    """A client built the way the backend would build it, for a test call."""
+    params = resolve(cfg, slot, catalogue).params
+    return ChatCompletionsClient(
+        base_url=str(params.get("base_url") or ""),
+        model=str(params.get("model") or ""),
+        api_key=str(params.get("api_key") or ""),
+        api_key_env=str(params.get("api_key_env") or ""),
+        headers=params.get("headers") or {},
+        extra_body=params.get("extra_body") or {},
+        timeout_s=float(params.get("timeout_s") or 120.0),
+    )
+
+
+@router.post("/models/endpoint")
+async def models_endpoint(
+    body: EndpointRequest,
+    request: Request,
+    cfg: Config = Depends(get_config),
+    catalogue: ModelCatalogue = Depends(get_catalogue),
+) -> dict[str, Any]:
+    """Point a slot at a model served over HTTP, persisting to the user config.
+
+    Same "applies now / next session" split as :func:`models_select`: chat is
+    held by :class:`ModelManager` and swapped here; the translator is built per
+    session. Switching ``active`` off restores the slot's catalogue model
+    rather than leaving it on a backend it is no longer meant to use.
+    """
+    slot = _endpoint_slot(body.kind)
+    section = getattr(cfg, slot)
+
+    fields = body.model_dump(exclude_none=True, exclude={"kind", "active"})
+    if "base_url" in fields:
+        fields["base_url"] = fields["base_url"].strip()
+    for key, value in fields.items():
+        setattr(section.endpoint, key, value)
+
+    # Turning it on without an endpoint would leave the slot unable to answer,
+    # and the failure would surface as a broken chat rather than a bad setting.
+    turning_on = body.active is True or (body.active is None and section.backend in HTTP_BACKENDS)
+    if turning_on and not section.endpoint.configured:
+        raise HTTPException(status_code=400, detail="base_url is required")
+
+    if body.active is not None:
+        if body.active:
+            section.backend = HTTP_BACKENDS[0]
+        elif section.backend in HTTP_BACKENDS:
+            # Back to a local model: whichever the slot names, or the
+            # catalogue's default for it if it never named one.
+            spec = catalogue.get(section.model or "") or catalogue.default_for(slot)
+            if spec is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"no local {slot} model to fall back to; choose one first",
+                )
+            section.backend, section.model = spec.backend, spec.id
+
+    stored = {slot: {"backend": section.backend,
+                     "model": section.model,
+                     "endpoint": section.endpoint.model_dump()}}
+    path = await asyncio.to_thread(write_user_config, stored)
+
+    applies = "next_session"
+    if slot == "chat":
+        r = resolve(cfg, slot, catalogue)
+        manager = request.app.state.models
+        await manager.replace_chat(
+            None if r.disabled else make_chat(section.backend, r.params)
+        )
+        applies = "now"
+    return {
+        "kind": slot,
+        "applies": applies,
+        "restart_required": False,
+        "config_path": str(path),
+        "endpoint": endpoint_status(cfg, slot),
+        "remote": remote_slots(cfg),
+    }
+
+
+@router.post("/models/endpoint/test")
+async def models_endpoint_test(
+    body: EndpointRequest,
+    cfg: Config = Depends(get_config),
+    catalogue: ModelCatalogue = Depends(get_catalogue),
+) -> dict[str, Any]:
+    """Ask the configured endpoint one tiny question, and report what happened.
+
+    This is the probe ``load()`` deliberately doesn't do (a health check on
+    every start-up costs a round trip, and some shims serve
+    ``/chat/completions`` and nothing else). Here it is worth it: the moment
+    someone presses Save is exactly when a typo in a URL or a stale key should
+    surface, rather than three days later mid-meeting.
+
+    Tests what is *saved*, not what is typed — the key may only exist in the
+    config — so the client saves first and tests second.
+    """
+    slot = _endpoint_slot(body.kind)
+    if not getattr(cfg, slot).endpoint.configured:
+        raise HTTPException(status_code=400, detail="base_url is required")
+    client = _client_for(cfg, slot, catalogue)
+    client.open()
+    try:
+        reply = await client.complete(
+            [{"role": "user", "content": "Reply with the single word: ok"}],
+            max_tokens=16,
+            temperature=0.0,
+            timeout_s=20.0,
+        )
+        return {"ok": True, "url": client.url, "reply": reply.strip()[:200]}
+    except (LLMHTTPError, TimeoutError, OSError) as e:
+        # A failed test is an answer, not a server error: the client renders
+        # the message next to the field that caused it.
+        return {"ok": False, "url": client.url, "error": f"{type(e).__name__}: {e}"}
+    finally:
+        await client.aclose()
 
 
 class FeaturesRequest(BaseModel):

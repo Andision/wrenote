@@ -9,13 +9,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..core import glossary
-from ..core.catalogue import feature_enabled
+from ..core.catalogue import ModelCatalogue, feature_enabled, resolve
 from ..core.config import Config
 from ..core.jobs import JobRegistry, Phase
 from ..core.registry import make_translator
 from ..core.store import Store
 from ..core.translation import translate_segments_for_session, translation_candidates
-from ..deps import get_config, get_jobs, get_store
+from ..deps import get_catalogue, get_config, get_jobs, get_store
+from ..translator.base import TranslatorBackend
 from ._common import safe_session_id
 
 log = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ async def translate_session(
     store: Store = Depends(get_store),
     cfg: Config = Depends(get_config),
     registry: JobRegistry = Depends(get_jobs),
+    catalogue: ModelCatalogue = Depends(get_catalogue),
 ) -> dict[str, str]:
     """Retroactively translate any segments missing a translation.
 
@@ -64,9 +66,20 @@ async def translate_session(
     job = registry.create(kind="translate", phases=list(_TRANSLATE_PHASES))
 
     async def runner() -> None:
-        translator = make_translator(cfg.translator.backend, cfg.translator.params)
-        glossary.apply_to_backends(await store.list_glossary(), translator=translator)
+        # Inside the try, like core/refine.py does it: a construction that
+        # raised out here left the job at "running" for the rest of the
+        # process's life, and a progress bar that never finishes is worse
+        # than an error the user can read.
+        translator: TranslatorBackend | None = None
         try:
+            # `resolve`, not `cfg.translator.params`: the params in the config
+            # are tuning, and the model file itself comes from the catalogue
+            # entry the `model:` id names. Constructing straight from the raw
+            # params left llama_cpp without a `model_path` at all.
+            translator = make_translator(
+                cfg.translator.backend, resolve(cfg, "translator", catalogue).params
+            )
+            glossary.apply_to_backends(await store.list_glossary(), translator=translator)
             registry.advance(job.id, phase_idx=0, log_line="Loading translator")
             await translator.load()
             registry.advance(job.id, phase_inner=1.0)
@@ -97,10 +110,11 @@ async def translate_session(
             log.exception("translate job %s failed", job.id)
             registry.fail(job.id, f"{type(e).__name__}: {e}")
         finally:
-            try:
-                await translator.unload()
-            except Exception:
-                pass
+            if translator is not None:
+                try:
+                    await translator.unload()
+                except Exception:
+                    pass
 
     task = asyncio.create_task(runner(), name=f"translate-{job.id[:8]}")
     # Hold a reference: the event loop keeps only a weak one, so an
