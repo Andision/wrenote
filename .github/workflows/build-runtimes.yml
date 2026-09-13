@@ -32,18 +32,11 @@ on:
         description: Publish to the "runtimes" release (else artifacts only)
         type: boolean
         default: false
-      llama_cpp_tag:
-        description: >-
-          Override the llama.cpp tag llama-server is built from. Empty uses
-          LLAMA_CPP_TAG below, which is what ships.
-        required: false
-        default: ""
 
 env:
-  # The llama.cpp the supervised backend runs. Keep it equal to the pin in
-  # .github/actions/build-engine, or an accelerated install and a built-in one
-  # are running different llama.cpps.
-  LLAMA_CPP_TAG: "b9553"
+  # The llama.cpp pin lives in .github/actions/build-llama-server, which both
+  # this and the app bundle build through — so a pack and a bundle can never
+  # be built from different llama.cpps.
   PYWHISPERCPP: "1.4.1"
   PYTHON_VERSION: "3.11"
 
@@ -131,72 +124,19 @@ jobs:
 
       # --- llama-server, for engine/wrenote/core/llama_server.py --------------
 
-      # The binary the supervised backend runs, built with this variant's
-      # accelerator flags so the pack stays self-describing: one download, one
-      # accelerator, everything in it built the same way. It rides in bin/,
-      # which RuntimeManager.activate already puts on the PATH.
+      # Built with this variant's accelerator flags, so the pack stays
+      # self-describing: one download, one accelerator, everything in it built
+      # the same way. It rides in bin/, which RuntimeManager.activate already
+      # puts on the PATH. Same action the app bundle's copy comes from, so the
+      # two cannot drift.
       #
-      # Statically linked (BUILD_SHARED_LIBS=OFF) so it carries its own ggml
-      # so it carries its own ggml and depends on nothing else in the pack.
-      #
-      # NOT YET RUN ON A REAL RUNNER. Everything below it has been; this step
-      # is written from the same flags the pack build uses and has not been
-      # through CI. Treat the first dispatch with a tag as the test.
-      - name: Restore llama-server
-        id: llama_server_cache
-        uses: actions/cache@v4
+      # NOT YET RUN ON A REAL RUNNER with a tag set.
+      - uses: ./.github/actions/build-llama-server
         with:
-          path: packaging/llama-server
-          # The variant is in the key (a Vulkan build and a CUDA build of the
-          # same tag are different binaries), and so is this file's hash: the
-          # cmake flags below decide what the binary links against, and a key
-          # without them serves a stale binary past the next fix to them.
-          key: >-
-            llama-server-${{ inputs.llama_cpp_tag || env.LLAMA_CPP_TAG }}-${{ matrix.variant }}-${{ runner.os }}-${{ runner.arch }}-${{
-              hashFiles('.github/workflows/build-runtimes.yml') }}
-
-      - name: Build llama-server
-        if: steps.llama_server_cache.outputs.cache-hit != 'true'
-        shell: bash
-        env:
-          CMAKE_ARGS: ${{ matrix.cmake_args }}
-          CUDA_PATH: ${{ steps.cuda.outputs.CUDA_PATH }}
-          CUDAARCHS: 61-real;75-real;86-real;89-real;89-virtual
-        run: |
-          set -euo pipefail
-          mkdir -p /d/t
-          export TMP='D:\t' TEMP='D:\t' TMPDIR='D:\t'
-          git clone --depth 1 --branch "${{ inputs.llama_cpp_tag || env.LLAMA_CPP_TAG }}" \
-            https://github.com/ggml-org/llama.cpp /d/t/llama.cpp
-          if [ -n "${{ matrix.cmake_generator }}" ]; then
-            export CMAKE_GENERATOR="${{ matrix.cmake_generator }}"
-          fi
-          # $CMAKE_ARGS is the variant's accelerator switch (-DGGML_VULKAN=on,
-          # -DGGML_CUDA=on); empty for cpu. Word-split on purpose.
-          # shellcheck disable=SC2086
-          cmake -S /d/t/llama.cpp -B /d/t/llama.cpp/build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DLLAMA_BUILD_SERVER=ON \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_EXAMPLES=OFF \
-            -DLLAMA_CURL=OFF \
-          -DLLAMA_SERVER_SSL=OFF \
-          -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON \
-            ${CMAKE_ARGS:-}
-          cmake --build /d/t/llama.cpp/build --config Release --target llama-server --parallel
-          # Ninja puts it in build/bin, MSBuild in build/bin/Release.
-          exe="$(find /d/t/llama.cpp/build -name 'llama-server*' -type f \
-                   \( -name '*.exe' -o ! -name '*.*' \) | head -n1)"
-          if [ -z "$exe" ]; then
-            echo "llama-server was not produced" >&2
-            find /d/t/llama.cpp/build -maxdepth 3 -name 'llama*' >&2 || true
-            exit 1
-          fi
-          "$exe" --version || true
-          # A fixed path, so the cache above can restore it next time.
-          mkdir -p packaging/llama-server
-          cp "$exe" packaging/llama-server/
+          variant: ${{ matrix.variant }}
+          cmake_args: ${{ matrix.cmake_args }}
+          cmake_generator: ${{ matrix.cmake_generator }}
+          cuda_path: ${{ steps.cuda.outputs.CUDA_PATH }}
 
       # --- build the pack ----------------------------------------------------
 

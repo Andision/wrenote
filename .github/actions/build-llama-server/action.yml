@@ -1,0 +1,142 @@
+name: Build llama-server
+description: >-
+  Build the `llama-server` binary the supervised backend runs
+  (engine/wrenote/core/llama_server.py), for one accelerator, and leave it in
+  packaging/llama-server/ for whoever asked.
+
+  Its own action file for one reason: the cache key has to cover the build
+  definition — the cmake flags below decide what the binary links against, and
+  a key without them serves a stale binary past the next fix to them, silently.
+  Keying on the *caller's* file meant that editing a comment in it recompiled
+  llama.cpp, which is 66 minutes on a macOS runner. Here the key is this file,
+  which only changes when the build does.
+
+inputs:
+  tag:
+    description: >-
+      **The pin.** The llama.cpp to build. Keep it equal to the llama.cpp
+      vendored by whatever llama-cpp-python the runtime packs ship, or an
+      accelerated install and a built-in one run different llama.cpps.
+      Moving it should be a commit, not a dispatch parameter.
+
+      Callers must not forward an optional input into this: an empty string in
+      `with:` overrides this default rather than falling back to it, and the
+      build then tries to clone the branch "".
+    required: false
+    default: "b9553"
+  variant:
+    description: >-
+      Which accelerator this build is for. Only used to keep cache entries
+      apart — a Vulkan build and a CUDA build of the same tag are different
+      binaries.
+    required: false
+    default: builtin
+  cmake_args:
+    description: The accelerator switch, e.g. `-DGGML_VULKAN=on`. Empty = the platform default.
+    required: false
+    default: ""
+  cmake_generator:
+    description: CMAKE_GENERATOR, e.g. `Ninja`. Empty = cmake's choice.
+    required: false
+    default: ""
+  cuda_path:
+    description: CUDA_PATH, for a CUDA build.
+    required: false
+    default: ""
+
+outputs:
+  dir:
+    description: Directory holding the binary.
+    value: packaging/llama-server
+
+runs:
+  using: composite
+  steps:
+    - name: Restore llama-server
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: packaging/llama-server
+        key: >-
+          llama-server-${{ inputs.tag }}-${{ inputs.variant }}-${{ runner.os }}-${{ runner.arch }}-${{
+            hashFiles('.github/actions/build-llama-server/action.yml') }}
+
+    - name: Build llama-server
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        CMAKE_ARGS: ${{ inputs.cmake_args }}
+        CUDA_PATH: ${{ inputs.cuda_path }}
+        # No GPU on the runner, so CMake cannot resolve "native". Real code for
+        # Pascal through Ada, plus Ada PTX so newer parts JIT it. Ignored by a
+        # build that isn't CUDA.
+        CUDAARCHS: 61-real;75-real;86-real;89-real;89-virtual
+      run: |
+        set -euo pipefail
+        tag="${{ inputs.tag }}"
+        if [ -z "$tag" ]; then
+          echo "tag is empty — a caller passed it through as '', which overrides" >&2
+          echo "this action's default. Don't pass it unless you mean it." >&2
+          exit 1
+        fi
+        src="$RUNNER_TEMP/llama.cpp"
+        git clone --depth 1 --branch "$tag" https://github.com/ggml-org/llama.cpp "$src"
+        if [ -n "${{ inputs.cmake_generator }}" ]; then
+          export CMAKE_GENERATOR="${{ inputs.cmake_generator }}"
+        fi
+
+        # Statically linked, so it carries its own ggml and depends on nothing
+        # around it — it has to run both from an app bundle and from a runtime
+        # pack's bin/.
+        #
+        # OpenSSL off both ways: cpp-httplib links it whenever CMake can find
+        # it, and the runners have it. The binary then needs libssl at run
+        # time, which the first real build happened to get away with because
+        # PyInstaller ships Python's OpenSSL in the same directory — a
+        # coincidence, one soname bump from a crash on a user's machine. We
+        # serve loopback and llama.cpp logs "running without SSL" regardless.
+        #
+        # $CMAKE_ARGS is the accelerator switch; word-split on purpose.
+        # shellcheck disable=SC2086
+        cmake -S "$src" -B "$src/build" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DLLAMA_BUILD_SERVER=ON \
+          -DLLAMA_BUILD_TESTS=OFF \
+          -DLLAMA_BUILD_EXAMPLES=OFF \
+          -DLLAMA_CURL=OFF \
+          -DLLAMA_SERVER_SSL=OFF \
+          -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON \
+          ${CMAKE_ARGS:-}
+        cmake --build "$src/build" --config Release --target llama-server --parallel
+
+        # Ninja puts it in build/bin, MSBuild in build/bin/Release.
+        exe="$(find "$src/build" -name 'llama-server*' -type f \
+                 \( -name '*.exe' -o ! -name '*.*' \) | head -n1)"
+        if [ -z "$exe" ]; then
+          echo "llama-server was not produced" >&2
+          find "$src/build" -maxdepth 3 -name 'llama*' >&2 || true
+          exit 1
+        fi
+
+        # The flags above are only as good as their effect. A binary that links
+        # OpenSSL runs on the runner and on a developer's machine and fails on
+        # a user's, so assert it here rather than discovering it by pulling the
+        # binary back out of a DMG. (Windows is covered by the runtime pack's
+        # DLL audit, which reads .exe too.)
+        case "$RUNNER_OS" in
+          macOS) deps="$(otool -L "$exe")" ;;
+          Linux) deps="$(ldd "$exe" 2>/dev/null || true)" ;;
+          *) deps="" ;;
+        esac
+        if printf '%s' "$deps" | grep -qiE 'libssl|libcrypto'; then
+          echo "llama-server links OpenSSL — the flags disabling it stopped working" >&2
+          printf '%s\n' "$deps" >&2
+          exit 1
+        fi
+
+        # Logs the Metal/CUDA device and the backends compiled in.
+        "$exe" --version || true
+        mkdir -p packaging/llama-server
+        cp "$exe" packaging/llama-server/
+        chmod +x packaging/llama-server/*
